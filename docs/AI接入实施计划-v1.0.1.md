@@ -1,4 +1,4 @@
-# DeepSeek AI 接入实施计划（v1.0.1）
+# DeepSeek AI 接入实施计划（v1.0.0）
 
 依据《AI接入方案-DeepSeek》，本次完成浏览器形态的 Phase 0、Phase A 与 Phase B MVP；Tauri 桌面打包属于独立交付形态，未纳入本次零依赖 HTML 版本。
 

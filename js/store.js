@@ -94,6 +94,12 @@ function ensureDBFields(){
 let fileHandle=null;       // 文件句柄
 let fileSync=false;        // true=已绑定且有权, 'pending'=已绑定但需重新授权, false=未绑定
 let fileLastSave='';       // 最后写入时间
+let bindingInProgress=false; // true=正在执行绑定流程，禁止一切文件写入（防止竞态覆盖）
+/**
+ * 绑定目录时在目录中查找/创建的固定数据文件名
+ * @type {string}
+ */
+const BIND_FILE_NAME='紧固件贸易工作台_数据.json';
 
 /**
  * 检测浏览器是否支持 File System Access API（showSaveFilePicker）。
@@ -128,39 +134,163 @@ async function fhDelete(){const db=await fhOpen();return new Promise((res,rej)=>
 
 /* 权限检查 */
 /**
- * 检查并请求文件句柄的读写权限。
- * @param {FileSystemFileHandle} handle - 文件句柄
+ * 检查并请求文件/目录句柄的读写权限。
+ * 容错：file:// 协议下 FileSystemHandle 的权限 API 可能不可用或 reject，
+ * 以及 FileSystemDirectoryHandle 与 FileSystemFileHandle 的权限层级分离，
+ * 一律先对目录句柄求权限（目录授权后目录内文件自动继承），失败则降级视为未授权。
+ * @param {FileSystemHandle} handle - 文件句柄或目录句柄
  * @param {boolean} rw - true 请求读写权限，false 仅读权限
  * @returns {Promise<boolean>} 已授权返回 true，否则 false
  */
 async function fhPerm(handle,rw){
+  if(!handle||typeof handle.queryPermission!=='function')return false;
   const opts={mode:rw?'readwrite':'read'};
-  if((await handle.queryPermission(opts))==='granted')return true;
-  if((await handle.requestPermission(opts))==='granted')return true;
+  try{
+    if((await handle.queryPermission(opts))==='granted')return true;
+  }catch(e){} // file:// 下部分浏览器版本 queryPermission 会 reject，直接走 requestPermission
+  try{
+    if((await handle.requestPermission(opts))==='granted')return true;
+  }catch(e){} // requestPermission 同样可能在 file:// 下 reject
   return false;
 }
 
-/* 绑定本地文件 */
+/* 绑定本地目录 */
 /**
- * 弹出系统保存对话框绑定本地 JSON 文件，绑定后数据将双向同步。
+ * 绑定本地目录做双向同步：用 showDirectoryPicker 选目录（不弹系统「替换」提示——目录选择器无替换语义），
+ * 在目录中查找/创建固定文件名「紧固件贸易工作台_数据.json」——存在则用其数据做导入/合并，
+ * 不存在则创建空文件。绑定前用项目统一 modal 预提示安全文件夹限制，取消/失败时用项目统一 modal 给重试选项。
  * @returns {Promise<void>} 完成（无返回值）
  */
-async function bindFile(){
+function bindFile(){
   if(!fsaSupported()){toast('当前浏览器不支持文件绑定，请使用 Chrome 或 Edge 浏览器','error');return;}
+  if(!('showDirectoryPicker' in window)){toast('当前浏览器不支持目录选择，请使用 Chrome 或 Edge 浏览器','error');return;}
+  // 预提示：用项目统一 modal 解释浏览器对系统文件夹的安全限制 + 明确授权操作，避免用户看到系统弹窗时困惑
+  const body=document.createElement('div');
+  body.style.fontSize='14px';body.style.lineHeight='1.8';
+  body.innerHTML=
+    '<p>将选择一个本地文件夹用于存放数据文件「'+escHtml(BIND_FILE_NAME)+'」。</p>'+
+    '<p style="color:var(--green)">✓ 过程中浏览器会弹出两次授权提示，<b>都请点「允许」</b>：</p>'+
+    '<ol style="margin:.3rem 0 0 1.4rem;padding:0;color:var(--gray)">'+
+    '<li>「允许此网站修改文件？」→ 点<b>「允许」</b></li>'+
+    '<li>（授权通过后出现目录选择器）选择要绑定的文件夹 → 点「打开」</li>'+
+    '</ol>'+
+    '<p style="color:var(--warn);margin-top:.8rem">⚠ 浏览器安全限制：如果选择「下载」「桌面」「文档」等系统文件夹，会弹出「无法打开此文件夹，因为其中含有系统文件」。这是浏览器的安全保护，<b>不影响功能</b>，请点「另选一个文件夹」继续，或选择专门新建的空文件夹。</p>'+
+    '<p>系统将在所选文件夹中：</p>'+
+    '<ul style="margin:.5rem 0 0 1.2rem;padding:0;list-style:disc;color:var(--gray)">'+
+    '<li>存在 '+escHtml(BIND_FILE_NAME)+' → 读取并与 IndexedDB 合并 / 导入</li>'+
+    '<li>不存在 → 自动创建并写入当前数据</li>'+
+    '</ul>';
+  modal('绑定本地数据文件夹',body,'开始选择',()=>{
+    closeModal();
+    _doBindDirectory();
+  });
+}
+/**
+ * 实际执行目录绑定：调 showDirectoryPicker → 查找/创建固定数据文件 → 合并/导入/新建。
+ * 取消选择或失败时，用项目统一 modal 给「重试 / 放弃」选项（分别走确定 / 取消按钮）。
+ * @returns {Promise<void>} 完成（无返回值）
+ */
+async function _doBindDirectory(){
+  if(!('showDirectoryPicker' in window)){toast('当前浏览器不支持目录选择，请使用 Chrome 或 Edge 浏览器','error');return;}
+  let dirHandle;
   try{
-    const handle=await window.showSaveFilePicker({
-      suggestedName:'紧固件贸易工作台_数据.json',
-      types:[{description:'JSON 文件',accept:{'application/json':['.json']}}]
-    });
-    if(!(await fhPerm(handle,true))){toast('未获得文件写入权限','error');return;}
-    fileHandle=handle;fileSync=true;
+    // 绑定目录：showDirectoryPicker 不会弹系统「替换」确认框（目录选择器无替换语义），
+    // 彻底避免 showSaveFilePicker 选已存在文件时浏览器/OS 截断原文件、弹原生替换提示的问题。
+    dirHandle=await window.showDirectoryPicker({mode:'readwrite'});
+  }catch(e){
+    if(e.name==='AbortError'){
+      // 用户取消选择或因「系统文件夹安全限制」被拒：用项目统一 modal 给「重试 / 放弃」选项，
+      // 不弹任何系统对话框。确定按钮=再试一次，取消按钮=放弃绑定
+      const body=document.createElement('div');
+      body.style.fontSize='14px';body.style.lineHeight='1.8';
+      body.innerHTML=
+        '<p>刚才您取消了选择，或选择了「下载/桌面/文档」等系统文件夹触发了浏览器安全限制。</p>'+
+        '<p style="color:var(--gray);font-size:13px">建议：专门新建一个空文件夹（如「'+escHtml('~/Documents/紧固件数据/')+'」）来存放数据文件。</p>';
+      const onRetry=()=>{closeModal();_doBindDirectory();};
+      const onGiveUp=()=>{closeModal();toast('已取消绑定','info');};
+      modal('未绑定成功',body,'再试一次',onRetry);
+      // modal 默认取消按钮是 closeModal()，覆写它为「放弃绑定」
+      const mask=document.getElementById('_mask');
+      if(mask){
+        const cancelBtn=mask.querySelector('.mf .btn:not(.primary)');
+        if(cancelBtn){cancelBtn.textContent='放弃绑定';cancelBtn.onclick=onGiveUp;}
+      }
+    }else{
+      toast('选择目录失败：'+e.message,'error');
+    }
+    return;
+  }
+  try{
+    // 先对目录句柄求读写权限：目录授权后，目录内的文件句柄自动继承读写权限，
+    // 避免对 FileSystemFileHandle 再调 requestPermission 触发「第二次权限弹窗」
+    // （file:// 下两次权限弹窗会让浏览器判定权限不透明，卡住整个选择流程）
+    if(!(await fhPerm(dirHandle,true))){toast('未获得目录读写权限，请点「允许」授予目录修改权限后重试','error');return;}
+    // 在所选目录中查找/创建固定数据文件：
+    //   getFileHandle(name,{create:true}) 文件存在则返回已存在文件句柄（不截断、不覆盖原内容），
+    //   不存在则创建空文件。无论哪种情况，后续 getFile 都能读到正确内容做合并/导入。
+    let handle;
+    try{
+      handle=await dirHandle.getFileHandle(BIND_FILE_NAME,{create:true});
+    }catch(e){
+      toast('在所选目录中创建/打开数据文件失败：'+e.message,'error');
+      return;
+    }
+    if(!handle){toast('未能获得数据文件句柄','error');return;}
+    // 绑定流程保护：读取/合并/导入完成前禁止任何文件写入（saveToFile 会检查 bindingInProgress），
+    // 杜绝「绑定过程中其他事件（定时器/输入回调等）触发保存、用当前库覆盖目标文件」的竞态清空问题
+    bindingInProgress=true;
+    fileHandle=handle;
+    // 读取目标文件内容，区分三种情况：合法对象 / 非空但解析失败 / 空文件（刚创建的或原本就空）
+    let fileData=null, fileHasAny=false;
+    try{
+      const f=await handle.getFile();
+      const txt=await f.text();
+      if(txt){
+        const d=JSON.parse(txt);
+        if(d&&typeof d==='object'&&!Array.isArray(d)){fileData=d;fileHasAny=true;}
+        else{fileHasAny=true;} // 非 JSON 对象（如纯数组/字符串），视为「有内容但不可用」
+      }
+    }catch(e){fileHasAny=true;} // 解析失败说明文件非空/非预期结构，绝不覆盖
+    // 文件有内容但无法解析为合法对象：绝不能开启同步，否则当前库会反向覆盖文件，回滚并取消绑定
+    if(fileHasAny&&!fileData){
+      fileHandle=null;
+      bindingInProgress=false;
+      toast('目标文件解析失败，已取消绑定，请检查「'+BIND_FILE_NAME+'」的格式','error');
+      return;
+    }
+    // 判断本地 IndexedDB 是否为空（以业务数据为准，不看 _savedAt，避免空库被补时间戳后误判为「有数据」）
+    const dbEmpty=!(DB.units&&DB.units.length)&&!(DB.prices&&DB.prices.length)&&!(DB.orders&&DB.orders.length)&&!(DB.settlements&&DB.settlements.length)&&!(DB.invoices&&DB.invoices.length);
+    let merged=false;
+    if(fileData){
+      if(dbEmpty){
+        // 情况1：IndexedDB 空 + 文件有数据 → 文件数据作为默认数据导入系统
+        DB=fileData;
+        ensureDBFields();
+      }else{
+        // 情况2：IndexedDB 有数据 + 文件有数据 → 合并 IndexedDB + 文件数据
+        // IndexedDB 现有数据优先（保护用户当前正在操作的数据），文件中独有的条目追加
+        mergeFileData(fileData);
+        merged=true;
+      }
+      migrateItems();
+      DB._savedAt=Date.now();
+      await idbSave();
+    }
+    // 情况3：文件为空（刚创建/原本就空） → 保持当前 DB 不变，待 saveToFile 把当前库写入文件
+    // 正式开启同步并持久化句柄
+    fileSync=true;
     await fhSave(handle);
-    // 绑定本地文件时：若文件已有数据且本地 IndexedDB 为空（首次绑定/空库），将文件数据作为初始数据导入 IndexedDB
-    const loaded=await loadFromFile();
-    if(!loaded){await saveToFile();}
-    toast('已绑定本地文件：'+handle.name+'，数据将自动同步','success');
+    bindingInProgress=false;
+    // 将合并/导入/当前的 DB 写回文件，确保文件与 IndexedDB 一致；
+    // 由于合并模式下写入的是 IndexedDB ∪ 文件数据的并集，绝不发生「清空目标文件」
+    await saveToFile();
+    const tip=merged?'（已合并文件中的独有数据，IndexedDB 现有数据已保留）':(fileData?'（已从文件导入数据）':'（已新建数据文件）');
+    toast('已绑定目录：'+dirHandle.name+'，数据文件：'+handle.name+'，将自动同步'+tip,'success');
     render();
-  }catch(e){if(e.name!=='AbortError')toast('绑定失败：'+e.message,'error');}
+  }catch(e){
+    bindingInProgress=false;
+    if(e.name!=='AbortError')toast('绑定失败：'+e.message,'error');
+  }
 }
 
 /* 解绑 */
@@ -194,13 +324,54 @@ async function reconnectFile(){
   }catch(e){toast('连接失败：'+e.message,'error');}
 }
 
+/* 合并文件数据到当前 DB（IndexedDB 优先，文件独有条目追加） */
+/**
+ * 绑定本地文件时，IndexedDB 已有数据 → 合并 IndexedDB + 文件数据。
+ * 合并规则：
+ *  - units/prices/orders/settlements/invoices/bom：按 id 去重，相同 id 以 IndexedDB 现有为准（保护用户当前操作），
+ *    文件中独有的 id 追加到末尾；
+ *  - specs 字典：IndexedDB 顺序优先，文件中独有的可选项追加（保持顺序、去重）；
+ *  - seq/orderSeq：取最大值（避免编号回退）；
+ *  - aiChats：保留 IndexedDB 现有（避免重复聊天记录）；
+ *  - _savedAt：由调用方在合并完成后统一设置。
+ * @param {Object} fileData - 从文件读取的 DB 对象
+ * @returns {void}
+ */
+function mergeFileData(fileData){
+  if(!fileData||typeof fileData!=='object')return;
+  // 按 id 去重合并的辅助函数：IndexedDB 现有数据优先，文件中独有的条目追加
+  const mergeById=(curArr,fileArr)=>{
+    if(!Array.isArray(curArr)||!Array.isArray(fileArr))return;
+    const seen=new Set(curArr.map(x=>x&&x.id).filter(Boolean));
+    fileArr.forEach(x=>{if(x&&x.id&&!seen.has(x.id)){curArr.push(x);seen.add(x.id);}});
+  };
+  mergeById(DB.units,fileData.units||[]);
+  mergeById(DB.prices,fileData.prices||[]);
+  mergeById(DB.orders,fileData.orders||[]);
+  mergeById(DB.settlements,fileData.settlements||[]);
+  mergeById(DB.invoices,fileData.invoices||[]);
+  mergeById(DB.bom,fileData.bom||[]);
+  // specs 字典：IndexedDB 顺序优先，文件中独有项追加（去重）
+  if(fileData.specs&&typeof fileData.specs==='object'){
+    Object.keys(fileData.specs).forEach(k=>{
+      const fileVals=Array.isArray(fileData.specs[k])?fileData.specs[k]:[];
+      if(!DB.specs[k])DB.specs[k]=[];
+      const seen=new Set(DB.specs[k]);
+      fileVals.forEach(v=>{if(!seen.has(v)){DB.specs[k].push(v);seen.add(v);}});
+    });
+  }
+  // seq / orderSeq 取最大值（避免编号回退）
+  DB.seq=Math.max(DB.seq||100,fileData.seq||100);
+  DB.orderSeq=Math.max(DB.orderSeq||1,fileData.orderSeq||1);
+}
+
 /* 写入文件（异步，saveDB 调用） */
 /**
  * 将 DB 对象写入绑定的本地文件，失败时将 fileSync 置为 pending。
  * @returns {Promise<void>} 完成（无返回值）
  */
 async function saveToFile(){
-  if(!fileHandle||fileSync!==true)return;
+  if(!fileHandle||fileSync!==true||bindingInProgress)return;
   try{
     const w=await fileHandle.createWritable();
     await w.write(JSON.stringify(DB,null,2));
@@ -226,7 +397,9 @@ async function loadFromFile(){
     const file=await fileHandle.getFile();
     const text=await file.text();
     const data=JSON.parse(text);
-    if(data&&data.units&&data.prices&&data.orders){
+    // 只要文件是合法 JSON 对象即进入处理（不再硬性要求 units/prices/orders 三字段齐全，
+    // 避免结构不完整的数据文件被误判为"无数据"而触发反向覆盖清空）
+    if(data&&typeof data==='object'&&!Array.isArray(data)){
       // 对比时间戳：仅当文件比当前数据更新时才加载
       const curTs=DB._savedAt||0;
       const fileTs=data._savedAt||0;
