@@ -1,5 +1,6 @@
 # 紧固件贸易工作台 · DeepSeek AI 接入方案
 
+> **状态：Node 代理已废弃（2026-08-23）**——本方案中"浏览器形态 + Node 代理（tools/ai-proxy.js / localhost:7842）"相关章节仅作历史记录，实际已改为 **Tauri 桌面版直连 DeepSeek API**，API_KEY 在 AI 设置中填写、由 Tauri 保存到本机应用数据目录。本文其余部分保留供参考。
 > 版本：v2.1（2026-08-23 修订版：安全代理、V4 模型与流式 IPC 方案）
 > 目标应用版本：v1.0.0+（AI 功能作为独立增强模块）
 > 定位：**离线优先，AI 增强**——核心功能完全离线可用，AI 能力按需开启
@@ -233,7 +234,7 @@ SSE 流式响应
 
 #### 3.4.3 AI 模块的双通道适配
 
-`js/ai.js` 运行时探测环境，自动选择通道（业务代码对此无感知）：
+`src/js/ai.js` 运行时探测环境，自动选择通道（业务代码对此无感知）：
 
 ```javascript
 // 通道选择（ai.js 内部）
@@ -275,7 +276,7 @@ Tauri 的 `invoke` 参数不能传递 JavaScript 回调函数；流式 HTTP 响�
 | 2 | **现有 JSON 迁移验收**：用数据管理页的全量 JSON 导入/导出，将浏览器数据迁入 App | 当前项目已有入口，补充迁移测试与说明 | 小 |
 | 3 | **Tauri 工程骨架**：`src-tauri/`（权限、CSP、命令白名单、Channel 流式命令） | 明确 IPC 边界与安全策略 | 中 |
 | 4 | **打包脚本**：按目标平台构建 macOS/Windows 安装包 | 构建环境需 Node 与 Rust；用户侧不需要 Node | 小 |
-| 5 | **AGENTS.md 更新**：增加 Tauri 构建目录的明确豁免范围 | 保留根目录 `index.html` 的直接打开能力 | 小 |
+| 5 | **AGENTS.md 更新**：增加 Tauri 构建目录的明确豁免范围 | 保留 `src/index.html` 的直接打开能力 | 小 |
 
 **注意**：桌面化是**叠加**而非替换。Tauri 产物是平台应用/安装包，不是单个 HTML 文件；项目根目录的浏览器形态仍必须保持 `file://` 双击可用。
 
@@ -472,7 +473,7 @@ async function probeProxy() {
 
 ---
 
-## 6. AI 核心模块设计 `js/ai.js`
+## 6. AI 核心模块设计 `src/js/ai.js`
 
 ### 6.1 模块结构
 
@@ -600,7 +601,7 @@ PO260806-002 上海机泵 寻货中 ¥8,500
 
 ---
 
-## 7. 聊天面板设计 `js/views/ai-chat.js`
+## 7. 聊天面板设计 `src/js/views/ai-chat.js`
 
 ### 7.1 面板结构
 
@@ -773,8 +774,8 @@ DB.aiChats = [
 | 步骤 | 内容 | 产出 |
 |---|---|---|
 | 0-1 | 编写有会话令牌、请求限制、取消和超时的本地代理；仅从环境变量取 Key | `tools/ai-proxy.js` |
-| 0-2 | 编写只读 `AIContext` 聚合器，统一计算利润、应收应付、逾期与排行 | `js/ai.js` |
-| 0-3 | 设计发送前审阅与默认脱敏规则 | `js/ai.js` + 聊天面板 |
+| 0-2 | 编写只读 `AIContext` 聚合器，统一计算利润、应收应付、逾期与排行 | `src/js/ai.js` |
+| 0-3 | 设计发送前审阅与默认脱敏规则 | `src/js/ai.js` + 聊天面板 |
 | 0-4 | 使用 `deepseek-v4-flash` 进行受控联调，记录 `usage`、响应失败与取消结果 | 验收记录 |
 
 **验收标准**：任意网页不能调用本地代理；未确认的数据不会外发；金额类结果由本地计算；代理离线时核心功能不受影响。
@@ -786,10 +787,10 @@ DB.aiChats = [
 | 步骤 | 内容 | 产出文件 |
 |---|---|---|
 | A1 | 接入经 Phase 0 验收的本地代理 `tools/ai-proxy.js` | `tools/ai-proxy.js` |
-| A2 | 编写 AI 核心模块 `js/ai.js`（默认 `deepseek-v4-flash`） | `js/ai.js` |
-| A3 | 编写聊天面板 `js/views/ai-chat.js` | `js/views/ai-chat.js` |
-| A4 | CSS 样式（Drawer + 聊天界面） | `css/components.css` 追加 |
-| A5 | `index.html` 加载新文件 + `store.js` 新增 `DB.aiChats` | 修改 |
+| A2 | 编写 AI 核心模块 `src/js/ai.js`（默认 `deepseek-v4-flash`） | `src/js/ai.js` |
+| A3 | 编写聊天面板 `src/js/views/ai-chat.js` | `src/js/views/ai-chat.js` |
+| A4 | CSS 样式（Drawer + 聊天界面） | `src/css/components.css` 追加 |
+| A5 | `src/index.html` 加载新文件 + `src/js/store.js` 新增 `DB.aiChats` | 修改 |
 | A6 | `router.js` 加 AI Drawer 开关 + 键盘快捷键 | 修改 |
 | A7 | 联调测试：代理 → 上下文 → 对话 → 流式 | — |
 
@@ -838,8 +839,8 @@ DB.aiChats = [
 |---|---|---|
 | `tools/ai-proxy.js` | 本地 DeepSeek API 代理（零依赖 Node.js，浏览器形态通道） | ~80 |
 | `tools/README.md` | 代理使用说明 | ~40 |
-| `js/ai.js` | AI 核心模块（双通道适配/代理探测/上下文提取/API 调用/流式处理） | ~380 |
-| `js/views/ai-chat.js` | 聊天面板视图（Drawer UI/Markdown 渲染/快捷指令） | ~400 |
+| `src/js/ai.js` | AI 核心模块（双通道适配/代理探测/上下文提取/API 调用/流式处理） | ~380 |
+| `src/js/views/ai-chat.js` | 聊天面板视图（Drawer UI/Markdown 渲染/快捷指令） | ~400 |
 | `src-tauri/tauri.conf.json` | Tauri 配置（窗口/资源/权限） | ~60 |
 | `src-tauri/src/main.rs` | Rust 入口 + AI 命令（health/set_key/chat_stream/abort，Channel 流式转发） | ~180 |
 | `src-tauri/Cargo.toml` | Rust 依赖清单（tauri/reqwest/tokio） | ~30 |
@@ -848,11 +849,11 @@ DB.aiChats = [
 
 | 文件路径 | 改动内容 |
 |---|---|
-| `index.html` | 新增 `<script defer src="js/ai.js">` + `<script defer src="js/views/ai-chat.js">` |
-| `js/store.js` | `DB` 新增 `aiChats: []`；`ensureDBFields()` 补齐 |
-| `js/router.js` | 新增 `aiDrawerOpen` 状态 + `render()` 中 AI Drawer 挂载 + 键盘 `⌥+I` |
-| `js/views/keyboard.js` | 快捷键说明弹窗新增 `⌥+I AI 助手` |
-| `css/components.css` | AI Drawer 样式 + 聊天面板样式 + Markdown 渲染样式 |
+| `src/index.html` | 新增 `<script defer src="js/ai.js">` + `<script defer src="js/views/ai-chat.js">` |
+| `src/js/store.js` | `DB` 新增 `aiChats: []`；`ensureDBFields()` 补齐 |
+| `src/js/router.js` | 新增 `aiDrawerOpen` 状态 + `render()` 中 AI Drawer 挂载 + 键盘 `⌥+I` |
+| `src/js/views/keyboard.js` | 快捷键说明弹窗新增 `⌥+I AI 助手` |
+| `src/css/components.css` | AI Drawer 样式 + 聊天面板样式 + Markdown 渲染样式 |
 | `AGENTS.md` | 新增 AI 模块说明段（架构/代理/豁免说明） |
 | `docs/操作手册.md` | 新增"AI 助手"使用说明章节 |
 

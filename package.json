@@ -1,0 +1,22 @@
+{
+  "name": "fastener-trade-workbench",
+  "version": "1.0.9",
+  "private": true,
+  "description": "紧固件贸易工作台 (Tauri 桌面封装)",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "npm run tauri:build && npm run make:dmg",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "make:dmg": "bash scripts/make-dmg.sh",
+    "icons": "tauri icon src/images/favicon.png",
+    "version:set": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/check-version.mjs",
+    "copy:frontend": "node scripts/copy-frontend.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -6,7 +6,7 @@
 
 ## 快速开始
 
-用浏览器直接打开 `index.html` 即可使用。推荐使用 Chrome / Edge（完整支持 File System Access API 本地文件同步），Safari / Firefox 可使用全部核心功能但自动降级为手动导出导入。
+用浏览器直接打开 `src/index.html` 即可使用。推荐使用 Chrome / Edge（完整支持 File System Access API 本地文件同步），Safari / Firefox 可使用全部核心功能但自动降级为手动导出导入。
 
 > 历史单文件版可在 `紧固件贸易工作台.html` 找回，无需安装任何环境。
 
@@ -88,26 +88,31 @@
 
 ```
 FastenerTradeWorkbench/
-├── index.html              ← 主 HTML（仅骨架 + <script type="module">入口）
-├── seed.js                 ← 预置示例数据（独立模块）
-├── css/
-│   ├── variables.css       ← CSS 变量 / 6 套主题定义
-│   ├── layout.css          ← 布局（sidebar / topbar / main / content）
-│   └── components.css      ← 组件（card / table / modal / drawer / tag / btn / form）
-├── js/
-│   ├── store.js            ← DB 数据模型 + IndexedDB 存储层 + 文件同步
-│   ├── utils.js            ← escHtml / escAttr / fmt / fmtN / icon / uid 等工具函数
-│   ├── ui.js               ← combo / modal / drawer / toast / confirmModal 等 UI 组件
-│   ├── router.js           ← view 路由 + AppState + render 入口
-│   ├── views/
-│   │   ├── dashboard.js    ← 概览页
-│   │   ├── units.js        ← 关联单位
-│   │   ├── specs.js        ← 属性管理
-│   │   ├── bom.js          ← BOM 管理
-│   │   ├── prices.js       ← 报价管理
-│   │   ├── orders.js       ← 采购订单（列表 / 详情 / 编辑）
-│   │   └── data.js         ← 数据管理
-│   └── app.js              ← 初始化入口（initApp + theme + 全局 handler 挂载）
+├── src/                    ← 前端真源（浏览器版）
+│   ├── index.html          ← 主 HTML（仅骨架 + <script type="module">入口）
+│   ├── css/
+│   │   ├── variables.css   ← CSS 变量 / 6 套主题定义
+│   │   ├── layout.css      ← 布局（sidebar / topbar / main / content）
+│   │   └── components.css  ← 组件（card / table / modal / drawer / tag / btn / form）
+│   ├── js/
+│   │   ├── store.js        ← DB 数据模型 + IndexedDB 存储层 + 文件同步
+│   │   ├── utils.js        ← escHtml / escAttr / fmt / fmtN / icon / uid 等工具函数
+│   │   ├── ui.js           ← combo / modal / drawer / toast / confirmModal 等 UI 组件
+│   │   ├── router.js       ← view 路由 + AppState + render 入口
+│   │   ├── views/
+│   │   │   ├── dashboard.js ← 概览页
+│   │   │   ├── units.js     ← 关联单位
+│   │   │   ├── specs.js     ← 属性管理
+│   │   │   ├── bom.js       ← BOM 管理
+│   │   │   ├── prices.js    ← 报价管理
+│   │   │   ├── orders.js    ← 采购订单（列表 / 详情 / 编辑）
+│   │   │   └── data.js      ← 数据管理
+│   │   └── app.js           ← 初始化入口（initApp + theme + 全局 handler 挂载）
+│   └── images/              ← 图标 / favicon 等静态资源
+├── docs/                    ← 项目文档
+├── scripts/                 ← 构建 / 版本脚本
+├── src-tauri/               ← Tauri 桌面封装
+├── dist/                    ← copy-frontend 产物
 └── 紧固件贸易工作台.html    ← 历史单文件版 v1.0.46（参考备份）
 ```
 
@@ -115,15 +120,15 @@ FastenerTradeWorkbench/
 
 | 文件 | 说明 |
 |------|------|
-| `index.html` | 应用入口，加载 CSS 与 JS 模块 |
-| `js/app.js` | 模块入口，导入全部依赖并挂载全局 handler |
-| `js/store.js` | 数据层：DB 模型 + IndexedDB + 文件同步 |
-| `js/utils.js` | 通用工具函数 |
-| `js/ui.js` | 通用 UI 组件（弹窗 / 抽屉 / toast / combo） |
-| `js/router.js` | 路由与全局状态 |
-| `js/views/*.js` | 各业务模块视图 |
-| `css/*.css` | 主题变量 / 布局 / 组件样式 |
-| `seed.js` | 预置示例数据 |
+| `src/index.html` | 应用入口，加载 CSS 与 JS 模块 |
+| `src/js/app.js` | 模块入口，导入全部依赖并挂载全局 handler |
+| `src/js/store.js` | 数据层：DB 模型 + IndexedDB + 文件同步 |
+| `src/js/utils.js` | 通用工具函数 |
+| `src/js/ui.js` | 通用 UI 组件（弹窗 / 抽屉 / toast / combo） |
+| `src/js/router.js` | 路由与全局状态 |
+| `src/js/views/*.js` | 各业务模块视图 |
+| `src/css/*.css` | 主题变量 / 布局 / 组件样式 |
+| `src/js/seed.js` | 预置示例数据 |
 | `紧固件贸易工作台.html` | 历史单文件版（v1.0.46 参考备份） |
 | `README.md` | 本说明文档 |
 

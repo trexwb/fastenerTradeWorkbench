@@ -2,29 +2,29 @@
 
 ## ⚠ 强制规范（所有 Agent 必须遵守）
 
-**本项目是零依赖单页应用（SPA），任何人下载后直接双击 `index.html` 即可在浏览器中打开使用，<u>不需要任何 HTTP 服务器</u>（不依赖 python3 -m http.server、Node.js、nginx 等任何本地服务）。**
+**本项目是零依赖单页应用（SPA），任何人下载后直接双击 `src/index.html` 即可在浏览器中打开使用，<u>不需要任何 HTTP 服务器</u>（不依赖 python3 -m http.server、Node.js、nginx 等任何本地服务）。**
 
 > 🔴 **所有 Agent 服务（包括 file-agent、browser-agent、computer-agent 等任何子 Agent）在本项目中执行任何任务时，必须无条件遵守本 `AGENTS.md` 文件中定义的所有规则，不得以任何理由违反。**
 
 ## 项目概述
 
 紧固件贸易工作台是一个纯前端模块化 SPA，用于紧固件贸易企业的采购订单管理、寻货分配、规格管理和价格管理。
-**入口文件**：`index.html`（HTML 骨架 + CSS 引用 + JS 模块加载），业务逻辑拆分到 `js/` 目录下各模块文件。
+**入口文件**：`src/index.html`（HTML 骨架 + CSS 引用 + JS 模块加载），业务逻辑拆分到 `src/js/` 目录下各模块文件。
 
 ## 核心规则
 
 ### 0. 版本号递增
 
 每次对项目做出任何非临时性的编辑修改后，必须将版本号 v1.1.x 的末位（x）加 1。需同步更新三处：
-1. `js/store.js` 中的 `APP_VERSION`
-2. `index.html` 顶部注释中的版本号
+1. `src/js/store.js` 中的 `APP_VERSION`
+2. `src/index.html` 顶部注释中的版本号
 3. `AGENTS.md` 中的「当前基准版本」
 
 当前基准版本：**v1.0.0**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
-本应用是**单页应用**，任何人下载项目目录后直接双击 `index.html` 即可在浏览器中打开使用，**不需要任何 HTTP 服务器**（不依赖 `python3 -m http.server`、Node.js、nginx 等任何本地服务）。
+本应用是**单页应用**，任何人下载项目目录后直接双击 `src/index.html` 即可在浏览器中打开使用，**不需要任何 HTTP 服务器**（不依赖 `python3 -m http.server`、Node.js、nginx 等任何本地服务）。
 
 所有 Agent 服务在修改本项目时**必须无条件遵守**以下强制约束：
 
@@ -32,11 +32,11 @@
 - **禁止引入任何外部运行时依赖**：不得引入 React、Vue、jQuery、npm 包、CDN 脚本等
 - **禁止引入需要构建/打包的代码**：项目必须保持「下载即用」，不得要求用户执行 `npm install`、`npm run build` 等构建步骤
 - **JavaScript 必须使用原生 `<script defer>` 加载**：所有 JS 文件必须挂载到 `window` 全局作用域，通过 `<script defer src="js/xxx.js">` 按依赖顺序加载
-- **产物验证标准**：修改后的项目必须能在任意现代浏览器中通过 `file://` 协议直接打开 `index.html` 完全正常运行
+- **产物验证标准**：修改后的项目必须能在任意现代浏览器中通过 `file://` 协议直接打开 `src/index.html` 完全正常运行
 
 > 以上约束适用于所有 Sub-Agent（file-agent、browser-agent、computer-agent 等），无论其在何种上下文中执行任务，均不得以任何理由违反。
 
-**唯一豁免**：`js/exporter.js` 的 Excel 导出功能动态加载 `xlsx-js-style@1.2.0`（SheetJS 0.18.5 的支持样式 fork，暴露全局 `window.XLSX`，带 `style_version` 标记）。加载策略为**本地优先**（`js/vendor/cpexcel.js` + `js/vendor/xlsx.min.js`，离线可用）→ **CDN 兜底**（URL 见 `_CPEXCEL_CDN`/`_XLSX_CDN`），保持按需动态加载（非静态 `<script>` 引入，file:// 下可用）。加载顺序：`cpexcel.js`（设置全局 `cptable`，提供完整代码页/多语言编码支持）→ `xlsx.min.js`（主库，检测到 `cptable` 后自动启用）。**不得换回 `xlsx@0.18.5` 社区版**（其 write 端不写单元格样式），**不得删除本地 vendor 文件改为纯 CDN**（离线场景会失败），**不得省略 cpexcel.js**（xlsx.min.js 内部 `require("./cpexcel.js")` 在浏览器环境无法执行，需通过 `<script>` 标签预先加载 cpexcel.js 设置全局 `cptable`）。导出样式在单元格上以 `cell.s` 子对象写入，适配逻辑见 `_toStyleObj`/`_wc`。导出按订单状态分发（`exportOrder` 的 switch）：`_exportOrderPendingConfirm`（待确认·产品确认单）、`_exportOrderSourcing`（寻货中·寻源进度单）、`_exportOrderQuoting`（报价中/未成交·报价中报价单，产品明细为主行、供应商报价为子行，未满足需求数量的产品在「供应数量提醒」区红色醒目提示）、`_exportOrderSignedComplete`（签约完成·签约完成结算单，重点为采购商应收明细与供应商应付明细，含已收/已付/未结金额与红色结算提醒）、`_exportOrderDelivering`（送货中/完成·送货结算单，两状态内容一致仅文件名不同；除结算明细外含送货信息——快递至采购商的地址/单号/时间，及供应商邮寄信息——各供应商按联系人/电话/邮寄地址将产品快递至我方，链路：供应商→我方收货验货→采购商）、`_exportOrderGeneral`（其余状态·通用采购订单）。
+**唯一豁免**：`src/js/exporter.js` 的 Excel 导出功能动态加载 `xlsx-js-style@1.2.0`（SheetJS 0.18.5 的支持样式 fork，暴露全局 `window.XLSX`，带 `style_version` 标记）。加载策略为**本地优先**（`src/js/vendor/cpexcel.js` + `src/js/vendor/xlsx.min.js`，离线可用）→ **CDN 兜底**（URL 见 `_CPEXCEL_CDN`/`_XLSX_CDN`），保持按需动态加载（非静态 `<script>` 引入，file:// 下可用）。加载顺序：`cpexcel.js`（设置全局 `cptable`，提供完整代码页/多语言编码支持）→ `xlsx.min.js`（主库，检测到 `cptable` 后自动启用）。**不得换回 `xlsx@0.18.5` 社区版**（其 write 端不写单元格样式），**不得删除本地 vendor 文件改为纯 CDN**（离线场景会失败），**不得省略 cpexcel.js**（xlsx.min.js 内部 `require("./cpexcel.js")` 在浏览器环境无法执行，需通过 `<script>` 标签预先加载 cpexcel.js 设置全局 `cptable`）。导出样式在单元格上以 `cell.s` 子对象写入，适配逻辑见 `_toStyleObj`/`_wc`。导出按订单状态分发（`exportOrder` 的 switch）：`_exportOrderPendingConfirm`（待确认·产品确认单）、`_exportOrderSourcing`（寻货中·寻源进度单）、`_exportOrderQuoting`（报价中/未成交·报价中报价单，产品明细为主行、供应商报价为子行，未满足需求数量的产品在「供应数量提醒」区红色醒目提示）、`_exportOrderSignedComplete`（签约完成·签约完成结算单，重点为采购商应收明细与供应商应付明细，含已收/已付/未结金额与红色结算提醒）、`_exportOrderDelivering`（送货中/完成·送货结算单，两状态内容一致仅文件名不同；除结算明细外含送货信息——快递至采购商的地址/单号/时间，及供应商邮寄信息——各供应商按联系人/电话/邮寄地址将产品快递至我方，链路：供应商→我方收货验货→采购商）、`_exportOrderGeneral`（其余状态·通用采购订单）。
 
 ### 2. 文件操作根目录
 
@@ -51,11 +51,11 @@
 - **编辑后必须验证**：必须 grep/read_text 验证关键改动是否落盘
 - **分区编辑**：每次 edit_file 只替换一个独立区块（如单个函数、CSS 块、表格行），避免多区块一次替换引发意外匹配
 - **禁止假设**：不可凭记忆推测已有函数名、变量名、CSS 类名，修改前必须读取确认
-- **版本号规则**：编辑 `js/views/*.js` 等模块文件后，`APP_VERSION` 末位 +1，同步更新三处
+- **版本号规则**：编辑 `src/js/views/*.js` 等模块文件后，`APP_VERSION` 末位 +1，同步更新三处
 
 ### 4. 架构约定
 
-- **项目结构**：`index.html` 入口 → `css/variables.css | layout.css | components.css` 样式 → `js/seed.js → utils.js → ui.js → store.js → views/*.js → router.js → app.js` 脚本加载
+- **项目结构**：`src/index.html` 入口 → `src/css/variables.css | layout.css | components.css` 样式 → `src/js/seed.js → utils.js → ui.js → store.js → views/*.js → router.js → app.js` 脚本加载
 - **存储体系**：IndexedDB（主存储，`DB` 对象） + localStorage（表单草稿，`DRAFT_PREFIX='wb_fastener_draft_'`） + 本地 JSON 文件（File System Access API 备份）
 - **状态管理**：全局变量控制视图（`view`、`curOrder`、`curOrderView`、`_fMode`、`_fOrderId`、`_fItems`）
 - **渲染函数**：`render()` 统一调度，`orders` 分支路由：`curOrder ? viewOrderEdit() : curOrderView ? viewOrderDetail() : viewOrders()`
@@ -65,33 +65,38 @@
 
 ```
 FastenerTradeWorkbench/
-├── index.html              ← 入口 HTML（仅骨架 + <script defer> 加载 JS）
-├── css/
-│   ├── variables.css       ← CSS 变量 / 主题定义
-│   ├── layout.css          ← 布局（sidebar / topbar / main / content）
-│   └── components.css      ← 组件（card / table / modal / drawer / tag / btn / form）
-├── js/
-│   ├── seed.js             ← 预置示例数据
-│   ├── store.js            ← DB 数据模型 + IndexedDB 存储层 + 文件同步 + APP_VERSION
-│   ├── utils.js            ← escHtml / escAttr / fmt / fmtN / icon / uid 等工具函数
-│   ├── ui.js               ← combo / modal / drawer / toast / confirmModal 等 UI 组件
-│   ├── router.js           ← view 路由 + AppState + render 入口
-│   ├── views/
-│   │   ├── dashboard.js    ← 概览页
-│   │   ├── units.js        ← 关联单位管理
-│   │   ├── specs.js        ← 规格管理
-│   │   ├── bom.js          ← BOM 管理
-│   │   ├── prices.js       ← 报价管理
-│   │   ├── orders.js       ← 采购订单（列表 / 详情 / 编辑）
-│   │   ├── settlements.js  ← 结算管理
-│   │   ├── invoices.js     ← 发票管理
-│   │   └── data.js         ← 数据管理
-│   ├── vendor/               ← 第三方库（xlsx-js-style 本地化，离线可用）
-│   │   ├── cpexcel.js        ← 代码页表（多语言编码支持）
-│   │   └── xlsx.min.js      ← SheetJS 0.18.5 样式版 fork（主库）
-│   └── app.js              ← 初始化入口（initApp + theme + 全局 handler）
-├── docs/                   ← 项目文档
-├── images/                 ← 图标 / favicon 等静态资源
+├── src/                    ← 前端真源（浏览器版）
+│   ├── index.html          ← 入口 HTML（仅骨架 + <script defer> 加载 JS）
+│   ├── css/
+│   │   ├── variables.css   ← CSS 变量 / 主题定义
+│   │   ├── layout.css      ← 布局（sidebar / topbar / main / content）
+│   │   └── components.css  ← 组件（card / table / modal / drawer / tag / btn / form）
+│   ├── js/
+│   │   ├── seed.js         ← 预置示例数据
+│   │   ├── store.js        ← DB 数据模型 + IndexedDB 存储层 + 文件同步 + APP_VERSION
+│   │   ├── utils.js        ← escHtml / escAttr / fmt / fmtN / icon / uid 等工具函数
+│   │   ├── ui.js           ← combo / modal / drawer / toast / confirmModal 等 UI 组件
+│   │   ├── router.js       ← view 路由 + AppState + render 入口
+│   │   ├── views/
+│   │   │   ├── dashboard.js ← 概览页
+│   │   │   ├── units.js     ← 关联单位管理
+│   │   │   ├── specs.js     ← 规格管理
+│   │   │   ├── bom.js       ← BOM 管理
+│   │   │   ├── prices.js    ← 报价管理
+│   │   │   ├── orders.js    ← 采购订单（列表 / 详情 / 编辑）
+│   │   │   ├── settlements.js ← 结算管理
+│   │   │   ├── invoices.js  ← 发票管理
+│   │   │   ├── keyboard.js  ← 快捷键
+│   │   │   └── data.js      ← 数据管理
+│   │   ├── vendor/          ← 第三方库（xlsx-js-style 本地化，离线可用）
+│   │   │   ├── cpexcel.js   ← 代码页表（多语言编码支持）
+│   │   │   └── xlsx.min.js  ← SheetJS 0.18.5 样式版 fork（主库）
+│   │   └── app.js           ← 初始化入口（initApp + theme + 全局 handler）
+│   └── images/              ← 图标 / favicon 等静态资源
+├── docs/                    ← 项目文档
+├── scripts/                 ← 构建 / 版本脚本（bump-version / check-version / copy-frontend / serve / make-dmg）
+├── src-tauri/               ← Tauri 桌面封装（Rust 源码 + tauri.conf.json）
+├── dist/                    ← copy-frontend 产物（Tauri frontendDist / GitHub Pages 部署源）
 └── 紧固件贸易工作台.html    ← 历史单文件版（参考备份）
 ```
 
@@ -128,12 +133,12 @@ FastenerTradeWorkbench/
 
 ### 7. CSS 约定
 
-- **CSS 变量**：`--green`、`--line`、`--gray`、`--warn` 等，定义在 `css/variables.css` 的 `:root` 中
+- **CSS 变量**：`--green`、`--line`、`--gray`、`--warn` 等，定义在 `src/css/variables.css` 的 `:root` 中
 - **表格**：`.table-wrap > table`，`th`/`td` 统一样式
 - **`.td-act`** 类用于操作列单元格，仅设 `white-space:nowrap`（禁止 `display:flex`，会破坏 table-cell 对齐）
 - **按钮**：`.btn` 基础 + `.btn.sm`（小号）/ `.btn.primary`（主色）
 - **标签**：`.tag` + 颜色修饰（`.tag.green` / `.tag.warn` / `.tag.gray` / `.tag.purple` / `.tag.err`）
-- **新增样式**统一写入 `css/components.css`
+- **新增样式**统一写入 `src/css/components.css`
 
 ### 8. 交互约定
 
@@ -203,12 +208,12 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 
 #### 10.3 CSS 规范
 
-- **CSS 变量优先**：所有颜色、间距、圆角、阴影、z-index 必须使用 `css/variables.css` 中定义的变量，禁止硬编码
+- **CSS 变量优先**：所有颜色、间距、圆角、阴影、z-index 必须使用 `src/css/variables.css` 中定义的变量，禁止硬编码
 - **z-index 统一管理**：使用 `--z-*` 变量（`--z-combo`/`--z-topbar`/`--z-sidebar`/`--z-overlay`/`--z-dropdown`/`--z-mask`/`--z-drawer`/`--z-toast`），禁止散落数字
 - **选择器嵌套**：不超过 3 层
 - **`!important` 禁止使用**：唯一例外是 `@media (prefers-reduced-motion)` 无障碍场景
 - **命名**：BEM 思路或短横线，保持一致性
-- **公共样式**：抽离到 `variables.css`（变量）和 `components.css`（组件），`layout.css` 仅放布局
+- **公共样式**：抽离到 `src/css/variables.css`（变量）和 `src/css/components.css`（组件），`src/css/layout.css` 仅放布局
 - **单位**：优先 `rem`/`vh`/`%`，固定像素场景（border-width、box-shadow）可用 `px`
 - **重复规则**：禁止同一选择器定义两次，发现重复必须合并
 
@@ -264,3 +269,4 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 | `chore` | 构建/工具 |
 
 示例：`fix(orders): 修复订单列表分页跳转异常`
+*（内容由AI生成，仅供参考）*

@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "紧固件贸易工作台默认权限：对话框；AI 请求/Token 存储走受限自定义命令",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "dialog:default"
+  ]
+}

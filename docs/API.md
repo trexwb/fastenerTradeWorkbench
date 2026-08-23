@@ -1,6 +1,6 @@
 # 紧固件贸易工作台 API 文档
 
-> 本文档为 **v1.1.174** 版本的代码 API 参考手册，基于 `js/` 目录下各模块的实际代码生成。
+> 本文档为 **v1.1.174** 版本的代码 API 参考手册，基于 `src/js/` 目录下各模块的实际代码生成。
 
 ---
 
@@ -8,9 +8,9 @@
 
 ### 1.1 架构说明
 
-紧固件贸易工作台是一个**零依赖单页应用（SPA）**，下载后双击 `index.html` 即可在浏览器中运行，无需 HTTP 服务器、Node.js、npm 或任何构建步骤。
+紧固件贸易工作台是一个**零依赖单页应用（SPA）**，下载后双击 `src/index.html` 即可在浏览器中运行，无需 HTTP 服务器、Node.js、npm 或任何构建步骤。
 
-- **入口**：`index.html`（HTML 骨架 + `<script defer>` 加载）
+- **入口**：`src/index.html`（HTML 骨架 + `<script defer>` 加载）
 - **无 ES Module / import/export**：所有 JS 文件通过 `<script defer src="js/xxx.js">` 加载，挂载到 `window` 全局作用域
 - **无外部依赖**：纯原生 JavaScript，本地化后零网络依赖（SheetJS 导出库本地优先、CDN 兜底）
 
@@ -334,7 +334,7 @@ function seedData()
 
 ### 3.2 Excel 导出层（exporter.js）
 
-> 基于 xlsx-js-style fork（SheetJS 0.18.5 样式版），支持单元格样式（边框/背景色/字体），本地 `js/vendor/` 优先、CDN 兜底
+> 基于 xlsx-js-style fork（SheetJS 0.18.5 样式版），支持单元格样式（边框/背景色/字体），本地 `src/js/vendor/` 优先、CDN 兜底
 
 ```javascript
 /**

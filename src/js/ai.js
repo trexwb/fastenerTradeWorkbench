@@ -1,10 +1,43 @@
-// ai.js — 可选 AI 增强：脱敏上下文、本地计算、代理通信
+// ai.js — 可选 AI 增强：脱敏上下文、本地计算、Tauri 直连 DeepSeek（Node 代理已废弃）
 const AI=(function(){
-  const PROXY_URL='http://127.0.0.1:7842';
   const HISTORY_LIMIT=50;
   const HISTORY_CONTEXT_LIMIT=6;
   const HEALTH_INTERVAL_MS=30000;
-  const state={proxyOnline:false,hasKey:false,model:'deepseek-v4-flash',chatting:false,sessionToken:'',abortController:null,healthTimer:0,lastUsage:null};
+  const DEFAULT_MODEL='deepseek-v4-flash';
+  const ALLOWED_MODELS=new Set(['deepseek-v4-flash','deepseek-v4-pro']);
+  const STREAM_EVENT='ai:deepseek:chunk';
+  const state={
+    runtime:'web',           // 'tauri' | 'web'
+    proxyOnline:false,       // 仅 Tauri 模式可达；浏览器模式恒为 false
+    hasKey:false,            // tauri 模式：是否已保存 Token
+    model:DEFAULT_MODEL,
+    chatting:false,
+    abortController:null,
+    healthTimer:0,
+    lastUsage:null,
+    // tauri 模式流式接收：事件监听收到的块拼到 chunkBuf 里，最终返回值再取走
+    chunkBuf:'',
+    removeStreamListener:null
+  };
+  const _T=window.__TAURI__;
+  /** 是否处于 Tauri 桌面运行时 */
+  state.runtime=!!(_T&&_T.core&&typeof _T.core.invoke==='function'
+    &&_T.event&&typeof _T.event.listen==='function')?'tauri':'web';
+  function tauriInvoke(cmd,args){
+    if(state.runtime!=='tauri')return Promise.reject(new Error('非 Tauri 运行时'));
+    return _T.core.invoke(cmd,args||{});
+  }
+  function tauriListen(evt,cb){
+    if(state.runtime!=='tauri')return ()=>{};
+    let released=false;
+    let unsub=null;
+    _T.event.listen(evt,function(e){if(!released&&cb)cb(e);});
+    return function(){
+      if(released)return;released=true;
+      if(unsub&&typeof unsub==='function'){try{unsub();}catch(_){}}
+    };
+  }
+
   const QUICK_ACTIONS=[
     {id:'summary',label:'经营总结',prompt:'请根据以下数据生成本月经营总结，包括销售额、利润、回款率、客户活跃度和待办事项。'},
     {id:'collection',label:'催款建议',prompt:'请分析所有应收未收款项，按紧急程度排序，给出催款优先级和建议。'},
@@ -54,19 +87,88 @@ const AI=(function(){
   function buildSystemPrompt(snapshot){return '你是紧固件贸易助手。仅依据下方经过脱敏与本地计算的数据快照进行解释、总结、排序和话术生成；数据缺失时明确说明，禁止补造。金额、利润、余额和排名以本地结果为准，不要自行重算。金额使用¥与千分位，日期使用 YYYY-MM-DD。分析结论用简洁的 Markdown；催款话术用引用块。\n\n'+snapshot;}
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
   function persistMessage(role,content,snapshot){const message={id:uid('AI'),role,content,context:view,timestamp:Date.now(),snapshot:snapshot||''};DB.aiChats=DB.aiChats||[];DB.aiChats.push(message);DB.aiChats=DB.aiChats.slice(-HISTORY_LIMIT);saveDB();return message;}
+  function setModel(m){if(ALLOWED_MODELS.has(m))state.model=m;else state.model=DEFAULT_MODEL;}
+
+  /** 健康检查：仅 Tauri 运行时检查是否已保存 Token */
   async function probeProxy(){
-    try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),800);const response=await fetch(PROXY_URL+'/health',{signal:controller.signal});clearTimeout(timer);const data=await response.json();state.proxyOnline=!!data.ok;state.hasKey=!!data.hasKey;state.model=data.model||state.model;}catch(_){state.proxyOnline=false;state.hasKey=false;}
-    if(typeof refreshAIStatus==='function')refreshAIStatus();return {online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
+    if(state.runtime==='tauri'){
+      try{
+        const has=await tauriInvoke('ai_deepseek_token_has');
+        state.proxyOnline=true;
+        state.hasKey=!!has;
+      }catch(e){state.proxyOnline=false;state.hasKey=false;}
+    }else{
+      state.proxyOnline=false;
+      state.hasKey=false;
+      if(typeof toast==='function')toast('AI 功能需使用 Tauri 桌面版','warning');
+    }
+    if(typeof refreshAIStatus==='function')refreshAIStatus();return {runtime:state.runtime,online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
   }
-  function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
+  function startHealthCheck(){if(state.healthTimer)return;probeProxy();if(state.runtime!=='tauri')return;state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
+  function runtimeLabel(){return state.runtime==='tauri'?'桌面版':'浏览器（AI 需桌面版）';}
+
+  /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk */
+  function _ensureStreamListener(onChunk){
+    _cleanupStreamListener();
+    state.chunkBuf='';
+    state.removeStreamListener=tauriListen(STREAM_EVENT,function(ev){
+      const payload=ev&&ev.payload;
+      const text=payload&&payload.text;
+      if(typeof text==='string'&&text){
+        state.chunkBuf+=text;
+        if(onChunk)try{onChunk(text);}catch(_){}
+      }
+    });
+  }
+  function _cleanupStreamListener(){
+    if(state.removeStreamListener){try{state.removeStreamListener();}catch(_){}}
+    state.removeStreamListener=null;
+  }
+
   async function chat(messages,onChunk){
-    if(!state.sessionToken)throw new Error('请先在 AI 设置中输入本次代理显示的会话访问码');
-    state.chatting=true;state.abortController=new AbortController();
-    try{const response=await fetch(PROXY_URL+'/chat',{method:'POST',headers:{'Content-Type':'application/json','X-AI-Session':state.sessionToken},body:JSON.stringify({messages,model:state.model,stream:true,max_tokens:1200}),signal:state.abortController.signal});if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||'AI 请求失败');}
-      const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(true){const result=await reader.read();if(result.done)break;buffer+=decoder.decode(result.value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop();lines.forEach(line=>{if(!line.startsWith('data:'))return;const raw=line.slice(5).trim();if(!raw||raw==='[DONE]')return;try{const data=JSON.parse(raw);const text=data.choices&&data.choices[0]&&data.choices[0].delta&&data.choices[0].delta.content;if(text)onChunk(text);if(data.usage)state.lastUsage=data.usage;}catch(_){}});}
+    if(!ALLOWED_MODELS.has(state.model))state.model=DEFAULT_MODEL;
+    state.chatting=true;
+    state.abortController=null;
+    try{
+      if(state.runtime!=='tauri')throw new Error('AI 功能需使用 Tauri 桌面版');
+      _ensureStreamListener(onChunk);
+      try{
+        const full=await tauriInvoke('ai_deepseek_chat',{
+          messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
+          model:state.model,
+          stream:true,
+          temperature:0.3,
+          max_tokens:1200,
+          streamEvent:STREAM_EVENT
+        });
+        // Rust 返回最终完整文本；若事件接收比最终返回慢，用最终文本兜底补齐
+        if(typeof full==='string'&&full.length>state.chunkBuf.length&&onChunk){
+          onChunk(full.slice(state.chunkBuf.length));
+          state.chunkBuf=full;
+        }
+        return state.chunkBuf;
+      }finally{_cleanupStreamListener();}
     }finally{state.chatting=false;state.abortController=null;}
   }
   function abort(){if(state.abortController)state.abortController.abort();}
-  function setSessionToken(token){state.sessionToken=(token||'').trim();}
-  return {state,QUICK_ACTIONS,probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,chat,abort,setSessionToken};
+
+  /** 仅 Tauri：保存 API Key 到本机应用数据目录 */
+  async function setDeepseekToken(raw){
+    const token=(raw==null?'':String(raw)).trim();
+    if(state.runtime!=='tauri')throw new Error('AI 功能需使用 Tauri 桌面版');
+    await tauriInvoke('ai_deepseek_token_write',{token:token});
+    state.hasKey=!!token;
+    if(typeof refreshAIStatus==='function')refreshAIStatus();
+  }
+  async function getDeepseekTokenDraft(){
+    if(state.runtime!=='tauri')return '';
+    const has=await tauriInvoke('ai_deepseek_token_has');
+    return has?'(已保存，不可读取明文)':'';
+  }
+
+  return {
+    state,runtimeLabel,QUICK_ACTIONS,ALLOWED_MODELS,DEFAULT_MODEL,
+    probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
+    chat,abort,setModel,setDeepseekToken,getDeepseekTokenDraft
+  };
 })();
