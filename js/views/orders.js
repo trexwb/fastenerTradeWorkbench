@@ -82,6 +82,7 @@ function viewOrderDetail(){
   const flowIdx=STATUS_FLOW.indexOf(o.status);
   const showRcv=RECEIVABLE_STATUSES.includes(o.status);
   const locked=['签约完成','送货中','完成'].includes(o.status);
+  const editLocked=o.status==='完成';
   const rcvLocked=o.status!=='签约完成';
   const flowHTML='<div class="status-flow">'+
     STATUS_FLOW.map((s,i)=>{
@@ -139,8 +140,7 @@ function viewOrderDetail(){
     '<button class="btn sm" onclick="exportOrder(\''+o.id+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
-    (locked?'':'<button class="btn" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑订单</button>')+
-    '<button class="btn" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+o.id+'\')">'+icon('copy','16')+' 复制订单</button>'+
+    (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑订单</button>')+
     (o.status==='送货中'?'<button class="btn primary" title="确认订单完成，所有信息锁定只读" onclick="confirmOrderComplete(\''+o.id+'\')">'+icon('check','16')+' 订单完成</button>':'')+
     (function(){
       if(o.status!=='签约完成')return'';
@@ -152,7 +152,9 @@ function viewOrderDetail(){
     (locked?'':nextBtnHTML)+
   '</div>'+
   '<div class="card">'+
-    '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+'</h2>'+
+    '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+
+      '<button class="btn" style="margin-left:auto" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+o.id+'\')">'+icon('copy','16')+' 复制订单</button>'+
+    '</h2>'+
     flowHTML+
     '<div class="grid2" style="margin-bottom:16px">'+
       '<div><label class="f">采购商</label><div><b>'+escHtml(pName(o.buyerId))+'</b>'+(o.buyerContact?' · 对接: '+escHtml(o.buyerContact):'')+'</div></div>'+
@@ -236,7 +238,7 @@ function nextStepButton(o){
   }
   if(o.status==='报价中'){
     return '<div style="display:flex;gap:8px">'+
-      '<button class="btn primary" title="确认合同已签署，进入「签约完成」状态，此后供应商分配与报价锁定只读" onclick="nextStepConfirmSign(\''+o.id+'\')">'+icon('check','16')+' 确认签约</button>'+
+      '<button class="btn primary" title="确认合同已签署，进入「签约完成」状态，可开始收货管理，合同修改可直接编辑订单" onclick="nextStepConfirmSign(\''+o.id+'\')">'+icon('check','16')+' 确认签约</button>'+
       '<button class="btn" title="报价后客户未确认，标记为「未成交」，可随时一键恢复继续跟进" onclick="markOrderNoDeal(\''+o.id+'\')">'+icon('x','16')+' 标记未成交</button>'+
     '</div>';
   }
@@ -287,7 +289,7 @@ function nextStepFinishSourcing(id){
 /** 「报价中 → 签约完成」：确认弹窗后切换状态 */
 function nextStepConfirmSign(id){
   confirmModal(
-    '确认合同已与采购商签署完成？<br><span class="muted" style="font-size:12px">完成后将进入「签约完成」状态，供应商分配与报价将锁定只读，可开始收货管理。</span>',
+    '确认合同已与采购商签署完成？<br><span class="muted" style="font-size:12px">完成后将进入「签约完成」状态，可开始收货管理；合同如需修改可直接编辑订单，进入送货后锁定只读。</span>',
     function(){changeOrderStatus(id,'签约完成');},
     '确认签约'
   );
@@ -421,12 +423,12 @@ function newOrder(){
     setTimeout(bindOrderDraftSave,200);
   }
 }
-/** 进入指定采购订单的编辑模式 */
+/** 进入指定采购订单的编辑模式（仅「完成」状态锁定只读；其余状态均允许编辑） */
 function goOrderEdit(id){
   const o=DB.orders.find(x=>x.id===id);
   if(!o)return;
-  if(['签约完成','送货中','完成'].includes(o.status)){
-    toast('订单已签约（'+o.status+'），供应商分配与报价已锁定只读，不可编辑','warning');
+  if(o.status==='完成'){
+    toast('订单已完成，信息已锁定只读，不可编辑','warning');
     return;
   }
   _fMode='edit';_fOrderId=id;

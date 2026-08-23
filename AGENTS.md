@@ -163,6 +163,13 @@ addMatchSupplier/manualSupplier/removeOption → _fItems 更新 → persistOrder
 sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/removeOption → persistSourcingFromDetail() → DB.orders
 ```
 
+### AI 可选增强模块
+
+- AI 前端文件仅通过原生 `<script defer>` 加载；代理未运行时必须降级且不得影响 `file://` 核心功能。
+- 浏览器形态仅可调用本机 `tools/ai-proxy.js`（`127.0.0.1:7842`）；API Key 仅可由 `DEEPSEEK_API_KEY` 环境变量进入代理进程内存，禁止写入业务数据、localStorage、IndexedDB 或项目文件。
+- 所有 AI 请求必须先展示脱敏快照并经用户确认；默认排除电话、地址、税号、银行账户和完整联系人信息。
+- 新增 AI 逻辑只读访问 `DB`；金额、利润、余额、逾期和排行由本地代码计算，模型不得替代确定性计算。
+
 ### 9. 用户偏好
 
 - 用户指令风格：直接给动作词（"修复"、"优化"、"审查"），期望 Agent 直接执行而非仅建议

@@ -64,7 +64,7 @@ const STATUS_FLOW=['待确认','寻货中','报价中','签约完成','送货中
  * 全局数据主存储对象（主力存储：IndexedDB）
  * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, seq: number, orderSeq: number, _savedAt?: number}}
  */
-let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],seq:100,orderSeq:1};
+let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
 
 /* 补齐 DB 可能缺失的字段（供 idbLoad 和 loadFromFile 复用） */
 /**
@@ -76,6 +76,7 @@ function ensureDBFields(){
   if(!DB.bom)DB.bom=[];
   if(!DB.settlements)DB.settlements=[];
   if(!DB.invoices)DB.invoices=[];
+  if(!Array.isArray(DB.aiChats))DB.aiChats=[];
   if(!DB.seq)DB.seq=100;
   if(!DB._savedAt)DB._savedAt=Date.now();
   if(!DB.orderSeq){
@@ -154,7 +155,9 @@ async function bindFile(){
     if(!(await fhPerm(handle,true))){toast('未获得文件写入权限','error');return;}
     fileHandle=handle;fileSync=true;
     await fhSave(handle);
-    await saveToFile();
+    // 绑定本地文件时：若文件已有数据且本地 IndexedDB 为空（首次绑定/空库），将文件数据作为初始数据导入 IndexedDB
+    const loaded=await loadFromFile();
+    if(!loaded){await saveToFile();}
     toast('已绑定本地文件：'+handle.name+'，数据将自动同步','success');
     render();
   }catch(e){if(e.name!=='AbortError')toast('绑定失败：'+e.message,'error');}
@@ -227,11 +230,27 @@ async function loadFromFile(){
       // 对比时间戳：仅当文件比当前数据更新时才加载
       const curTs=DB._savedAt||0;
       const fileTs=data._savedAt||0;
+      // 本地库是否为空（无任何业务数据）：空库判断必须以业务数据为准，不能只看 _savedAt
+      // （空库对象可能已被补上当前时间戳，仅凭时间戳会把「空库」误判为「本地更新」，反向清空文件）
+      const dbEmpty=!(DB.units&&DB.units.length)&&!(DB.prices&&DB.prices.length)&&!(DB.orders&&DB.orders.length)&&!(DB.settlements&&DB.settlements.length)&&!(DB.invoices&&DB.invoices.length);
+      const fileHasData=(data.units&&data.units.length)||(data.prices&&data.prices.length)||(data.orders&&data.orders.length)||(data.settlements&&data.settlements.length)||(data.invoices&&data.invoices.length);
+      if(dbEmpty&&fileHasData){
+        // 本地 IndexedDB 为空、文件有数据：将文件数据作为初始数据写入 IndexedDB，绝不反向清空文件
+        DB=data;
+        ensureDBFields();
+        const migrated=migrateItems();
+        DB._savedAt=Date.now();
+        await idbSave();
+        // 仅发生迁移时才回写文件（保持迁移后的结构一致）；未迁移则文件原样保留
+        if(migrated){await saveToFile();}
+        return true;
+      }
       if(fileTs>curTs||curTs===0){
         DB=data;
         ensureDBFields();
         const migrated=migrateItems();
-        if(migrated){DB._savedAt=Date.now();await idbSave();await saveToFile();}
+        // 发生迁移，或本地 IndexedDB 为空（首次导入文件数据作为初始数据）时，均需持久化
+        if(migrated||curTs===0){DB._savedAt=Date.now();await idbSave();await saveToFile();}
         return true;
       }else{
         // 当前数据更新，反向同步到文件
@@ -384,6 +403,7 @@ async function initApp(){
         if(!DB.bom)DB.bom=[];
       if(!DB.settlements)DB.settlements=[];
       if(!DB.invoices)DB.invoices=[];
+      if(!Array.isArray(DB.aiChats))DB.aiChats=[];
       if(!DB.seq)DB.seq=100;
       if(!DB._savedAt)DB._savedAt=Date.now();
       // 补齐 orderSeq（旧数据或未初始化的情况）
@@ -403,14 +423,14 @@ async function initApp(){
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
       toast('数据不完整，已清空，请重新录入数据','warning');
-      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],seq:100,orderSeq:1};
+      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
       if(typeof onAppReady==='function')onAppReady();else render();
     }else{
       // IndexedDB 无数据，首次使用，从空状态开始
-      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],seq:100,orderSeq:1};
+      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
@@ -419,10 +439,10 @@ async function initApp(){
   }catch(e){
     // IndexedDB 完全不可用（隐私模式/存储满/权限不足），降级到内存模式
     console.error('IndexedDB 初始化失败，使用内存模式：',e);
-    // toast 可能未定义，使用 alert 作为降级
+    // 使用项目统一的 UI 提示（utils.js 中定义的 toast，按 defer 顺序必然已加载）
     if(typeof toast==='function'){toast('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份','error');}
-    else{alert('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份');}
-    DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],seq:100,orderSeq:1};
+    else{console.error('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份');}
+    DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
     // 恢复文件同步（必须在渲染前完成）
     await initFileHandle();
     render();

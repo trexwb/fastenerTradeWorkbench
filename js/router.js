@@ -62,7 +62,7 @@ const NAV=[
   {k:'units',label:'关联单位',icon:'building'},
   {k:'specs',label:'属性管理',icon:'tag'},
   {k:'bom',label:'BOM管理',icon:'package'},
-  {k:'prices',label:'签约管理',icon:'yuan'},
+  {k:'prices',label:'签约报价',icon:'yuan'},
   {k:'orders',label:'采购订单',icon:'doc'},
   {k:'settlements',label:'对账结算',icon:'wallet', children:[
     {k:'settle-receipt',label:'收款记录',icon:'income'},
@@ -221,6 +221,7 @@ function render(){
           (fileSync===true?'<span class="tag ok" title="本地文件已同步">'+icon('fileText','12')+' 已同步</span>':
            fileSync==='pending'?'<span class="tag warn" title="点击数据管理重新授权" style="cursor:pointer" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</span>':'')+
           '<span class="tag info">'+fmtN(DB.orders.length)+' 订单</span>'+
+          '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接">'+icon('zap','16')+'</button>'+
           '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)">'+icon('keyboard','14')+'</button>'+
           '<button class="theme-tgl" onclick="switchTheme()" id="themeBtn" title="切换主题">'+icon('palette','16')+'</button>'+
         '</div>'+
@@ -242,6 +243,7 @@ function render(){
     '</div>'+
   '</div>';
   bindView();
+  if(typeof refreshAIStatus==='function')refreshAIStatus();
 }
 /**
  * 切换侧栏展开/收起状态。
@@ -471,7 +473,7 @@ function bindView(){
     });
     return;
   }
-  // 签约管理页：绑定筛选 combo
+  // 签约报价页：绑定筛选 combo
   if(view==='prices'){
     const unitEl=document.getElementById('pf_unit');
     if(unitEl&&!unitEl.dataset.bound){
@@ -559,5 +561,4 @@ function bindView(){
     }
   }
 }
-
 

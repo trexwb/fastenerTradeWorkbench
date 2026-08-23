@@ -20,11 +20,11 @@ function getShortcutsHTML(){
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>H</kbd></span><span class="sc-desc">概览（Home）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>O</kbd></span><span class="sc-desc">采购订单（Orders）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>U</kbd></span><span class="sc-desc">关联单位（Units）</span></div>'+
-      '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>P</kbd></span><span class="sc-desc">签约管理（Prices）</span></div>'+
+      '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>P</kbd></span><span class="sc-desc">签约报价（Prices）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>B</kbd></span><span class="sc-desc">BOM 管理</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>A</kbd></span><span class="sc-desc">属性管理（Attributes）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>S</kbd></span><span class="sc-desc">对账结算（Settlements）</span></div>'+
-      '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>I</kbd></span><span class="sc-desc">发票管理（Invoices）</span></div>'+
+      '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>I</kbd></span><span class="sc-desc">打开/关闭 AI 助手</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌥</kbd> + <kbd>D</kbd></span><span class="sc-desc">数据管理（Data）</span></div>'+
     '</div>'+
     '<div class="sc-group">'+
@@ -178,7 +178,7 @@ document.addEventListener('keydown',function(e){
       case 'b': e.preventDefault();kbdNav('bom');return;
       case 'a': e.preventDefault();kbdNav('specs');return;
       case 's': e.preventDefault();kbdNav('settlements');return;
-      case 'i': e.preventDefault();kbdNav('invoices');return;
+      case 'i': e.preventDefault();if(typeof openAIAssistant==='function')openAIAssistant();return;
       case 'd': e.preventDefault();kbdNav('data');return;
     }
     return;

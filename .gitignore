@@ -114,3 +114,20 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# mac
+.DS_Store
+
+# ide & ai local files
+.vscode/
+.idea/
+.qwen
+.cursor
+.marvis/
+.marvis/*
+.workbuddy
+.workbuddy/*
+.trae
+.trae/*
+.codex
+.codex/*

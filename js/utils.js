@@ -583,6 +583,8 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   const inp=el.querySelector('input');
   const drop=el.querySelector('.combo-drop');
   let activeIdx=-1;
+  // 选中流程中的 input 事件是 select() 内部派发的，需跳过 show() 防止下拉被重新打开
+  let _selecting=false;
 /** 设置 combo aria-expanded 无障碍状态属性 */
   function setExpanded(v){inp.setAttribute('aria-expanded',v?'true':'false');}
 /** 显示 combo 下拉列表，根据输入过滤选项，支持键盘高亮导航 */
@@ -616,7 +618,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
     }
   }
   inp.addEventListener('focus',()=>show(inp.value));
-  inp.addEventListener('input',()=>show(inp.value));
+  inp.addEventListener('input',()=>{if(_selecting)return;show(inp.value);});
   inp.addEventListener('keydown',e=>{
     const q2=(inp.value||'').toLowerCase().trim();
     const hits=comboFilter(inp,options);
@@ -639,7 +641,9 @@ function combo(el,options,onSelect,placeholder,allowCreate){
     else{inp.value=opt.label;}
     el.dataset.val=opt.id;el.dataset.custom=opt.isCustom?'1':'0';
     el.classList.add('has-val');closeDrop();
+    _selecting=true;
     inp.dispatchEvent(new Event('input',{bubbles:true}));
+    _selecting=false;
     if(onSelect)onSelect(opt);
   }
   if(el.dataset.val){

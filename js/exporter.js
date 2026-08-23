@@ -938,33 +938,26 @@ async function _exportOrderSourcing(o) {
    ========================================================= */
 /**
  * 生成「报价中」状态订单的 Excel 工作簿（未成交订单同样使用该报价单模板）。
- * 定位：报价前最终核对 —— 看清每个产品明细由哪些供应商报价、
- *       报价与分配量是否满足需求数量；未满足需求数量的产品
- *       必须重点提醒，避免带着缺口进入报价。
+ * 定位：报给采购商的正式报价单 —— 仅包含采购商可见的报价数据
+ *       （品名 / 规格 / 数量 / 单价 / 金额），不包含任何内部数据。
  *
- * 工作表布局（四段）：
+ * 工作表布局（三段）：
  *   【头部】   — 单号 / 采购商 / 对接人 / 项目 / 交期 / 状态 / 创建时间
- *   【产品明细与供应商报价表】 — 产品为主行、供应商报价为子行（16列 A~P），核心区
- *   【汇总】   — 产品项数 / 满足情况 + 意向总额 / 采购成本 / 预估利润
- *   【供应数量提醒】 — 未满足需求数量的产品逐项红色醒目提醒
+ *   【产品明细报价表】 — 面向采购商的报价明细（8列 A~H）：序号 / SKU / 品名 / 规格 / 属性 / 数量 / 单价 / 金额
+ *   【汇总】   — 产品项数 + 报价总额
  *
- * 产品明细与供应商报价表列（A~P）：
+ * 说明：本报价单会发给采购商，已剔除内部字段（意向价、供应商名称/联系人、
+ *       供应商报价/进价、分配量、采购成本、利润等），仅保留报价数据。
+ *
+ * 产品明细报价表列（A~H）：
  *   A 序号
  *   B SKU
  *   C 品名
  *   D 规格描述（spec 字段，如 M8×25）
  *   E 属性（类型·标准·直径·硬度·表面处理·材质）
- *   F 需求（千支）
- *   G 意向价（元/千支）
- *   H 已分配（千支）
- *   I 缺口（千支，未满足时黄色醒目标记）
- *   J 满足状态（已满足/未满足，绿/红颜色区分）
- *   K 供应商
- *   L 联系人
- *   M 供应商报价（元/千支）
- *   N 分配（千支）
- *   O 小计（元）= 供应商报价 × 分配量
- *   P 库存/交期备注
+ *   F 数量（千支）
+ *   G 单价（元/千支，报给采购商的报价）
+ *   H 金额（元）= 单价 × 数量
  *
  * @param {Object} o - 订单对象
  * @returns {Promise<void>} 下载触发后 resolve
@@ -1019,20 +1012,16 @@ async function _exportOrderQuoting(o) {
   function pushRow(hpt) { ws['!rows'].push(hpt ? { hpt } : {}); row++; }
 
   /* ============ 数据准备 ============ */
-  const TOTAL_COLS = 16; // A~P
-  const TOTAL_LETTER = 'P';
+  const TOTAL_COLS = 8; // A~H
+  const TOTAL_LETTER = 'H';
   const deliveryStr = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
 
-  // 产品组：每个产品 → 已选供应商报价行
+  // 产品组：每个产品一行，单价 = 报给采购商的最终报价（itemQuotePrice），金额 = 单价 × 数量
   const prodRows = o.items.map((it) => {
-    const opts = itemOpts(it);
     const qty = parseFloat(it.qty) || 0;
-    const intent = parseFloat(it.salePrice) || 0;
-    const alloc = itemAllocSum(it);
-    const remain = Math.max(0, qty - alloc);
-    return { it, opts, qty, intent, alloc, remain, satisfied: alloc >= qty };
+    const quote = parseFloat(itemQuotePrice(it)) || 0;
+    return { it, qty, quote, amount: Math.round(qty * quote * 100) / 100 };
   });
-  const totalQuoteRows = prodRows.reduce((a, p) => a + Math.max(1, p.opts.length), 0);
 
   /* ===================== 第1段：头部信息 ===================== */
 
@@ -1051,22 +1040,26 @@ async function _exportOrderQuoting(o) {
   put(row, 0, SS.subtitle, '订单基本信息');
   pushRow(26);
 
-  /* 基本信息（7 字段两两配对） */
-  const infoFields = [
+  /* 基本信息（8 列两行：单号/采购商/对接人/项目 + 交期/状态/创建时间） */
+  const infoFieldsRow1 = [
     { label: '单号',     val: ev(o.id),                  cs: 0,  ce: 1  },
     { label: '采购商',   val: ev(pName(o.buyerId)),      cs: 2,  ce: 3  },
     { label: '对接人',   val: ev(o.buyerContact || '-'), cs: 4,  ce: 5  },
     { label: '项目',     val: ev(o.project || '-'),      cs: 6,  ce: 7  },
-    { label: '交期日期', val: ev(deliveryStr || '-'),    cs: 8,  ce: 9  },
-    { label: '状态',     val: ev(o.status),              cs: 10, ce: 11 },
-    { label: '创建时间', val: ev(o.createdAt || '-'),    cs: 12, ce: 13 },
   ];
-  infoFields.forEach((f) => {
-    put(row, f.cs, SS.th, f.label);
-    if (f.cs === 12) merge(row, 13, 14);
-    put(row, f.ce, SS.odd, f.val);
+  const infoFieldsRow2 = [
+    { label: '交期日期', val: ev(deliveryStr || '-'),    cs: 0,  ce: 1  },
+    { label: '状态',     val: ev(o.status),              cs: 2,  ce: 3  },
+    { label: '创建时间', val: ev(o.createdAt || '-'),    cs: 4,  ce: 5  },
+  ];
+  [infoFieldsRow1, infoFieldsRow2].forEach((fields) => {
+    fields.forEach((f) => {
+      put(row, f.cs, SS.th, f.label);
+      if (f.label === '创建时间') merge(row, 5, TOTAL_COLS - 1);
+      put(row, f.ce, SS.odd, f.val);
+    });
+    pushRow(24);
   });
-  pushRow(24);
 
   /* 备注行（如有） */
   if (o.remark) {
@@ -1079,59 +1072,29 @@ async function _exportOrderQuoting(o) {
   /* 空行分隔 */
   pushRow(8);
 
-  /* ===================== 第2段：产品明细与供应商报价表 ===================== */
+  /* ===================== 第2段：产品明细报价表 ===================== */
 
   merge(row, 0, TOTAL_COLS - 1);
-  put(row, 0, SS.subtitle, '产品明细与供应商报价（共 ' + o.items.length + ' 项产品、' + totalQuoteRows + ' 条报价）');
+  put(row, 0, SS.subtitle, '产品明细与报价（共 ' + o.items.length + ' 项产品）');
   pushRow(36);
 
   const pHeaders = [
-    '序号', 'SKU', '品名', '规格\n(如M8×25)', '属性', '需求\n(千支)', '意向价\n(元/千支)', '已分配\n(千支)', '缺口\n(千支)',
-    '满足\n状态', '供应商', '联系人', '供应商报价\n(元/千支)', '分配\n(千支)', '小计\n(元)', '库存/交期\n备注',
+    '序号', 'SKU', '品名', '规格\n(如M8×25)', '属性', '数量\n(千支)', '单价\n(元/千支)', '金额\n(元)',
   ];
   pHeaders.forEach((h, c) => { put(row, c, SS.th, h); });
   pushRow(40);
 
   prodRows.forEach((p, idx) => {
     const ri = idx + 1;
-    const firstRow = row;
-    const rowsInGroup = Math.max(1, p.opts.length);
-
-    /* 产品主行（A~J） */
     put(row, 0, dataStyle(ri, false), ri);                       // A 序号
     put(row, 1, dataStyle(ri, false), ev(p.it.sku || ''));       // B SKU
     put(row, 2, dataStyle(ri, false), ev(p.it.name || ''));      // C 品名
     put(row, 3, dataStyle(ri, false), ev(p.it.spec || ''));      // D 规格
     put(row, 4, dataStyle(ri, false), specLabel(p.it));          // E 属性
-    put(row, 5, dataStyle(ri, true),  p.qty);                    // F 需求
-    put(row, 6, dataStyle(ri, true),  p.intent);                 // G 意向价
-    put(row, 7, dataStyle(ri, true),  p.alloc);                  // H 已分配
-    put(row, 8, p.remain > 0 ? (ri % 2 === 1 ? SS.remainEven : SS.remainOdd) : dataStyle(ri, true), p.remain); // I 缺口（黄色醒目）
-    put(row, 9, SS_SAT[p.satisfied ? '已满足' : '未满足'], p.satisfied ? '已满足' : '未满足'); // J 满足状态
-
-    /* 供应商报价子行（K~P） */
-    if (p.opts.length) {
-      p.opts.forEach((opt) => {
-        const price = parseFloat(opt.price) || 0;
-        const aq = parseFloat(opt.allocQty) || 0;
-        put(row, 10, dataStyle(ri, false), ev(pName(opt.supplierId)));          // K 供应商
-        put(row, 11, dataStyle(ri, false), ev(opt.contact || '-'));             // L 联系人
-        put(row, 12, dataStyle(ri, true),  price);                              // M 供应商报价
-        put(row, 13, dataStyle(ri, true),  aq);                                 // N 分配
-        put(row, 14, sumStyle(ri),         Math.round(price * aq * 100) / 100); // O 小计
-        put(row, 15, dataStyle(ri, false), ev(opt.stockNote || ''));            // P 库存/交期备注
-        pushRow(26);
-      });
-    } else {
-      merge(row, 10, TOTAL_COLS - 1);
-      put(row, 10, SS.warnLbl, '⚠ 暂无供应商报价，签约前需先补足');
-      pushRow(26);
-    }
-
-    /* 产品信息 A~J 垂直合并，跨该产品的全部报价行 */
-    if (rowsInGroup > 1) {
-      for (let c = 0; c <= 9; c++) vmerge(firstRow, c, firstRow + rowsInGroup - 1, c);
-    }
+    put(row, 5, dataStyle(ri, true),  p.qty);                    // F 数量
+    put(row, 6, dataStyle(ri, true),  p.quote);                  // G 单价（报给采购商的报价）
+    put(row, 7, sumStyle(ri),         p.amount);                 // H 金额
+    pushRow(26);
   });
 
   /* ===================== 第3段：汇总 ===================== */
@@ -1141,55 +1104,17 @@ async function _exportOrderQuoting(o) {
   put(row, 0, SS.subtitle, '汇总');
   pushRow(26);
 
-  const cntOk = prodRows.filter((p) => p.satisfied).length;
-  const cntShort = prodRows.filter((p) => !p.satisfied).length;
-  const grandShort = prodRows.reduce((a, p) => a + p.remain, 0);
-  const grandIntent = orderIntent(o);
-  const grandCost = orderCost(o);
-  const grandProfit = orderProfit(o);
+  const grandAmount = prodRows.reduce((a, p) => a + p.amount, 0);
 
   put(row, 0, SS.sumLbl, '产品项数'); merge(row, 1, 3);  put(row, 1, SS.sumVal, o.items.length);
-  put(row, 4, SS.sumLbl, '已满足');   merge(row, 5, 7);  put(row, 5, SS.sumVal, cntOk);
-  put(row, 8, SS.sumLbl, '未满足');   merge(row, 9, 11); put(row, 9, SS.sumVal, cntShort);
-  put(row, 12, SS.totalLbl, '总缺口（千支）'); merge(row, 13, 15); put(row, 13, SS.totalVal, Math.round(grandShort * 100) / 100);
+  put(row, 4, SS.totalLbl, '报价总额（元）'); merge(row, 5, TOTAL_COLS - 1); put(row, 5, SS.totalVal, Math.round(grandAmount * 100) / 100);
   pushRow(32);
-
-  put(row, 0, SS.sumLbl, '意向总额（元）'); merge(row, 1, 3); put(row, 1, SS.sumVal, grandIntent);
-  put(row, 4, SS.sumLbl, '采购成本（元）'); merge(row, 5, 7); put(row, 5, SS.sumVal, grandCost);
-  put(row, 8, SS.totalLbl, '预估利润（元）'); merge(row, 9, TOTAL_COLS - 1); put(row, 9, SS.totalVal, grandProfit);
-  pushRow(32);
-
-  /* ===================== 第4段：供应数量提醒（重点） ===================== */
-
-  pushRow(8);
-  merge(row, 0, TOTAL_COLS - 1);
-  put(row, 0, SS.subtitle, '供应数量提醒');
-  pushRow(26);
-
-  const shortList = prodRows.filter((p) => !p.satisfied);
-  if (shortList.length) {
-    shortList.forEach((p) => {
-      const name = (p.it.sku ? p.it.sku + ' ' : '') + (p.it.name || '');
-      merge(row, 0, TOTAL_COLS - 1);
-      put(row, 0, SS.warnLbl,
-        '⚠ ' + name + ' 需 ' + fmtN(p.qty) + ' 千支，已分配 ' + fmtN(p.alloc) + ' 千支，缺口 ' + fmtN(p.remain) + ' 千支，请补充供应商或调整分配后再签约');
-      pushRow(36);
-    });
-    merge(row, 0, TOTAL_COLS - 1);
-    put(row, 0, SS.warnLbl,
-      '⚠ 共 ' + shortList.length + ' 项产品未满足供应数量，不建议直接签约，请先补足缺口');
-    pushRow(36);
-  } else {
-    merge(row, 0, TOTAL_COLS - 1);
-    put(row, 0, SS.okLbl, '✓ 所有产品已满足供应数量，可正常进入签约');
-    pushRow(36);
-  }
 
   /* ===================== 页脚 ===================== */
   pushRow(10);
   merge(row, 0, TOTAL_COLS - 1);
   put(row, 0, SS.footer,
-    '小计 = 供应商报价 × 分配量  |  缺口 = 需求量 − 已分配量（黄色/红色为未满足项）  |  本文件由紧固件贸易工作台自动生成  |  导出时间：' + new Date().toLocaleString('zh-CN'));
+    '金额 = 单价 × 数量  |  本报价单由紧固件贸易工作台自动生成  |  导出时间：' + new Date().toLocaleString('zh-CN'));
   pushRow(28);
 
   /* !ref 范围与自动列宽 */

@@ -132,7 +132,7 @@ function renderSpecGroup(k){
 function viewSpecs(){
   let html='<div class="card">'+
     '<h2>'+icon('tag','18')+'属性选项管理</h2>'+
-    '<p class="note" style="margin-bottom:16px">管理各产品属性的可选值集合。这些选项将出现在签约管理和采购订单的属性下拉框中。无引用的值（显示「未使用」）可安全删除。</p>'+
+    '<p class="note" style="margin-bottom:16px">管理各产品属性的可选值集合。这些选项将出现在签约报价和采购订单的属性下拉框中。无引用的值（显示「未使用」）可安全删除。</p>'+
     '<div class="specs-toolbar">'+
       '<button class="btn sm" onclick="openBatchImportSpec(null)">'+icon('upload','14')+' 批量导入全部维度</button>'+
       '<button class="btn sm" onclick="exportAllSpecs()">'+icon('download','14')+' 导出全部</button>'+
