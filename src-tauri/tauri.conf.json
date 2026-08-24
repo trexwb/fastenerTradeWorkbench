@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "紧固件贸易工作台",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "identifier": "com.fastenerworkbench",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1421",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "node scripts/copy-frontend.mjs"
+    "beforeBuildCommand": "npm run vite:build"
   },
   "app": {
     "withGlobalTauri": true,
