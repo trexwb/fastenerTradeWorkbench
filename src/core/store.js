@@ -15,6 +15,8 @@ const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ :
  * @type {string}
  */
 const DRAFT_PREFIX='wb_fastener_draft_';
+/** 是否处于 Tauri 桌面运行时（store.js 在 ai.js 之前加载，独立检测，不依赖 AI 对象） */
+const IS_TAURI_RUNTIME=!!(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==='function');
 
 /**
  * BOM/报价/订单规格属性字段名数组
@@ -481,10 +483,14 @@ let idbStatus='idle';  // idle | ok | error
  * @throws {Error} 当数据库被其他连接阻塞（blocked）时 reject
  */
 function idbOpen(){return new Promise((res,rej)=>{
+  // 超时兜底：部分环境（如 WKWebView 自定义协议）indexedDB.open 可能永不回调，
+  // 不设超时会导致 initApp 永远卡在加载态。超时后走内存降级，保证界面可用。
+  const timer=setTimeout(()=>{try{r.close&&r.close();}catch(_){};rej(new Error('IndexedDB 打开超时'));},5000);
   const r=indexedDB.open(IDB_NAME,1);
   r.onupgradeneeded=()=>r.result.createObjectStore(IDB_STORE);
-  r.onsuccess=()=>res(r.result);
-  r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('DB blocked'));
+  r.onsuccess=()=>{clearTimeout(timer);res(r.result);};
+  r.onerror=()=>{clearTimeout(timer);rej(r.error);};
+  r.onblocked=()=>{clearTimeout(timer);rej(new Error('DB blocked'));};
 });}
 
 /**
@@ -493,6 +499,13 @@ function idbOpen(){return new Promise((res,rej)=>{
  * @throws {Error} 写入事务失败时 reject 并置 idbStatus='error'
  */
 async function idbSave(){
+  if(IS_TAURI_RUNTIME){
+    // 桌面版主存储：写入应用数据目录 data.json（WKWebView 自定义协议下 IndexedDB 不可靠）
+    try{
+      await window.__TAURI__.core.invoke('data_file_save',{content:JSON.stringify(DB)});
+      idbStatus='ok';return;
+    }catch(e){console.error('Tauri data save error:',e);idbStatus='error';return;}
+  }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{
@@ -510,6 +523,16 @@ async function idbSave(){
  * @throws {Error} 读取事务失败时 reject 并置 idbStatus='error'
  */
 async function idbLoad(){
+  if(IS_TAURI_RUNTIME){
+    // 桌面版主存储：从应用数据目录 data.json 读取
+    try{
+      const txt=await window.__TAURI__.core.invoke('data_file_load');
+      if(!txt)return null;
+      const d=JSON.parse(txt);
+      idbStatus='ok';
+      return d&&typeof d==='object'&&!Array.isArray(d)?d:null;
+    }catch(e){console.error('Tauri data load error:',e);idbStatus='error';return null;}
+  }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{

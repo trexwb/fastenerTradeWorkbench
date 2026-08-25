@@ -87,6 +87,8 @@ tbody tr:last-child td{border-bottom:none;}
 /* FORMS */
 label.f{display:block;font-size:16px;font-weight:500;color:var(--gray);margin-bottom:5px;}
 input,select,textarea{width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:14px;font-family:inherit;color:var(--ink);background:#fff;transition:.15s;}
+select{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:36px;cursor:pointer;}
+select::-ms-expand{display:none;}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-l);}
 textarea{resize:vertical;min-height:60px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}

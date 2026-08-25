@@ -93,6 +93,32 @@ fn data_dir_get(app: tauri::AppHandle) -> Result<String, String> {
     data_root(&app).map(|p| p.to_string_lossy().into_owned())
 }
 
+const DATA_FILENAME: &str = "data.json";
+
+/// 读取应用数据目录中的主数据文件（JSON 字符串）。
+/// 文件不存在返回 Ok(None)。macOS WKWebView 的 tauri:// 协议下 IndexedDB
+/// 可能挂起（open 无回调），因此桌面版主存储改用本机文件。
+#[tauri::command]
+fn data_file_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let p = data_root(&app)?.join(DATA_FILENAME);
+    if !p.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read(&p).map_err(|e| format!("读取数据文件失败: {e}"))?;
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8_lossy(&raw).into_owned()))
+}
+
+/// 将主数据 JSON 写入应用数据目录。
+#[tauri::command]
+fn data_file_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
+    fs::write(root.join(DATA_FILENAME), content).map_err(|e| format!("写入数据文件失败: {e}"))
+}
+
 #[derive(Debug, Serialize)]
 struct UpstreamBody<'a> {
     model: &'a str,
@@ -273,6 +299,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ai_runtime_kind,
             data_dir_get,
+            data_file_load,
+            data_file_save,
             ai_deepseek_token_write,
             ai_deepseek_token_has,
             ai_deepseek_model_default,
