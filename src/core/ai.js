@@ -1,4 +1,4 @@
-// ai.js — 可选 AI 增强：脱敏上下文、本地计算、Tauri 直连 DeepSeek（Node 代理已废弃）
+// ai.js — 可选 AI 增强：脱敏上下文、DeepSeek 直连（Tauri 桌面版走 Rust 命令；浏览器版前端直连，CORS 已实测放行）
 const AI=(function(){
   const HISTORY_LIMIT=50;
   const HISTORY_CONTEXT_LIMIT=6;
@@ -6,10 +6,12 @@ const AI=(function(){
   const DEFAULT_MODEL='deepseek-v4-flash';
   const ALLOWED_MODELS=new Set(['deepseek-v4-flash','deepseek-v4-pro']);
   const STREAM_EVENT='ai:deepseek:chunk';
+  const WEB_KEY_STORAGE='wb_fastener_ai_key';   // 浏览器形态：API_KEY 存 localStorage
+  const WEB_API_URL='https://api.deepseek.com/v1/chat/completions';
   const state={
     runtime:'web',           // 'tauri' | 'web'
-    proxyOnline:false,       // 仅 Tauri 模式可达；浏览器模式恒为 false
-    hasKey:false,            // tauri 模式：是否已保存 Token
+    proxyOnline:false,       // 运行通道可达（tauri：Rust 命令；web：已保存 Key）
+    hasKey:false,            // 是否已保存 DeepSeek API_KEY
     model:DEFAULT_MODEL,
     chatting:false,
     abortController:null,
@@ -17,6 +19,8 @@ const AI=(function(){
     lastUsage:null,
     // tauri 模式流式接收：事件监听收到的块拼到 chunkBuf 里，最终返回值再取走
     chunkBuf:'',
+    // web 模式流式接收：fetch ReadableStream 解析出的完整文本
+    webBuf:'',
     removeStreamListener:null
   };
   const _T=window.__TAURI__;
@@ -88,8 +92,9 @@ const AI=(function(){
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
   function persistMessage(role,content,snapshot){const message={id:uid('AI'),role,content,context:view,timestamp:Date.now(),snapshot:snapshot||''};DB.aiChats=DB.aiChats||[];DB.aiChats.push(message);DB.aiChats=DB.aiChats.slice(-HISTORY_LIMIT);saveDB();return message;}
   function setModel(m){if(ALLOWED_MODELS.has(m))state.model=m;else state.model=DEFAULT_MODEL;}
+  function webHasKey(){return !!((localStorage.getItem(WEB_KEY_STORAGE)||'').trim());}
 
-  /** 健康检查：仅 Tauri 运行时检查是否已保存 Token */
+  /** 健康检查：tauri 检查 Rust 通道与 Token 文件；web 检查本地保存的 Key */
   async function probeProxy(){
     if(state.runtime==='tauri'){
       try{
@@ -98,14 +103,13 @@ const AI=(function(){
         state.hasKey=!!has;
       }catch(e){state.proxyOnline=false;state.hasKey=false;}
     }else{
-      state.proxyOnline=false;
-      state.hasKey=false;
-      if(typeof toast==='function')toast('AI 功能需使用 Tauri 桌面版','warning');
+      state.hasKey=webHasKey();
+      state.proxyOnline=state.hasKey;
     }
     if(typeof refreshAIStatus==='function')refreshAIStatus();return {runtime:state.runtime,online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
   }
-  function startHealthCheck(){if(state.healthTimer)return;probeProxy();if(state.runtime!=='tauri')return;state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
-  function runtimeLabel(){return state.runtime==='tauri'?'桌面版':'浏览器（AI 需桌面版）';}
+  function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
+  function runtimeLabel(){return state.runtime==='tauri'?'桌面版（AI 直连 DeepSeek）':'浏览器（AI 直连 DeepSeek）';}
 
   /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk */
   function _ensureStreamListener(onChunk){
@@ -125,45 +129,104 @@ const AI=(function(){
     state.removeStreamListener=null;
   }
 
+  /** 浏览器形态：前端直连 DeepSeek（CORS 已实测放行，含 file:// 的 null origin），SSE 流式解析 */
+  async function webChat(messages,onChunk,signal){
+    const key=(localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
+    if(!key)throw new Error('请先在 AI 设置中填写 DeepSeek API_KEY');
+    state.webBuf='';
+    const res=await fetch(WEB_API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'text/event-stream'},
+      body:JSON.stringify({
+        model:state.model,
+        messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
+        stream:true,
+        temperature:0.3,
+        max_tokens:1200
+      }),
+      signal:signal
+    });
+    if(!res.ok){
+      let detail='';
+      try{const j=await res.json();detail=(j&&j.error&&j.error.message)?j.error.message:'';}catch(_){}
+      throw new Error('DeepSeek 返回错误 (HTTP '+res.status+')'+(detail?'：'+detail:''));
+    }
+    if(!res.body||!res.body.getReader)throw new Error('当前浏览器不支持流式响应');
+    const reader=res.body.getReader();const decoder=new TextDecoder();let buffer='';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done)break;
+      buffer+=decoder.decode(value,{stream:true});
+      let idx;
+      while((idx=buffer.indexOf('\n'))>=0){
+        const line=buffer.slice(0,idx).trim();buffer=buffer.slice(idx+1);
+        if(!line.startsWith('data:'))continue;
+        const raw=line.slice(5).trim();
+        if(!raw||raw==='[DONE]')continue;
+        try{
+          const j=JSON.parse(raw);
+          const text=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+          if(typeof text==='string'&&text){
+            state.webBuf+=text;
+            if(onChunk)try{onChunk(text);}catch(_){}
+          }
+        }catch(_){}
+      }
+    }
+    return state.webBuf;
+  }
+
   async function chat(messages,onChunk){
     if(!ALLOWED_MODELS.has(state.model))state.model=DEFAULT_MODEL;
     state.chatting=true;
     state.abortController=null;
     try{
-      if(state.runtime!=='tauri')throw new Error('AI 功能需使用 Tauri 桌面版');
-      _ensureStreamListener(onChunk);
-      try{
-        const full=await tauriInvoke('ai_deepseek_chat',{
-          messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
-          model:state.model,
-          stream:true,
-          temperature:0.3,
-          max_tokens:1200,
-          streamEvent:STREAM_EVENT
-        });
-        // Rust 返回最终完整文本；若事件接收比最终返回慢，用最终文本兜底补齐
-        if(typeof full==='string'&&full.length>state.chunkBuf.length&&onChunk){
-          onChunk(full.slice(state.chunkBuf.length));
-          state.chunkBuf=full;
-        }
-        return state.chunkBuf;
-      }finally{_cleanupStreamListener();}
+      if(state.runtime==='tauri'){
+        _ensureStreamListener(onChunk);
+        try{
+          const full=await tauriInvoke('ai_deepseek_chat',{
+            messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
+            model:state.model,
+            stream:true,
+            temperature:0.3,
+            max_tokens:1200,
+            streamEvent:STREAM_EVENT
+          });
+          // Rust 返回最终完整文本；若事件接收比最终返回慢，用最终文本兜底补齐
+          if(typeof full==='string'&&full.length>state.chunkBuf.length&&onChunk){
+            onChunk(full.slice(state.chunkBuf.length));
+            state.chunkBuf=full;
+          }
+          return state.chunkBuf;
+        }finally{_cleanupStreamListener();}
+      }
+      // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
+      const controller=new AbortController();
+      state.abortController=controller;
+      try{return await webChat(messages,onChunk,controller.signal);}
+      finally{state.abortController=null;}
     }finally{state.chatting=false;state.abortController=null;}
   }
   function abort(){if(state.abortController)state.abortController.abort();}
 
-  /** 仅 Tauri：保存 API Key 到本机应用数据目录 */
+  /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除） */
   async function setDeepseekToken(raw){
-    const token=(raw==null?'':String(raw)).trim();
-    if(state.runtime!=='tauri')throw new Error('AI 功能需使用 Tauri 桌面版');
-    await tauriInvoke('ai_deepseek_token_write',{token:token});
+    const token=String(raw||'').trim();
+    if(state.runtime==='tauri'){
+      await tauriInvoke('ai_deepseek_token_write',{token:token});
+    }else{
+      if(token)localStorage.setItem(WEB_KEY_STORAGE,token);
+      else localStorage.removeItem(WEB_KEY_STORAGE);
+    }
     state.hasKey=!!token;
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
   async function getDeepseekTokenDraft(){
-    if(state.runtime!=='tauri')return '';
-    const has=await tauriInvoke('ai_deepseek_token_has');
-    return has?'(已保存，不可读取明文)':'';
+    if(state.runtime==='tauri'){
+      const has=await tauriInvoke('ai_deepseek_token_has');
+      return has?'(已保存，不可读取明文)':'';
+    }
+    return webHasKey()?'(已保存，不可读取明文)':'';
   }
 
   return {

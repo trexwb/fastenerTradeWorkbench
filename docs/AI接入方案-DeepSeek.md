@@ -1,6 +1,7 @@
 # 紧固件贸易工作台 · DeepSeek AI 接入方案
 
 > **状态：Node 代理已废弃（2026-08-23）**——本方案中"浏览器形态 + Node 代理（tools/ai-proxy.js / localhost:7842）"相关章节仅作历史记录，实际已改为 **Tauri 桌面版直连 DeepSeek API**，API_KEY 在 AI 设置中填写、由 Tauri 保存到本机应用数据目录。本文其余部分保留供参考。
+> **浏览器直连已解锁（2026-08-25）**——实测 DeepSeek API 已返回 CORS 放行头（`Access-Control-Allow-Origin` 回显任意来源，含 `file://` 的 null origin），浏览器形态（file:// 双击 dist/index.html）现可直接调用 DeepSeek API，不再强制依赖 Tauri 桌面版；API_KEY 浏览器形态保存于 localStorage（键名 `wb_fastener_ai_key`）。本文 2.2 节已同步更新。
 > 版本：v2.1（2026-08-23 修订版：安全代理、V4 模型与流式 IPC 方案）
 > 目标应用版本：v1.0.0+（AI 功能作为独立增强模块）
 > 定位：**离线优先，AI 增强**——核心功能完全离线可用，AI 能力按需开启
@@ -54,15 +55,16 @@
 
 > `deepseek-chat` 与 `deepseek-reasoner` 为已淘汰的兼容名称，不作为本方案的可选模型。接口与模型/定价均可能调整，实施时应以 DeepSeek 官方文档为准。
 
-### 2.2 CORS 限制（关键约束）
+### 2.2 CORS 限制（2026-08-25 实测已放行）
 
-**DeepSeek API 不支持浏览器直接调用**——响应头不包含 `Access-Control-Allow-Origin`，浏览器同源策略会拦截所有前端 `fetch()` 请求。
+**2026-08-25 实测**：DeepSeek API 已返回 CORS 放行头——`Access-Control-Allow-Origin` 回显任意来源（含 `file://` 的 `Origin: null`）、`Access-Control-Allow-Methods: POST`、允许 `authorization,content-type` 请求头。**浏览器形态（file://）现在可以直接 `fetch()` 调用 DeepSeek API**，无需本地代理。
 
 这意味着：
 
-- ❌ 不能从 `file://` 协议直接 `fetch('https://api.deepseek.com/...')`
-- ❌ 不能从任何域名直接调用 DeepSeek API
-- ✅ 必须通过后端代理转发（浏览器形态：Node 代理；**Tauri 形态：Rust 命令直连，天然无 CORS**，见 3.4）
+- ✅ 可以从 `file://` 协议直接 `fetch('https://api.deepseek.com/...')`（Origin 为 null，被回显放行）
+- ✅ 浏览器形态：前端直连 DeepSeek（API_KEY 存 localStorage）
+- ✅ Tauri 形态：Rust 命令直连（API_KEY 存应用数据目录，更安全，不依赖 CORS），见 3.4
+- ⚠ 浏览器形态的 API_KEY 存于 localStorage（明文），仅建议在本机可信环境使用
 
 ### 2.3 与零依赖原则的冲突与调和
 

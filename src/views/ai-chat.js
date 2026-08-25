@@ -1,4 +1,4 @@
-// views/ai-chat.js — AI 助手抽屉（仅 Tauri 桌面版直连 DeepSeek）
+// views/ai-chat.js — AI 助手抽屉（DeepSeek 直连：Tauri 桌面版走 Rust 命令，浏览器版前端直连）
 let _aiCurrentSnapshot='';
 function renderAIMarkdown(text){
   const escaped=escHtml(text||'');
@@ -18,11 +18,8 @@ function renderAIMarkdown(text){
   return html;
 }
 function aiStatusLabel(){
-  if(AI.state.runtime==='tauri'){
-    if(!AI.state.hasKey)return '<span class="ai-status warning">● 未设置 API_KEY</span>';
-    return '<span class="ai-status online">● 桌面就绪</span>';
-  }
-  return '<span class="ai-status offline">● AI 需桌面版</span>';
+  if(AI.state.hasKey)return '<span class="ai-status online">● '+(AI.state.runtime==='tauri'?'桌面就绪':'直连就绪')+'</span>';
+  return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
   const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=message.id?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
@@ -35,18 +32,17 @@ function openAIAssistant(){
   const actions=AI.QUICK_ACTIONS.map(action=>'<button type="button" class="ai-action" onclick="runAIQuickAction(\''+action.id+'\')">'+escHtml(action.label)+'</button>').join('');
   const history=(DB.aiChats||[]).map(aiMessageHTML).join('')||aiWelcomeHTML();
   const body='<section class="ai-chat" aria-label="AI 助手">'+
-    '<header class="ai-chat-head"><div><span class="ai-eyebrow">DEEPSEEK · '+escHtml(AI.state.runtime==='tauri'?'桌面直连':'需桌面版')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
+    '<header class="ai-chat-head"><div><span class="ai-eyebrow">DEEPSEEK · '+escHtml(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
     '<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section><div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">⌘ / Ctrl + Enter 发送 · Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
 }
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
-function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.runtime==='tauri'&&AI.state.hasKey);button.title=AI.state.runtime==='tauri'?'打开 AI 助手（桌面直连）':'AI 功能需使用 Tauri 桌面版';}}
+function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?'打开 AI 助手（'+(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'）':'请先在 AI 设置中填写 DeepSeek API_KEY';}}
 function handleAIInputKey(event){if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();requestAISend();}}
 function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';input.focus();return;}input.value=action.prompt;requestAISend();}
 function requestAISend(){
   const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
-  if(AI.state.runtime!=='tauri'){toast('AI 功能需使用 Tauri 桌面版','warning');return;}
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 DeepSeek API_KEY','warning');return;}
   _aiCurrentSnapshot=AI.buildPreview(message);
   const body='<p class="note">以下是本次将发送给 AI 的脱敏数据快照，不含联系人电话、地址、税号或银行账户。</p><pre class="ai-preview">'+escHtml(_aiCurrentSnapshot)+'</pre>';
@@ -66,11 +62,9 @@ function stopAIMessage(){AI.abort();}
 async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';
   const bodyBuilder=async function(){
-    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag gray">浏览器版</span> AI 功能需使用 Tauri 桌面版。';
+    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版（file://）</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
     const tokenDraft=await AI.getDeepseekTokenDraft();
-    const tokenInput=isTauri?
-      '<div class="field"><label class="f" for="aiDeepseekToken">DeepSeek API_KEY <span style="color:var(--warn)">*</span></label><input id="aiDeepseekToken" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… 从 api.deepseek.com 获取，留空可删除已保存的 Key" value="'+escAttr(tokenDraft)+'"><div class="note">由 Tauri 桌面版保存到本机应用数据目录，用于调用 DeepSeek API，不会发送给任何第三方。</div></div>':
-      '';
+    const tokenInput='<div class="field"><label class="f" for="aiDeepseekToken">DeepSeek API_KEY <span style="color:var(--warn)">*</span></label><input id="aiDeepseekToken" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… 从 api.deepseek.com 获取，留空可删除已保存的 Key" value="'+escAttr(tokenDraft)+'"><div class="note">'+(isTauri?'由 Tauri 桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，用于直连调用 DeepSeek API，不会发送给任何第三方。</div></div>';
     return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
       '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
       tokenInput+
@@ -82,7 +76,6 @@ async function openAISettings(){
   const body=await bodyBuilder();
   modal('AI 设置',body,'保存设置',async ()=>{
     const modelEl=document.getElementById('aiModel');if(modelEl)AI.setModel(modelEl.value);
-    if(!isTauri){toast('AI 功能需使用 Tauri 桌面版','warning');closeModal();return;}
     const tokenEl=document.getElementById('aiDeepseekToken');
     try{
       await AI.setDeepseekToken(tokenEl?tokenEl.value:'');
