@@ -34,8 +34,7 @@
     "targets": [
       "app",
       "msi",
-      "nsis",
-      "dmg"
+      "nsis"
     ],
     "icon": [
       "icons/32x32.png",

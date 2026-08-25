@@ -72,6 +72,17 @@ function renderBackupSection(){
 
 /** 渲染本地文件同步模块（根据同步状态展示绑定/授权/解绑操作） */
 function renderFileSyncSection(){
+  // Tauri 桌面版：数据存本机应用数据目录（IndexedDB 持久化），无需绑定本地文件
+  if(AI.state.runtime==='tauri'){
+    return '<div style="border-top:1px solid var(--line);padding-top:20px;margin-bottom:20px">'+
+      '<div class="card">'+
+        '<div class="data-section-hd">'+icon('fileText','16')+' 本地数据存储</div>'+
+        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px">'+
+          '<div style="font-size:14px;color:var(--gray);line-height:1.8">桌面版数据存储于<strong>本机应用数据目录</strong>（IndexedDB 持久化），不受浏览器清缓存影响，<strong>无需绑定本地文件</strong>。</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
   let syncContent;
   if(fsaSupported()){
     if(fileSync===true){

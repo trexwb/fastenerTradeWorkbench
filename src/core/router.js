@@ -218,8 +218,8 @@ function render(){
           escHtml(crumb)+
         '</div>'+
         '<div class="right">'+
-          (fileSync===true?'<span class="tag ok" title="本地文件已同步">'+icon('fileText','12')+' 已同步</span>':
-           fileSync==='pending'?'<span class="tag warn" title="点击数据管理重新授权" style="cursor:pointer" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</span>':'')+
+          (fileSync===true&&AI.state.runtime!=='tauri'?'<span class="tag ok" title="本地文件已同步">'+icon('fileText','12')+' 已同步</span>':
+           fileSync==='pending'&&AI.state.runtime!=='tauri'?'<span class="tag warn" title="点击数据管理重新授权" style="cursor:pointer" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</span>':'')+
           '<span class="tag info">'+fmtN(DB.orders.length)+' 订单</span>'+
           '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接">'+icon('zap','16')+'</button>'+
           '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)">'+icon('keyboard','14')+'</button>'+
@@ -230,7 +230,7 @@ function render(){
         var dismissed=fileSync===true?false:(
           localStorage.getItem('fw_sync_banner_dismissed')==='1'
         );
-        if(!dismissed&&fileSync!==true){
+        if(AI.state.runtime!=='tauri'&&!dismissed&&fileSync!==true){
           var msg=fileSync==='pending'
             ?'本地文件同步待授权，<a href="javascript:void(0)" onclick="go(\'data\');var b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">立即重新授权</a>'
             :'数据未绑定本地文件，<a href="javascript:void(0)" onclick="go(\'data\');var b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">前往绑定</a> 防止浏览器清除数据导致丢失';
