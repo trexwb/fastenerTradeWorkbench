@@ -82,7 +82,8 @@ function ensureDBFields(){
   if(!DB.orderSeq){
     const maxSeq=DB.orders.reduce((max,o)=>{
       const m=o.id.match(/PO\d{8}-(\d+)/);
-      return m?Math.max(max,parseInt(m[1],10)):max;
+      const n=m?parseInt(m[1],10):0;
+      return Number.isFinite(n)?Math.max(max,n):max; // 防御脏数据：编号段非纯数字时忽略，避免 orderSeq 变 NaN
     },1);
     DB.orderSeq=maxSeq+1;
   }

@@ -86,12 +86,6 @@ fn ai_runtime_kind() -> &'static str {
     "tauri"
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UpstreamMessage {
-    role: String,
-    content: String,
-}
-
 #[derive(Debug, Serialize)]
 struct UpstreamBody<'a> {
     model: &'a str,
