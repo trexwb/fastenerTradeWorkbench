@@ -22,9 +22,8 @@ const VV = 'v' + base;
 const checks = [
   ['src-tauri/tauri.conf.json', JSON.parse(read('src-tauri/tauri.conf.json')).version, base],
   ['src-tauri/Cargo.toml', /^version = "(\d+\.\d+\.\d+)"$/m.exec(read('src-tauri/Cargo.toml'))?.[1], base],
-  ['src/js/store.js APP_VERSION', /APP_VERSION='v(\d+\.\d+\.\d+)'/.exec(read('src/js/store.js'))?.[1], base],
+  ['src/core/store.js APP_VERSION', /__APP_VERSION__\s*:\s*'v(\d+\.\d+\.\d+)'/.exec(read('src/core/store.js'))?.[1], base],
   ['AGENTS.md 当前基准版本', /当前基准版本：\*\*v(\d+\.\d+\.\d+)\*\*/.exec(read('AGENTS.md'))?.[1], base],
-  ['src/index.html 顶部注释', /（当前 v(\d+\.\d+\.\d+)）/.exec(read('src/index.html'))?.[1], base],
 ];
 
 if (fs.existsSync(path.join(ROOT, 'package-lock.json'))) {

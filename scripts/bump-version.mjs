@@ -5,11 +5,12 @@
    用法：
      node scripts/bump-version.mjs 1.0.8        # 更新全部版本号
      node scripts/bump-version.mjs 1.0.8 --dry-run  # 只预览不写入
-   覆盖位置（7 处 / 6 文件，package-lock.json 存在时才更新）：
+   覆盖位置（6 处 / 5 文件，package-lock.json 存在时才更新）：
      package.json / package-lock.json(顶层+packages[""]) /
-     tauri.conf.json / Cargo.toml / js/store.js(APP_VERSION) /
-     AGENTS.md(当前基准版本) / index.html(顶部注释)
+     tauri.conf.json / Cargo.toml / core/store.js(APP_VERSION 回退值) /
+     AGENTS.md(当前基准版本)
    README.md 更新日志为历史记录，不在本脚本范围（内容需人工编写）。
+   index.html 顶部注释为 Vite 构建期注入说明，不含版本字面量，无需更新。
    ═══════════════════════════════════════════════════════════════════ */
 
 import fs from 'node:fs';
@@ -72,9 +73,10 @@ patchJson('src-tauri/tauri.conf.json', (d) => { d.version = V; }, `version -> ${
 
 /* ── 文本类 ─────────────────────────────────────────────────────── */
 patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}`);
-patchText('src/js/store.js', /const APP_VERSION='v\d+\.\d+\.\d+'/, `const APP_VERSION='${VV}'`, `APP_VERSION -> ${VV}`);
+// 注：store.js 的 APP_VERSION 为 Vite define 注入（__APP_VERSION__），源码保留回退值字面量，
+// 此处同步该回退值，保证脱离 Vite 构建（单文件/原生加载）时展示的版本号一致。
+patchText('src/core/store.js', /__APP_VERSION__\s*:\s*'v\d+\.\d+\.\d+'/, `__APP_VERSION__ : '${VV}'`, `APP_VERSION 回退值 -> ${VV}`);
 patchText('AGENTS.md', /当前基准版本：\*\*v\d+\.\d+\.\d+\*\*/, `当前基准版本：**${VV}**`, `当前基准版本 -> ${VV}`);
-patchText('src/index.html', /（当前 v\d+\.\d+\.\d+）/, `（当前 ${VV}）`, `顶部注释 -> ${VV}`);
 
 console.log(results.join('\n'));
 console.log(dryRun

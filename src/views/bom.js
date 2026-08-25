@@ -67,8 +67,14 @@ function viewBOM(){
     '<div class="spacer"></div>'+
     countTag+
     '<button id="bomBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteBOM()">'+icon('trash')+'批量删除(<span id="bomBatchCount">0</span>)</button>'+
-    '<button class="btn" onclick="openBOMBatchAdd()">'+icon('upload','14')+' 批量导入</button>'+
-    '<button class="btn primary" onclick="openBOMForm(-1)">'+icon('plus')+' 新建BOM</button>'+
+    '<div class="btn-group">'+
+      '<button class="btn primary" onclick="openBOMForm(-1)">'+icon('plus')+' 新建BOM</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleBOMDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<div class="dropdown-menu" id="bomDropdown" style="display:none">'+
+        '<button class="dropdown-item" onclick="closeBOMDropdown();openBOMForm(-1)">'+icon('plus')+'新建BOM</button>'+
+        '<button class="dropdown-item" onclick="closeBOMDropdown();openBOMBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
+      '</div>'+
+    '</div>'+
   '</div>'+
   filterRow+
   '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllBOM(this)" title="全选"></th><th>SKU</th><th style="min-width:160px">名称</th><th>规格</th><th>类型</th><th>标准</th><th>直径</th><th>硬度</th><th>表面处理</th><th>材质</th><th></th></tr></thead><tbody id="bomBody">'+
@@ -421,6 +427,24 @@ function saveBOMForm(idx){
 function deleteBOM(idx){confirmBOMDel(idx);}
 
 /* ---- 批量增加 ---- */
+/** 切换「新建BOM」下拉菜单显隐 */
+function toggleBOMDropdown(e){
+  e.stopPropagation();
+  let dd=document.getElementById('bomDropdown');
+  if(!dd)return;
+  let isOpen=dd.style.display==='block';
+  dd.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    setTimeout(function(){
+      document.addEventListener('click',closeBOMDropdown,{once:true});
+    },0);
+  }
+}
+/** 关闭「新建BOM」下拉菜单 */
+function closeBOMDropdown(){
+  let dd=document.getElementById('bomDropdown');
+  if(dd)dd.style.display='none';
+}
 /** 打开批量导入BOM抽屉（粘贴解析流程说明+文本框）
  * @returns {void}
  */
