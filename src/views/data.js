@@ -74,11 +74,22 @@ function renderBackupSection(){
 function renderFileSyncSection(){
   // Tauri 桌面版：数据存本机应用数据目录（IndexedDB 持久化），无需绑定本地文件
   if(AI.state.runtime==='tauri'){
+    // 异步获取应用数据目录路径并填充（render 为同步流程，invoke 后按 id 更新）
+    setTimeout(function(){
+      if(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==='function'){
+        window.__TAURI__.core.invoke('data_dir_get').then(function(path){
+          const el=document.getElementById('dataDirPath');
+          if(el&&path)el.textContent=path;
+        }).catch(function(){});
+      }
+    },0);
     return '<div style="border-top:1px solid var(--line);padding-top:20px;margin-bottom:20px">'+
       '<div class="card">'+
         '<div class="data-section-hd">'+icon('fileText','16')+' 本地数据存储</div>'+
         '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px">'+
           '<div style="font-size:14px;color:var(--gray);line-height:1.8">桌面版数据存储于<strong>本机应用数据目录</strong>（IndexedDB 持久化），不受浏览器清缓存影响，<strong>无需绑定本地文件</strong>。</div>'+
+          '<div style="font-size:13px;margin-top:10px;color:var(--ink)"><b>数据目录</b><br><code id="dataDirPath" style="word-break:break-all">正在获取...</code></div>'+
+          '<div style="font-size:12px;margin-top:6px;color:var(--gray)">数据文件与 DeepSeek API_KEY 均保存在此目录，卸载应用不影响（如需备份请复制该目录）。</div>'+
         '</div>'+
       '</div>'+
     '</div>';

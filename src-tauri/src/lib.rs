@@ -86,6 +86,13 @@ fn ai_runtime_kind() -> &'static str {
     "tauri"
 }
 
+/// 返回应用数据目录（IndexedDB 之外的 Token 等文件也存于此）。
+/// 供前端数据管理页展示「数据所在目录」。
+#[tauri::command]
+fn data_dir_get(app: tauri::AppHandle) -> Result<String, String> {
+    data_root(&app).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[derive(Debug, Serialize)]
 struct UpstreamBody<'a> {
     model: &'a str,
@@ -265,6 +272,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             ai_runtime_kind,
+            data_dir_get,
             ai_deepseek_token_write,
             ai_deepseek_token_has,
             ai_deepseek_model_default,
