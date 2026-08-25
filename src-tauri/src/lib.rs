@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::io::AsyncBufReadExt;
 
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";

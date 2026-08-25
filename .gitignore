@@ -115,6 +115,15 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# ── Tauri / Rust ──
+/src-tauri/target
+/src-tauri/gen/schemas
+/src-tauri/gen/icons
+**/target/
+# 仅忽略安装产物，保留脚本与源码
+/node_modules
+/dist
+
 # mac
 .DS_Store
 
