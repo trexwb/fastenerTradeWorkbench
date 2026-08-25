@@ -189,6 +189,27 @@ var _BD = { top: 'thin', left: 'thin', right: 'thin', bottom: 'thin' }; // 四�
 var _FONT = '微软雅黑'; // 统一中文字体，Excel/WPS 默认渲染更美观
 
 /* =========================================================
+   共享样式表（六个导出函数公共部分，独有样式留在各函数内定义）
+   ========================================================= */
+var _SS_COMMON = {
+  pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
+  subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
+  th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
+  even:      { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
+  odd:       { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
+  evenN:     { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+  oddN:      { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+  evenSum:   { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+  oddSum:    { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+  sumLbl:    { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
+  sumVal:    { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
+  totalLbl:  { t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
+  totalVal:  { t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
+  footer:    { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
+};
+
+
+/* =========================================================
    自动列宽：按单元格内容计算每列最大显示宽度（增强版）
    ========================================================= */
 /**
@@ -396,25 +417,11 @@ async function _exportOrderPendingConfirm(o) {
   wb.Sheets     = { '产品确认单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:         { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    thChk:      { t: 's', font: { name: _FONT, bold: true, color: '7F6000', sz: 11 }, fill: { fgColor: 'FFD966' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:   { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:    { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:  { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:   { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenChk:{ t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFF9E6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:{ t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum: { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl: { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal: { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:{ t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:{ t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    footer: { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON, {
+thChk:      { t: 's', font: { name: _FONT, bold: true, color: '7F6000', sz: 11 }, fill: { fgColor: 'FFD966' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
+evenChk:{ t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFF9E6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
+oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, align: 'center', vertical: 'center', wrapText: true, border: _BD }
+});
 
   /* ============ 辅助函数 ============ */
   function dataStyle(ri, isNum) {
@@ -644,30 +651,16 @@ async function _exportOrderSourcing(o) {
   wb.Sheets = { '寻源进度单': ws };
 
   /* ============ 局部样式定义 ============ */
-  const SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:      { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:       { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:     { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:      { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenNeg:   { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddNeg:    { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenNegS:  { t: 's', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddNegS:   { t: 's', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:   { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum:    { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl:    { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal:    { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:  { t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:  { t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
-    okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
-    footer:    { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-    remainEven:{ t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFE699' }, align: 'right', vertical: 'center', border: _BD },
-    remainOdd: { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFF2CC' }, align: 'right', vertical: 'center', border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON, {
+evenNeg:   { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+oddNeg:    { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+evenNegS:  { t: 's', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+oddNegS:   { t: 's', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
+warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
+okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
+remainEven:{ t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFE699' }, align: 'right', vertical: 'center', border: _BD },
+remainOdd: { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFF2CC' }, align: 'right', vertical: 'center', border: _BD }
+});
   // 寻源状态专用样式（K 列）
   const SS_SRC = {
     '待寻源':   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
@@ -970,26 +963,12 @@ async function _exportOrderQuoting(o) {
   wb.Sheets = { '报价中报价单': ws };
 
   /* ============ 局部样式定义 ============ */
-  const SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:      { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:       { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:     { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:      { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:   { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum:    { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl:    { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal:    { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:  { t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:  { t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
-    okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
-    footer:    { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-    remainEven:{ t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFE699' }, align: 'right', vertical: 'center', border: _BD },
-    remainOdd: { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFF2CC' }, align: 'right', vertical: 'center', border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON, {
+warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
+okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
+remainEven:{ t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFE699' }, align: 'right', vertical: 'center', border: _BD },
+remainOdd: { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFF2CC' }, align: 'right', vertical: 'center', border: _BD }
+});
   // 满足状态专用样式（J 列）
   const SS_SAT = {
     '已满足': { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
@@ -1142,28 +1121,14 @@ async function _exportOrderSignedComplete(o) {
   wb.Sheets = { '签约完成结算单': ws };
 
   /* ============ 局部样式定义 ============ */
-  const SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:      { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:       { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:     { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:      { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:   { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum:    { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl:    { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal:    { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:  { t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:  { t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
-    okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
-    footer:    { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-    negEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'right', vertical: 'center', border: _BD },
-    negOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FDE4E6' }, align: 'right', vertical: 'center', border: _BD },
-    posEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, align: 'right', vertical: 'center', border: _BD },
-    posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'E2EFDA' }, align: 'right', vertical: 'center', border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON, {
+warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
+okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
+negEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'right', vertical: 'center', border: _BD },
+negOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FDE4E6' }, align: 'right', vertical: 'center', border: _BD },
+posEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, align: 'right', vertical: 'center', border: _BD },
+posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'E2EFDA' }, align: 'right', vertical: 'center', border: _BD }
+});
 
   /* ============ 辅助函数 ============ */
   function dataStyle(ri, isNum) {
@@ -1177,7 +1142,7 @@ async function _exportOrderSignedComplete(o) {
   function put(r, c, style, value) { wc(window.XLSX.utils.encode_cell({ r, c }), style, value); }
   function merge(r, c1, c2) { ws['!merges'].push({ s: { r, c: c1 }, e: { r, c: c2 } }); }
   function vmerge(r1, c1, r2, c2) { ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } }); }
-  function r2(v) { return Math.round((v || 0) * 100) / 100; }
+  function r2(v) { var n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
 
   ws['!merges'] = [];
   ws['!rows'] = [];
@@ -1445,30 +1410,16 @@ async function _exportOrderDelivering(o) {
   wb.Sheets = { '送货结算单': ws };
 
   /* ============ 局部样式定义 ============ */
-  const SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:      { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:       { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:     { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:      { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:   { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum:    { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl:    { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal:    { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:  { t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:  { t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
-    okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
-    shipLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
-    shipVal:   { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F5FBF6' }, vertical: 'center', wrapText: true, border: _BD },
-    footer:    { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-    negEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'right', vertical: 'center', border: _BD },
-    negOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FDE4E6' }, align: 'right', vertical: 'center', border: _BD },
-    posEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, align: 'right', vertical: 'center', border: _BD },
-    posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'E2EFDA' }, align: 'right', vertical: 'center', border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON, {
+warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
+okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
+shipLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
+shipVal:   { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F5FBF6' }, vertical: 'center', wrapText: true, border: _BD },
+negEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'right', vertical: 'center', border: _BD },
+negOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FDE4E6' }, align: 'right', vertical: 'center', border: _BD },
+posEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, align: 'right', vertical: 'center', border: _BD },
+posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'E2EFDA' }, align: 'right', vertical: 'center', border: _BD }
+});
 
   /* ============ 辅助函数 ============ */
   function dataStyle(ri, isNum) {
@@ -1482,7 +1433,7 @@ async function _exportOrderDelivering(o) {
   function put(r, c, style, value) { wc(window.XLSX.utils.encode_cell({ r, c }), style, value); }
   function merge(r, c1, c2) { ws['!merges'].push({ s: { r, c: c1 }, e: { r, c: c2 } }); }
   function vmerge(r1, c1, r2, c2) { ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } }); }
-  function r2(v) { return Math.round((v || 0) * 100) / 100; }
+  function r2(v) { var n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
 
   ws['!merges'] = [];
   ws['!rows'] = [];
@@ -1840,22 +1791,7 @@ async function _exportOrderGeneral(o) {
   var TOTAL_LETTER = 'O';
   var deliveryStr = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
 
-  var SS = {
-    pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
-    subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    th:         { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
-    even:   { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, vertical: 'center', wrapText: true, border: _BD },
-    odd:    { t: 's', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, vertical: 'center', wrapText: true, border: _BD },
-    evenN:  { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddN:   { t: 'n', font: { name: _FONT, sz: 11 }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    evenSum:{ t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'E8F5E9' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    oddSum: { t: 'n', font: { name: _FONT, bold: true, sz: 11 }, fill: { fgColor: 'F5FBF6' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
-    sumLbl: { t: 's', font: { name: _FONT, bold: true, sz: 12 }, fill: { fgColor: 'D9E8F5' }, vertical: 'center', border: _BD },
-    sumVal: { t: 'n', font: { name: _FONT, bold: true, sz: 13 }, fill: { fgColor: 'D9E8F5' }, align: 'right', vertical: 'center', border: _BD },
-    totalLbl:{ t: 's', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, vertical: 'center', border: _BD },
-    totalVal:{ t: 'n', font: { name: _FONT, bold: true, sz: 13, color: '1F4E79' }, fill: { fgColor: 'BDD7EE' }, align: 'right', vertical: 'center', border: _BD },
-    footer: { t: 's', font: { name: _FONT, sz: 10, color: '6E7B8B' }, wrapText: true, border: _BD },
-  };
+  var SS = Object.assign({}, _SS_COMMON);
 
   function dataStyle(ri, isNum) { return isNum ? (ri % 2 === 0 ? SS.evenN : SS.oddN) : (ri % 2 === 0 ? SS.even : SS.odd); }
   function sumStyle(ri) { return ri % 2 === 0 ? SS.evenSum : SS.oddSum; }

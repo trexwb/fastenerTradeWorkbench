@@ -3,13 +3,19 @@ let _aiCurrentSnapshot='';
 function renderAIMarkdown(text){
   const escaped=escHtml(text||'');
   const inline=value=>value.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
-  return escaped.split('\n').map(line=>{
-    if(/^&gt;\s?/.test(line))return '<blockquote>'+inline(line.replace(/^&gt;\s?/,''))+'</blockquote>';
-    if(/^[-*]\s+/.test(line))return '<li>'+inline(line.replace(/^[-*]\s+/,''))+'</li>';
-    if(/^\d+\.\s+/.test(line))return '<li>'+inline(line.replace(/^\d+\.\s+/,''))+'</li>';
-    if(/^\|.+\|$/.test(line))return '<div class="ai-table-line">'+inline(line)+'</div>';
-    return line?'<p>'+inline(line)+'</p>':'';
-  }).join('');
+  const lines=escaped.split('\n');let html='';let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    if(/^&gt;\s?/.test(line)){html+='<blockquote>'+inline(line.replace(/^&gt;\s?/,''))+'</blockquote>';i++;continue;}
+    if(/^[-*]\s+/.test(line)||/^\d+\.\s+/.test(line)){
+      const ordered=/^\d+\.\s+/.test(line);const items=[];
+      while(i<lines.length&&(ordered?/^\d+\.\s+/.test(lines[i]):/^[-*]\s+/.test(lines[i]))){items.push('<li>'+inline(lines[i].replace(ordered?/^\d+\.\s+/:/^[-*]\s+/,''))+'</li>');i++;}
+      html+=(ordered?'<ol>':'<ul>')+items.join('')+(ordered?'</ol>':'</ul>');continue;
+    }
+    if(/^\|.+\|$/.test(line)){html+='<div class="ai-table-line">'+inline(line)+'</div>';i++;continue;}
+    html+=line?'<p>'+inline(line)+'</p>':'';i++;
+  }
+  return html;
 }
 function aiStatusLabel(){
   if(AI.state.runtime==='tauri'){
@@ -51,7 +57,10 @@ async function sendAIMessage(message,snapshot){
   const userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
   const pending={role:'assistant',content:'',pending:true,snapshot};messages.insertAdjacentHTML('beforeend',aiMessageHTML(pending));const pendingEl=messages.lastElementChild;const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
   aiScrollBottom();
-  try{const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);await AI.chat(request,chunk=>{pending.content+=chunk;const bubble=pendingEl.querySelector('.ai-bubble');if(bubble)bubble.innerHTML=renderAIMarkdown(pending.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();});if(!pending.content)pending.content='未收到有效回复，请稍后重试。';pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);}catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+  let renderScheduled=false;
+  const renderBubble=()=>{renderScheduled=false;const bubble=pendingEl.querySelector('.ai-bubble');if(bubble){bubble.innerHTML=renderAIMarkdown(pending.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
+  const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
+  try{const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);await AI.chat(request,chunk=>{pending.content+=chunk;scheduleRender();});if(renderScheduled)renderBubble();if(!pending.content)pending.content='未收到有效回复，请稍后重试。';pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);}catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
 async function openAISettings(){
