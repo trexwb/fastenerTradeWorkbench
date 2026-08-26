@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════
+# 紧固件贸易工作台 — 发布自动打包工作流
+# ───────────────────────────────────────────────────────────────────
+# 触发：推送 v* 标签（如 v1.0.2）或手动 workflow_dispatch
+#   • 手动触发（workflow_dispatch）：默认【仅测试构建】——只上传 Actions
+#     Artifact 不创建 Release，可下载 Windows 安装包在本地测试；
+#     勾选 create_release 后才创建 Draft Release（与推 tag 行为一致）
+# 产物：
+#   • Windows:  NSIS 安装包(.exe) + MSI 安装包(.msi)
+#   • macOS:   .app 压缩包(.zip) + .dmg（hdiutil 生成，无 GUI 依赖）
+# 说明：
+#   • macOS 产物为 ad-hoc 签名（无 Developer ID 证书），分发到其他 Mac
+#     首次打开需在终端执行一条解除隔离的命令（见 README.md）。
+#   • Windows 产物未签名，SmartScreen 会提示"更多信息 → 仍要运行"。
+#   • 所有产物先上传为 Actions Artifact，再汇总到 Draft Release，
+#     人工确认后点"Publish release"正式发布。
+#   • ⚠️ 中文 productName 处理：tauri.conf.json 中 productName 为中文
+#     「紧固件贸易工作台」，在 CI 中直接使用会导致 WiX/MSI 打包编码错误、
+#     Release 上传中文文件名失败等问题。因此 CI 构建时通过 TAURI_CONFIG
+#     环境变量将 productName 覆盖为 ASCII 的 FastenerTradeWorkbench，
+#     产物文件名全 ASCII；窗口标题（windows[0].title）不受影响，仍为中文。
+#     本地构建（npm run build）不受影响，仍使用中文 productName。
+# ═══════════════════════════════════════════════════════════════════
+
+name: Release Build (Tauri)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: '构建后创建 Draft Release（不勾选则仅上传 Artifact 供测试）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # 创建 Release 并上传产物
+
+jobs:
+  # ── Windows：NSIS + MSI ──────────────────────────────────────────
+  build-windows:
+    name: Windows (nsis + msi)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 启用 cargo 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装 npm 依赖
+        run: npm ci
+
+      # Tauri 自动下载 WiX(msi) / NSIS 工具链；WebView2 走 downloadBootstrapper
+      - name: 构建 Tauri 应用
+        run: npm run tauri:build
+        env:
+          # CI 用 ASCII productName 打包，避免中文名导致 NSIS/MSI 编码错误
+          TAURI_CONFIG: '{"productName":"FastenerTradeWorkbench"}'
+
+      - name: 上传产物到 Actions Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-bundles
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+
+      - name: 上传到 GitHub Release（草稿，仅推 tag 或勾选 create_release 时）
+        if: github.event_name == 'push' || inputs.create_release == true
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+
+  # ── macOS：.app + .dmg（ad-hoc 签名，仅构建机可用）───────────────
+  # macos-latest 为 arm64 原生 runner，产物即 aarch64；
+  # dmg 由 scripts/make-dmg.sh 用 hdiutil 生成（Tauri 自带 create-dmg
+  # 依赖 AppleScript，在 CI 无 GUI 环境会失败，故不用）。
+  build-macos:
+    name: macOS (app + dmg)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 启用 cargo 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装 npm 依赖
+        run: npm ci
+
+      - name: 构建 Tauri 应用（仅 .app）
+        run: npm run tauri:build
+        env:
+          # CI 用 ASCII productName 打包，产物文件名全 ASCII，
+          # 避免 upload-artifact / action-gh-release 处理中文文件名出错
+          TAURI_CONFIG: '{"productName":"FastenerTradeWorkbench"}'
+
+      - name: 生成 .dmg（hdiutil，CI 可用）
+        run: npm run make:dmg
+        env:
+          # 与 TAURI_CONFIG 保持一致，dmg 产物名使用 ASCII
+          PRODUCT_NAME: FastenerTradeWorkbench
+
+      - name: 打包 .app 为 zip（保留权限与符号链接）
+        run: |
+          cd "src-tauri/target/release/bundle/macos"
+          ditto -c -k --keepParent "FastenerTradeWorkbench.app" "$RUNNER_TEMP/FastenerTradeWorkbench-macos-aarch64.zip"
+
+      - name: 上传产物到 Actions Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-bundles
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/FastenerTradeWorkbench-macos-aarch64.zip
+            src-tauri/target/release/bundle/dmg/*.dmg
+
+      - name: 上传到 GitHub Release（草稿，仅推 tag 或勾选 create_release 时）
+        if: github.event_name == 'push' || inputs.create_release == true
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ${{ runner.temp }}/FastenerTradeWorkbench-macos-aarch64.zip
+            src-tauri/target/release/bundle/dmg/*.dmg

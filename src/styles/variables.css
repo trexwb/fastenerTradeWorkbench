@@ -1,0 +1,52 @@
+/* ===== THEME: 默认（精密工坊·铜） ===== */
+:root,[data-theme="default"]{
+  --accent:#b45309;--accent-d:#92400e;--accent-l:#fff7ed;--accent-p:#fed7aa;
+  --pri:#3b5998;--pri-d:#2d4578;--pri-l:#eff2f8;--pri-p:#d0dbf2;
+  --green:#5d7a3a;--green-l:#f4f8ef;--amber:#b45309;--amber-l:#fef9f1;
+  --red:#c44e3d;--red-l:#fdf6f5;--gray:#78716c;--ink:#2c2826;
+  --line:#e7e3dd;--bg:#f3f0eb;--card:#fefdfb;--side:#1c1b1a;--side2:#2d2a26;
+  --radius:6px;--radius-sm:4px;--radius-lg:10px;--content-max:1400px;
+  --shadow:0 0 0 1px rgba(0,0,0,.04),0 1px 4px rgba(0,0,0,.05);
+  --shadow-md:0 0 0 1px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.08);
+  --side-ink:#c8d3e0;--side-ink-dim:#a8b8cc;--side-brand:#fff;
+  --side-brand-sub:#8b8178;--side-hover-bg:rgba(255,255,255,.05);
+  --side-hover-ink:#dde6f0;--side-active-bg:var(--pri);--side-active-ink:#fff;
+  --side-border:rgba(255,255,255,.1);--side-ft-border:rgba(255,255,255,.07);
+  --side-ft-btn-bg:rgba(255,255,255,.06);--side-ft-btn-border:rgba(255,255,255,.08);
+  --side-ft-btn-ink:#c8d3e0;--side-ft-btn-hover:rgba(255,255,255,.1);
+  --topbar-bg:#fefdfb;
+  /* 语义别名（旧引用/内联样式用，随主题基础变量自动切换） */
+  --blue:var(--pri);--warn:var(--amber);--text:var(--ink);--fg-soft:var(--gray);--pri-bg:var(--pri-l);
+  /* 状态边框/浅底（替换原硬编码 hex，保证两主题协调） */
+  --bg-soft:#f6f4f1;--bg-tint:#f8fafc;--row-alt:#fbfaf8;--row-hover:#f7f3ef;
+  --green-line:#d4e4c0;--amber-line:#fde2c3;--red-line:#f7c9c4;
+  --purple:#7c3aed;--purple-l:#f5f3ff;--purple-line:#ddd6fe;
+  --tooltip-bg:#1e293b;
+  /* z-index 层级（从低到高） */
+  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-toast:2000;
+}
+/* ===== THEME: 奶油白（薄荷绿·浅蓝） ===== */
+[data-theme="cream"]{
+  --accent:#7ec8a0;--accent-d:#5da880;--accent-l:#f2faf6;--accent-p:#d4f0e2;
+  --pri:#6a9dd4;--pri-d:#4d82b8;--pri-l:#f1f6fc;--pri-p:#d4e4f6;
+  --green:#7ec8a0;--green-l:#f2faf6;--amber:#e8a860;--amber-l:#fef9f2;
+  --red:#e09085;--red-l:#fef6f5;--gray:#9e9b95;--ink:#423f3a;
+  --line:#ebe7df;--bg:#fbf9f4;--card:#fffefc;--side:#edf2f8;--side2:#e0e8f2;
+  --radius:10px;--radius-sm:6px;--radius-lg:14px;--content-max:1400px;
+  --shadow:0 0 0 1px rgba(0,0,0,.025),0 2px 4px rgba(0,0,0,.03);
+  --shadow-md:0 0 0 1px rgba(0,0,0,.03),0 4px 16px rgba(0,0,0,.05);
+  --side-ink:var(--ink);--side-ink-dim:var(--gray);--side-brand:var(--pri);
+  --side-brand-sub:var(--gray);--side-hover-bg:rgba(0,0,0,.04);
+  --side-hover-ink:var(--ink);--side-active-bg:var(--pri-l);--side-active-ink:var(--pri);
+  --side-border:var(--side2);--side-ft-border:var(--side2);
+  --side-ft-btn-bg:rgba(0,0,0,.04);--side-ft-btn-border:var(--side2);
+  --side-ft-btn-ink:var(--gray);--side-ft-btn-hover:rgba(0,0,0,.06);
+  --topbar-bg:var(--card);
+  /* 语义别名（与 default 主题保持同名，值随本主题基础变量切换） */
+  --blue:var(--pri);--warn:var(--amber);--text:var(--ink);--fg-soft:var(--gray);--pri-bg:var(--pri-l);
+  /* 状态边框/浅底（奶油白主题的协调色） */
+  --bg-soft:#f5f2ec;--bg-tint:#f4f7fb;--row-alt:#faf8f2;--row-hover:#f5f1e9;
+  --green-line:#d4f0e2;--amber-line:#f8e3c8;--red-line:#f8dcd8;
+  --purple:#8b5cf6;--purple-l:#f3f0ff;--purple-line:#ddd6fe;
+  --tooltip-bg:#334155;
+}
