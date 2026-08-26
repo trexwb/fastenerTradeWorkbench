@@ -64,10 +64,21 @@ function aiContextName(){const names={dashboard:'概览',units:'关联单位',sp
 function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?'打开 AI 助手（'+(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'）':'请先在 AI 设置中填写 DeepSeek API_KEY';}}
 function handleAIInputKey(event){if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();requestAISend();}}
 function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';input.focus();return;}input.value=action.prompt;requestAISend();}
+// 全局搜索面板注入的附加上下文（一次有效）
+let _aiExtraContext='';
+function openAIWithMessage(text,extraContext){
+  openAIAssistant();
+  _aiExtraContext=extraContext||'';
+  setTimeout(function(){
+    const input=document.getElementById('aiInput');
+    if(input){input.value=text||'';requestAISend();}
+  },60);
+}
 function requestAISend(){
   const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 DeepSeek API_KEY','warning');return;}
-  _aiCurrentSnapshot=AI.buildPreview(message);
+  const extra=_aiExtraContext;_aiExtraContext='';
+  _aiCurrentSnapshot=AI.buildPreview(message,extra);
   // 数据快照确认弹窗：首次发送提示一次，确认后记住（localStorage），后续发送不再重复弹
   let confirmed=false;
   try{confirmed=localStorage.getItem('wb_fastener_ai_confirm')==='1';}catch(e){}

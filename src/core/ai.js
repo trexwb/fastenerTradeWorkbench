@@ -88,10 +88,10 @@ const AI=(function(){
     if(entity)blocks.push('【命中单位】\n'+entity.name+' | 角色：'+(entity.roles||[]).join('/')+' | 评级：'+(entity.rating||'未评级'));
     return blocks.filter(Boolean).join('\n\n');
   }
-  function buildPreview(message){
+  function buildPreview(message,extra){
     const overview=extractOverview();const status=Object.keys(overview.byStatus).map(key=>key+' '+overview.byStatus[key]+'笔').join(' / ');
     const base='【经营概况】\n订单：'+(DB.orders||[]).length+'笔（'+status+'）\n销售额：'+money(overview.sales)+' | 采购成本：'+money(overview.cost)+' | 利润：'+money(overview.profit)+'（毛利率 '+overview.margin+'%）\n应收未收：'+money(overview.receivables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.receivables.length+'家） | 应付未付：'+money(overview.payables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.payables.length+'家）\n客户/供应商：'+(DB.units||[]).filter(item=>(item.roles||[]).includes('采购商')).length+'/'+(DB.units||[]).filter(item=>(item.roles||[]).includes('供应商')).length;
-    return [base,extractPageContext(),extractByKeywords(message,overview)].filter(Boolean).join('\n\n');
+    return [base,extractPageContext(),extractByKeywords(message,overview),extra].filter(Boolean).join('\n\n');
   }
   function buildSystemPrompt(snapshot){
     return '你是紧固件贸易工作台的助手，既是数据助理也是系统操作顾问。可调用写入工具起草对单位/报价/订单等数据的修改，可调用查询工具（query_*）读取脱敏数据，可调用功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer/open_unit_form/open_order_form/open_price_form/open_bom_form）触发视图导航、Excel 导出、打开抽屉、打开业务表单等 UI 动作，也可基于脱敏快照做只读分析与建议。\n\n'+

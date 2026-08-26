@@ -624,3 +624,36 @@ kbd{display:inline-block;background:var(--bg-soft);border:1px solid var(--line);
 .ops-trend-bar{width:70%;background:var(--accent,#4da3ff);border-radius:3px 3px 0 0;position:relative;min-height:2px;opacity:.85;}
 .ops-trend-bar .ops-trend-n{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--gray,#888);white-space:nowrap;}
 .ops-trend-label{font-size:10px;color:var(--gray,#999);}
+
+/* =========================================================
+   全局搜索命令面板（⌘K）
+   ========================================================= */
+.cmd-overlay{z-index:1600;background:#1c1b1a80;justify-content:center;align-items:flex-start;padding:12vh 20px 20px;display:flex;position:fixed;inset:0;animation:.15s cmdMaskIn}
+.cmd-panel{background:var(--card);border-radius:12px;width:640px;max-width:100%;max-height:76vh;flex-direction:column;display:flex;box-shadow:0 24px 64px #0004;animation:.2s cubic-bezier(.4,0,.2,1) cmdIn;overflow:hidden}
+.cmd-input-wrap{border-bottom:1px solid var(--line);flex-shrink:0;align-items:center;gap:10px;padding:14px 16px;display:flex}
+.cmd-input-wrap>svg{color:var(--gray);flex-shrink:0}
+.cmd-input{width:100%;border:none;outline:none;background:0 0;padding:0;font-size:16px;box-shadow:none}
+.cmd-close{border:1px solid var(--line);background:var(--card);color:var(--gray);border-radius:6px;cursor:pointer;flex-shrink:0;justify-content:center;align-items:center;width:28px;height:28px;display:inline-flex;line-height:0;transition:all .15s}
+.cmd-close:hover{color:var(--red);border-color:#f7c9c4;background:var(--red-l)}
+.cmd-results{flex:1;padding:8px;overflow-y:auto}
+.cmd-group{margin-bottom:4px}
+.cmd-group-title{color:var(--gray);letter-spacing:.04em;margin:10px 12px 6px;font-size:11px;font-weight:600;text-transform:uppercase}
+.cmd-row{border-radius:8px;cursor:pointer;align-items:center;gap:10px;padding:9px 12px;display:flex;transition:background .1s}
+.cmd-row:hover{background:#f6f4f1}
+.cmd-row.sel{background:var(--pri);color:#fff}
+.cmd-row-main{flex:1;min-width:0}
+.cmd-row-title{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd-row-sub{color:var(--gray);margin-top:1px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd-row.sel .cmd-row-sub{color:#cbd5e1}
+.cmd-row-go{color:var(--gray);flex-shrink:0}
+.cmd-row.sel .cmd-row-go{color:#fff}
+.cmd-hit{color:inherit;background:var(--amber-l);border-radius:3px;padding:0 1px}
+.cmd-row.sel .cmd-hit{background:#ffffff33}
+.cmd-empty{text-align:center;color:var(--gray);flex-direction:column;align-items:center;gap:10px;padding:36px 20px;font-size:14px;display:flex}
+.cmd-ask-ai{border:1px solid var(--pri-p);background:var(--pri-l);color:var(--pri);border-radius:8px;cursor:pointer;align-items:center;gap:5px;padding:7px 16px;font:inherit;font-size:13px;display:inline-flex;transition:all .15s}
+.cmd-ask-ai:hover{background:var(--pri);border-color:var(--pri);color:#fff}
+.cmd-footer{border-top:1px solid var(--line);color:var(--gray);flex-shrink:0;flex-wrap:wrap;gap:14px;padding:9px 16px;font-size:12px;display:flex}
+.cmd-footer span{align-items:center;gap:4px;display:inline-flex}
+.cmd-ai-hint{margin-left:auto}
+@keyframes cmdMaskIn{0%{opacity:0}to{opacity:1}}
+@keyframes cmdIn{0%{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
