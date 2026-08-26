@@ -1004,7 +1004,15 @@ const SPEC_LABELS = {
 | `data_file_load` | — | `string \| null` | 读取 `data.json`；文件不存在返回 `null`；**严格 UTF-8 校验**，文件损坏时返回错误而非静默替换 |
 | `data_file_save` | `content: string` | — | 写入 `data.json`；**原子写入**（临时文件 + rename，防写一半损坏）；超 128MB 拒绝写入 |
 
-### 7.2 AI（DeepSeek 代理）
+### 7.2 外部链接打开
+
+| 命令 | 参数 | 返回 | 说明 |
+|------|------|------|------|
+| `open_external` | `url: string` | — | 用系统默认浏览器打开外链；仅接受 `http://` / `https://`（基于 tauri-plugin-opener） |
+
+Tauri WebView 默认不处理 `target="_blank"` 外链导航。前端 `router.js` 通过全局 click 委托检测 Tauri 运行时（`IS_TAURI_RUNTIME`），命中外链时 `preventDefault` 并 invoke 本命令；浏览器版保持原生新标签页行为。权限：`opener:default`（允许打开 http/https/mailto/tel）。
+
+### 7.3 AI（DeepSeek 代理）
 
 API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，仅属主可读写），前端无法读取明文，仅能查询是否已保存。
 
@@ -1016,6 +1024,6 @@ API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，
 
 **AI 命令约束**：模型白名单 `deepseek-v4-flash` / `deepseek-v4-pro`；消息数 ≤ 20 条、单条 ≤ 30KB；`max_tokens` 上限 4096；请求超时 180s；响应体上限 2MB。Token 缺失、消息超限、非白名单模型、上游 HTTP 非 2xx 均返回错误字符串。
 
-### 7.3 运行形态判定
+### 7.4 运行形态判定
 
 前端 `src/core/ai.js` / `src/core/store.js` 以 `window.__TAURI__?.core.invoke` 是否存在判定桌面版（`tauri`）或浏览器版（`web`），无单独探测命令。

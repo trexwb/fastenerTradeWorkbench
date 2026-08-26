@@ -5,6 +5,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+use tauri_plugin_opener::OpenerExt;
 use tokio::io::AsyncBufReadExt;
 
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";
@@ -85,6 +86,19 @@ fn ai_deepseek_token_has(app: tauri::AppHandle) -> Result<bool, String> {
     }
     let tok = fs::read_to_string(&p).map_err(|e| format!("读取 Token 文件失败: {e}"))?;
     Ok(!tok.trim().is_empty())
+}
+
+/// 用系统默认浏览器打开外部链接（http/https）。
+/// Tauri WebView 默认不处理 target="_blank" 外链导航，前端检测到
+/// Tauri 运行时改为 invoke 本命令；浏览器版保持原生 target="_blank"。
+#[tauri::command]
+fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("仅允许打开 http/https 链接".into());
+    }
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| format!("打开外部链接失败: {e}"))
 }
 
 /// 返回应用数据目录（IndexedDB 之外的 Token 等文件也存于此）。
@@ -305,6 +319,7 @@ async fn ai_deepseek_chat(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             data_dir_get,
             data_file_load,
@@ -312,6 +327,7 @@ pub fn run() {
             ai_deepseek_token_write,
             ai_deepseek_token_has,
             ai_deepseek_chat,
+            open_external,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FastenerTradeWorkbench tauri application");
