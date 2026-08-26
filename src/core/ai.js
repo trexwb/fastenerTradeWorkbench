@@ -446,6 +446,6 @@ const AI=(function(){
   return {
     state,runtimeLabel,QUICK_ACTIONS,ALLOWED_MODELS,DEFAULT_MODEL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
-    chat,aiWriteLoop,abort,setModel,setDeepseekToken,getDeepseekTokenDraft
+    chat,aiWriteLoop,abort,setModel,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft
   };
 })();
