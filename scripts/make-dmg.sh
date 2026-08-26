@@ -24,10 +24,18 @@ VERSION=$(grep -m1 '"version"'     "$CONF" | sed -E 's/.*:[[:space:]]*"([^"]+)".
 ARCH="aarch64"   # 本机 arm64；若构建 universal 请改此值
 
 APP="$MACOSDIR/${PRODUCT}.app"
+# 兜底：若按 PRODUCT 找不到（如构建时 productName 与实际不一致），
+# 直接从产物目录探测实际 .app 名，避免 CI 打包因命名不一致失败
 if [ ! -d "$APP" ]; then
-  echo "❌ 找不到 $APP"
-  echo "   请先运行: npm run tauri build"
-  exit 1
+  FOUND=$(ls -d "$MACOSDIR"/*.app 2>/dev/null | head -1 || true)
+  if [ -n "$FOUND" ]; then
+    echo ">>> 按 $PRODUCT 未找到 .app，改用实际产物: $(basename "$FOUND")"
+    APP="$FOUND"
+  else
+    echo "❌ 找不到 $APP"
+    echo "   请先运行: npm run tauri build"
+    exit 1
+  fi
 fi
 
 OUT="$DMGDIR/${PRODUCT}_${VERSION}_${ARCH}.dmg"

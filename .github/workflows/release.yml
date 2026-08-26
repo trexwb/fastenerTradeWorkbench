@@ -16,9 +16,10 @@
 #     人工确认后点"Publish release"正式发布。
 #   • ⚠️ 中文 productName 处理：tauri.conf.json 中 productName 为中文
 #     「紧固件贸易工作台」，在 CI 中直接使用会导致 WiX/MSI 打包编码错误、
-#     Release 上传中文文件名失败等问题。因此 CI 构建时通过 TAURI_CONFIG
-#     环境变量将 productName 覆盖为 ASCII 的 FastenerTradeWorkbench，
-#     产物文件名全 ASCII；窗口标题（windows[0].title）不受影响，仍为中文。
+#     Release 上传中文文件名失败等问题。因此 CI 构建时通过
+#     `tauri build --config` 参数（注意：TAURI_CONFIG 环境变量实测无效）
+#     将 productName 覆盖为 ASCII 的 FastenerTradeWorkbench，产物文件名
+#     全 ASCII；窗口标题（windows[0].title）不受影响，仍为中文。
 #     本地构建（npm run build）不受影响，仍使用中文 productName。
 # ═══════════════════════════════════════════════════════════════════
 
@@ -64,10 +65,16 @@ jobs:
 
       # Tauri 自动下载 WiX(msi) / NSIS 工具链；WebView2 走 downloadBootstrapper
       - name: 构建 Tauri 应用
-        run: npm run tauri:build
-        env:
-          # CI 用 ASCII productName 打包，避免中文名导致 NSIS/MSI 编码错误
-          TAURI_CONFIG: '{"productName":"FastenerTradeWorkbench"}'
+        # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
+        # 避免中文产物名导致 NSIS/MSI 编码错误
+        run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
+
+      - name: 自检产物文件名（必须全 ASCII，否则覆盖未生效）
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem "src-tauri/target/release/bundle/nsis","src-tauri/target/release/bundle/msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '[^\x00-\x7F]' }
+          if ($bad) { Write-Error "产物文件名含非 ASCII 字符（--config 覆盖未生效）: $($bad.Name -join ', ')"; exit 1 }
+          Write-Host "产物文件名自检通过"
 
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v7
@@ -116,17 +123,19 @@ jobs:
         run: npm ci
 
       - name: 构建 Tauri 应用（仅 .app）
-        run: npm run tauri:build
-        env:
-          # CI 用 ASCII productName 打包，产物文件名全 ASCII，
-          # 避免 upload-artifact / action-gh-release 处理中文文件名出错
-          TAURI_CONFIG: '{"productName":"FastenerTradeWorkbench"}'
+        # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
+        # 产物文件名全 ASCII，避免上传阶段处理中文文件名出错
+        run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make:dmg
         env:
-          # 与 TAURI_CONFIG 保持一致，dmg 产物名使用 ASCII
+          # 与 --config 覆盖的 productName 保持一致，dmg 产物名使用 ASCII
           PRODUCT_NAME: FastenerTradeWorkbench
+
+      - name: 自检 .app 产物（确保 --config 覆盖生效）
+        run: |
+          test -d "src-tauri/target/release/bundle/macos/FastenerTradeWorkbench.app" && echo "FastenerTradeWorkbench.app 存在，自检通过" || { echo "❌ FastenerTradeWorkbench.app 不存在（--config 覆盖未生效）"; ls src-tauri/target/release/bundle/macos/ 2>/dev/null || true; exit 1; }
 
       - name: 打包 .app 为 zip（保留权限与符号链接）
         run: |
