@@ -121,20 +121,9 @@ function confirmOpsModal(toolCalls,pendingEl){
       items.forEach(it=>{
         const cb=document.getElementById('ops_check_'+it.idx);
         if(cb&&cb.checked&&it.validation.ok){
-          const args=Object.assign({},it.args);
-          // create_unit：合并用户补全的敏感字段（仅填了才并入，避免污染）
-          if(it.name==='create_unit'){
-            [['phone','phone'],['taxId','tax'],['bank','bank'],['accountNo','acct'],['address','addr']].forEach(function(pair){
-              const el=document.getElementById('ops_sen_'+pair[1]+'_'+it.idx);
-              if(el&&String(el.value||'').trim())args[pair[0]]=el.value.trim();
-            });
-            // 联系人姓名单独读取
-            const cn=document.getElementById('ops_sen_name_'+it.idx);
-            if(cn&&String(cn.value||'').trim())args.contactName=cn.value.trim();
-          }
           approvedOps.push({
             name:it.name,
-            args:args,
+            args:it.args,
             __toolCallId:it.toolCallId,
             // 阶段4：并发脏读检测指纹 —— 弹窗确认时的 before 快照 JSON 字符串
             // executeOp 执行前会重新读取当前 before 对比，不一致则拒绝执行（防止弹窗期间数据被并发修改）
@@ -172,26 +161,13 @@ function renderOpsItem(it){
   if(/^delete_/.test(it.name)||it.name==='remove_order_item'){
     delNote='<div class="ops-note ops-note-trash">'+icon('trash','12')+' 删除后进入回收站，可在数据管理页恢复</div>';
   }
-  // 新建单位：敏感字段待补区（AI 不收集敏感信息，由用户补全）
-  let sensitive='';
-  if(it.name==='create_unit'&&v.ok){
-    sensitive='<div class="ops-sensitive"><div class="ops-sensitive-hd">敏感字段（选填，AI 不收集此类信息）</div>'+
-      '<div class="ops-sensitive-grid">'+
-      '<label>联系人<input id="ops_sen_name_'+it.idx+'" placeholder="姓名"></label>'+
-      '<label>电话<input id="ops_sen_phone_'+it.idx+'" placeholder="手机/固话"></label>'+
-      '<label>税号<input id="ops_sen_tax_'+it.idx+'" placeholder="纳税人识别号"></label>'+
-      '<label>开户行<input id="ops_sen_bank_'+it.idx+'" placeholder="开户银行"></label>'+
-      '<label>账号<input id="ops_sen_acct_'+it.idx+'" placeholder="银行账号"></label>'+
-      '<label>地址<input id="ops_sen_addr_'+it.idx+'" placeholder="注册地址"></label>'+
-      '</div></div>';
-  }
   return '<div class="ops-item '+cls+'">'+
     '<div class="ops-item-hd">'+
       '<label class="ops-check-wrap"><input type="checkbox" id="ops_check_'+it.idx+'" class="ops-check" '+(v.ok?'checked':'disabled')+'></label>'+
       '<span class="tag '+meta.tagCls+'">'+escHtml(meta.label)+'</span>'+
       '<span class="ops-target">'+escHtml(summarizeOpTarget(it))+'</span>'+
     '</div>'+
-    diffHTML+delNote+sensitive+
+    diffHTML+delNote+
   '</div>';
 }
 /** 渲染操作 diff 预览（旧值→新值，按工具类型分发） */

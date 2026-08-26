@@ -4,8 +4,8 @@
 const AIT=(function(){
   /** 写入工具统一前缀提示（描述里强声明「提案、不自动执行」） */
   const PROPOSAL_NOTE='此工具生成提案，前端将要求用户逐条确认，不会自动执行。';
-  /** 敏感字段说明（不在 schema 中暴露，由用户在确认弹窗里手动补全） */
-  const SENSITIVE_NOTE='敏感字段（联系人电话/微信、税号、银行账号、地址）不在工具参数中暴露，由用户在确认弹窗里手动补全。';
+  /** 补充字段说明：直接取自用户对话内容 */
+  const SENSITIVE_NOTE='字段直接取自用户对话内容，未提供的可省略；用户提供的信息均可作为普通字段使用。';
 
   /** 订单状态流转映射：当前状态 → 合法的下一站/终态分支 */
   const NEXT_STATUS={
@@ -33,7 +33,13 @@ const AIT=(function(){
             name:{type:'string',description:'单位全称（必填，不可与现有单位重复）'},
             roles:{type:'array',items:{type:'string',enum:['采购商','供应商']},description:'角色（至少选一个，可双角色）'},
             rating:{type:'string',enum:['主力','备选','新客'],description:'合作评级（可选）'},
-            term:{type:'string',enum:['货到付款','月结15天','月结30天','月结45天','月结60天','季结','面议','其他'],description:'结算账期（可选）'}
+            term:{type:'string',enum:['货到付款','月结15天','月结30天','月结45天','月结60天','季结','面议','其他'],description:'结算账期（可选）'},
+            contactName:{type:'string',description:'联系人姓名（可选，取自用户对话）'},
+            phone:{type:'string',description:'联系人电话（可选，取自用户对话）'},
+            taxId:{type:'string',description:'税号（可选，取自用户对话）'},
+            address:{type:'string',description:'单位地址（可选，取自用户对话）'},
+            bank:{type:'string',description:'开户行（可选，取自用户对话）'},
+            accountNo:{type:'string',description:'银行账号（可选，取自用户对话）'}
           },
           required:['name','roles']
         }
@@ -730,12 +736,21 @@ const AIT=(function(){
       if(!roles.length)return {ok:false,error:'至少选择一个角色（采购商/供应商）'};
       if(args.rating&&!['主力','备选','新客'].includes(args.rating))return {ok:false,error:'rating 取值非法'};
       if(args.term&&!['货到付款','月结15天','月结30天','月结45天','月结60天','季结','面议','其他'].includes(args.term))return {ok:false,error:'term 取值非法'};
-      // 敏感字段（可选，由用户在确认弹窗补全）：电话/地址/税号/开户行/账号
+      // 补充字段（可选，取自用户对话）：电话/地址/税号/开户行/账号
       const sensitive=['phone','address','taxId','bank','accountNo'];
       for(const k of sensitive){
         if(args[k]!==undefined&&args[k]!==null&&String(args[k]).length>200)return {ok:false,error:k+' 长度超限'};
       }
-      const after={id:'(自动生成)',name,roles,rating:args.rating||'',term:args.term||'',contacts:[],invoice:{},__sensitive:null};
+      // 用户对话中提供的联系方式/开票信息直接带入 preview（diff 可见）
+      const sName=String(args.contactName||'').trim();
+      const sPhone=String(args.phone||'').trim();
+      const sTax=String(args.taxId||'').trim();
+      const sAddr=String(args.address||'').trim();
+      const sBank=String(args.bank||'').trim();
+      const sAcct=String(args.accountNo||'').trim();
+      const after={id:'(自动生成)',name,roles,rating:args.rating||'',term:args.term||'',
+        contacts:(sName||sPhone)?[{name:sName,phone:sPhone}]:[],
+        invoice:(sTax||sAddr||sBank||sAcct||sPhone)?{taxId:sTax,address:sAddr,phone:sPhone,bank:sBank,accountNo:sAcct}:{}};
       return {ok:true,preview:{after}};
     },
     update_unit(args){
@@ -1081,11 +1096,11 @@ const AIT=(function(){
   const executors={
     create_unit(args,ctx){
       const u={id:uid('U'),name:String(args.name).trim(),roles:args.roles,rating:args.rating||'',term:args.term||'',contacts:[],invoice:{},createdAt:today()};
-      // 敏感字段落库（确认弹窗补全后并入 args）
+      // 联系方式/开票信息落库
       const sPhone=String(args.phone||'').trim();
       const sName=String(args.contactName||'').trim();
       if(sPhone||sName)u.contacts.push({name:sName,phone:sPhone,side:'供应',sides:['供应']});
-      if(args.taxId||args.address||args.bank||args.accountNo){
+      if(args.taxId||args.address||args.bank||args.accountNo||args.phone){
         u.invoice={taxId:String(args.taxId||'').trim(),address:String(args.address||'').trim(),phone:String(args.phone||'').trim(),bank:String(args.bank||'').trim(),accountNo:String(args.accountNo||'').trim()};
       }
       DB.units.push(u);
