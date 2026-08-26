@@ -57,12 +57,18 @@ function openAIAssistant(){
   const body='<section class="ai-chat" aria-label="AI 助手">'+
     '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
-    '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">⌘ / Ctrl + Enter 发送 · Shift + Enter 换行</div></div></section>';
+    '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
 }
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
 function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
-function handleAIInputKey(event){if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();requestAISend();}}
+function handleAIInputKey(event){
+  // Enter 直接发送；Ctrl/Cmd+Enter 与 Shift+Enter 均为换行（textarea 默认行为，不拦截）
+  if(event.key==='Enter'&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){
+    event.preventDefault();
+    requestAISend();
+  }
+}
 function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';input.focus();return;}input.value=action.prompt;requestAISend();}
 // 全局搜索面板注入的附加上下文（一次有效）
 let _aiExtraContext='';

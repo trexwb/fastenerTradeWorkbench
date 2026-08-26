@@ -63,6 +63,16 @@
 
 **变更文件**：`src/views/ai-chat.js`、`src/views/search-panel.js`、`src/core/ai.js`
 
+### 6. AI 输入框快捷键调整
+
+| 按键 | 之前 | 现在 |
+|------|------|------|
+| `Enter` | 换行 | **直接发送** |
+| `⌘ / Ctrl + Enter` | 发送 | 换行 |
+| `Shift + Enter` | 换行 | 换行（不变） |
+
+**变更文件**：`src/views/ai-chat.js`（handleAIInputKey + 输入框提示文案）
+
 ---
 
 ## 版本号
