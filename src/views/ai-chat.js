@@ -68,8 +68,12 @@ function requestAISend(){
   const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 DeepSeek API_KEY','warning');return;}
   _aiCurrentSnapshot=AI.buildPreview(message);
+  // 数据快照确认弹窗：首次发送提示一次，确认后记住（localStorage），后续发送不再重复弹
+  let confirmed=false;
+  try{confirmed=localStorage.getItem('wb_fastener_ai_confirm')==='1';}catch(e){}
+  if(confirmed){sendAIMessage(message,_aiCurrentSnapshot);return;}
   const body='<p class="note">以下是本次将发送给 AI 的脱敏数据快照，不含联系人电话、地址、税号或银行账户。</p><pre class="ai-preview">'+escHtml(_aiCurrentSnapshot)+'</pre>';
-  modal('确认发送数据',body,'确认发送',()=>{closeModal();sendAIMessage(message,_aiCurrentSnapshot);},true);
+  modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}sendAIMessage(message,_aiCurrentSnapshot);},true);
 }
 async function sendAIMessage(message,snapshot){
   const input=document.getElementById('aiInput');const messages=document.getElementById('aiMessages');const history=AI.getHistory();if(!messages)return;if(input)input.value='';
