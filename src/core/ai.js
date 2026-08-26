@@ -1,7 +1,8 @@
 // ai.js — 可选 AI 增强：脱敏上下文、DeepSeek 直连（Tauri 桌面版走 Rust 命令；浏览器版前端直连，CORS 已实测放行）
 const AI=(function(){
   const HISTORY_LIMIT=50;
-  const HISTORY_CONTEXT_LIMIT=6;
+  const HISTORY_CONTEXT_LIMIT=20;   // 携带更多历史上下文（超长时自动压缩）
+  const HISTORY_CONTEXT_CHARS=20000; // 上下文总字符阈值，超过触发一次压缩
   const HEALTH_INTERVAL_MS=30000;
   const DEFAULT_MODEL='deepseek-v4-flash';
   const ALLOWED_MODELS=new Set(['deepseek-v4-flash','deepseek-v4-pro']);
@@ -106,6 +107,29 @@ const AI=(function(){
       snapshot;
   }
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
+
+  /** 上下文压缩：把历史对话交给模型生成结构化摘要（无工具、纯文本请求）
+   *  - 触发：aiWriteLoop 首轮前，messages 总字符超 HISTORY_CONTEXT_CHARS
+   *  - 失败（网络/超时）返回 null，调用方降级为截断最近 6 条
+   *  - 摘要请求自身不走 aiWriteLoop，不会递归触发压缩
+   */
+  async function compressContext(messages){
+    try{
+      const text=messages.filter(m=>m.role!=='system').map(function(m){
+        return (m.role==='user'?'用户：':'AI：')+String(m.content||'');
+      }).join('\n\n').slice(-30000);
+      if(!text.trim())return null;
+      const res=await chat([
+        {role:'system',content:'你是紧固件贸易助手。请将以下对话历史压缩为结构化中文摘要：保留涉及的单位/订单/报价/规格/金额等关键实体与数据、已完成的决策与操作、未完成事项与用户意图；不要遗漏重要数字；直接输出摘要正文，不要任何说明前缀。'},
+        {role:'user',content:text}
+      ],null,{tools:[]});
+      const sum=(res&&res.content?String(res.content):'').trim();
+      return sum.length>50?sum:null;
+    }catch(e){
+      console.warn('上下文压缩失败，降级为截断:',e);
+      return null;
+    }
+  }
   function persistMessage(role,content,snapshot){const message={id:uid('AI'),role,content,context:view,timestamp:Date.now(),snapshot:snapshot||''};DB.aiChats=DB.aiChats||[];DB.aiChats.push(message);DB.aiChats=DB.aiChats.slice(-HISTORY_LIMIT);saveDB();return message;}
   function setModel(m){if(ALLOWED_MODELS.has(m))state.model=m;else state.model=DEFAULT_MODEL;}
   function webHasKey(){return !!((localStorage.getItem(WEB_KEY_STORAGE)||'').trim());}
@@ -196,9 +220,10 @@ const AI=(function(){
     const reqBody={
       model:state.model,
       messages:messages.map(function(m){
-        // tool 角色消息需带 tool_call_id 字段；user/assistant/system 只透传 role+content
+        // 协议透传：tool 消息带 tool_call_id；assistant 工具调用消息带 tool_calls（缺一即 400）
         const out={role:m.role,content:String(m.content||'')};
         if(m.tool_call_id)out.tool_call_id=m.tool_call_id;
+        if(m.tool_calls)out.tool_calls=m.tool_calls;
         return out;
       }),
       stream:true,
@@ -272,6 +297,7 @@ const AI=(function(){
             messages:messages.map(function(m){
               const out={role:m.role,content:String(m.content||'')};
               if(m.tool_call_id)out.tool_call_id=m.tool_call_id;
+              if(m.tool_calls)out.tool_calls=m.tool_calls;
               return out;
             }),
             model:state.model,
@@ -344,6 +370,22 @@ const AI=(function(){
     let lastToolResults=[];
     const MAX_ROUNDS=8;  // 阶段3：查询+写入多轮，增加到 8 轮
     for(let round=0;round<MAX_ROUNDS;round++){
+      // 上下文压缩：首轮前检查总长度，超阈值时先让模型压缩历史为摘要
+      // （工具多轮进行中不压缩，避免破坏 assistant(tool_calls)→tool 的协议连续性）
+      if(round===0){
+        const totalChars=messages.reduce(function(sum,m){return sum+String(m.content||'').length;},0);
+        if(totalChars>HISTORY_CONTEXT_CHARS){
+          const summary=await compressContext(messages);
+          if(summary){
+            const systemMsg=messages.find(m=>m.role==='system')||null;
+            const lastUser=[].concat(messages).reverse().find(m=>m.role==='user')||null;
+            messages.length=0;
+            if(systemMsg)messages.push(systemMsg);
+            messages.push({role:'user',content:'【历史对话摘要】\n'+summary+(lastUser?'\n\n【当前问题】\n'+lastUser.content:'')});
+            if(typeof toast==='function')toast('上下文较长，已自动压缩为摘要','info');
+          }
+        }
+      }
       const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
