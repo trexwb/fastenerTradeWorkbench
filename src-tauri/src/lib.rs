@@ -230,20 +230,24 @@ async fn ai_deepseek_chat(
         .as_ref()
         .map(|b| is_local_endpoint(b))
         .unwrap_or(false);
-    let token = if local_base {
-        // 本地端点（Ollama 等）允许无 Key：用占位 token（其 OpenAI 兼容层要求 Authorization 头非空）
+    // Token 优先级：用户已保存的真实 Key > 本地端点占位（Ollama 兼容）> 报错
+    // （oMLX 等本地服务会校验 Key 与自身配置一致，必须优先用真实 Key，不能一进本地就用占位）
+    let saved_token = {
+        let p = token_path(&app)?;
+        if p.exists() {
+            let t = fs::read_to_string(&p).map_err(|e| format!("读取 Token 失败: {e}"))?;
+            t.trim().to_string()
+        } else {
+            String::new()
+        }
+    };
+    let token = if !saved_token.is_empty() {
+        saved_token
+    } else if local_base {
+        // 本地端点无 Key：占位 token（Ollama 的 OpenAI 兼容层要求 Authorization 头非空）
         "ollama".to_string()
     } else {
-        let p = token_path(&app)?;
-        if !p.exists() {
-            return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
-        }
-        let t = fs::read_to_string(&p).map_err(|e| format!("读取 Token 失败: {e}"))?;
-        let t = t.trim().to_string();
-        if t.is_empty() {
-            return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
-        }
-        t
+        return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
     };
 
     if !valid_messages(&messages) {

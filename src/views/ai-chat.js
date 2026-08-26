@@ -319,7 +319,7 @@ async function openAISettings(){
     return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
       '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
       '<div class="field"><label class="f">端点预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点选预设自动填入下方 Base URL 与模型；也可手动自定义任意 OpenAI 兼容端点。</div></div>'+
-      '<div class="field"><label class="f" for="aiBaseUrl">Base URL（OpenAI 兼容端点）</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'"><div class="note">需以 /v1 结尾；本地 Ollama 填 http://127.0.0.1:11434/v1（Key 可留空）；本地 oMLX 填 http://127.0.0.1:8080/v1，API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。</div></div>'+
+      '<div class="field"><label class="f" for="aiBaseUrl">Base URL（OpenAI 兼容端点）</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'"><div class="note">需以 /v1 结尾；本地 Ollama 填 http://127.0.0.1:11434/v1（Key 可留空）；本地 oMLX 填 http://127.0.0.1:8000/v1，API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。</div></div>'+
       '<div class="field"><label class="f" for="aiModel">模型</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"><div class="note">OpenAI 兼容模型名；自定义端点可填该端点支持的任意模型。</div></div>'+
       '<div class="field"><label class="f" for="aiDeepseekToken">API_KEY</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 API_KEY（仅在编辑弹窗中可见）':'尚未设置 API_KEY')+' · '+(isTauri?'由桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，不会发送给任何第三方；本地模型可留空。</div></div>'+
       '<button class="btn danger" type="button" onclick="clearAIHistory()">清空本机对话历史</button>';
@@ -331,9 +331,16 @@ async function openAISettings(){
     const baseEl=document.getElementById('aiBaseUrl');const modelEl=document.getElementById('aiModel');
     if(baseEl&&modelEl){try{AI.setProvider(baseEl.value,modelEl.value);}catch(e){toast('保存端点失败：'+(e&&e.message?e.message:e),'error');}}
     const tokenEl=document.getElementById('aiDeepseekToken');
+    const tokenVal=tokenEl?(tokenEl.value||'').trim():'';
     try{
       await AI.setDeepseekToken(tokenEl?tokenEl.value:'');
-      toast('AI 设置已保存','success');
+      // 本地端点未填 Key 时按服务规则提示（Ollama 可免；oMLX 必须与 oMLX 设置中的 Key 一致）
+      const baseVal=baseEl?(baseEl.value||'').trim():'';
+      if(!tokenVal&&/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseVal)){
+        toast('本地端点未填 API_KEY：Ollama 可直接使用；若为 oMLX，需在 oMLX「设置 → API Key」配置后，在应用内填写相同值','info');
+      }else{
+        toast('AI 设置已保存','success');
+      }
     }catch(e){toast('保存 API_KEY 失败：'+(e&&e.message?e.message:e),'error');}
     closeModal();
   });
