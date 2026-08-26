@@ -159,6 +159,7 @@ const AI=(function(){
   /** 多模型接入：设置 Base URL 与模型名（OpenAI 兼容；本地 Ollama 可留空 API_KEY） */
   function setProvider(baseUrl,model){
     const b=baseUrl&&String(baseUrl).trim()?String(baseUrl).trim().replace(/\/+$/,''):'';
+    if(b&&!/^https?:\/\//.test(b))throw new Error('Base URL 需以 http:// 或 https:// 开头');
     if(b){state.baseUrl=b;try{localStorage.setItem(WEB_BASE_STORAGE,b);}catch(e){}}
     else{state.baseUrl=DEFAULT_BASE_URL;try{localStorage.removeItem(WEB_BASE_STORAGE);}catch(e){}}
     const m=model&&String(model).trim()?String(model).trim():'';
@@ -166,7 +167,7 @@ const AI=(function(){
     else{state.model=DEFAULT_MODEL;try{localStorage.removeItem(WEB_MODEL_STORAGE);}catch(e){}}
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
-  function apiChatUrl(){return (state.baseUrl||DEFAULT_BASE_URL).replace(/\/+$/,'')+'/chat/completions';}
+  function apiChatUrl(){const b=(state.baseUrl||DEFAULT_BASE_URL).replace(/\/+$/,'');return b.endsWith('/chat/completions')?b:b+'/chat/completions';}
   function webHasKey(){return !!((localStorage.getItem(WEB_KEY_STORAGE)||'').trim());}
 
   /** 健康检查：tauri 检查 Rust 通道与 Token 文件；web 检查本地保存的 Key */
@@ -284,16 +285,22 @@ const AI=(function(){
       reqBody.tools=options.tools;
       // tool_choice 默认 auto：让模型自主决定是否调用工具，避免强制调用导致纯分析场景失败
     }
-    const res=await fetch(apiChatUrl(),{
-      method:'POST',
+    let res;
+    try{
+      res=await fetch(apiChatUrl(),{
+        method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'text/event-stream'},
       body:JSON.stringify(reqBody),
-      signal:signal
-    });
+        signal:signal
+      });
+    }catch(err){
+      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(err&&err.message?err.message:JSON.stringify(err)));
+    }
     if(!res.ok){
       let detail='';
       try{const j=await res.json();detail=(j&&j.error&&j.error.message)?j.error.message:'';}catch(_){}
-      throw new Error('DeepSeek 返回错误 (HTTP '+res.status+')'+(detail?'：'+detail:''));
+      if(!detail){try{detail=(await res.text()).slice(0,200);}catch(_){detail='';}}
+      throw new Error(providerLabel()+' 返回错误 (HTTP '+res.status+(detail?')：'+detail:')'));
     }
     if(!res.body||!res.body.getReader)throw new Error('当前浏览器不支持流式响应');
     const reader=res.body.getReader();const decoder=new TextDecoder();let buffer='';
@@ -304,7 +311,17 @@ const AI=(function(){
       let idx;
       while((idx=buffer.indexOf('\n'))>=0){
         const line=buffer.slice(0,idx).trim();buffer=buffer.slice(idx+1);
-        if(!line.startsWith('data:'))continue;
+        if(!line.startsWith('data:')){
+          if(!state.webBuf){
+            try{
+              const j=JSON.parse(line);
+              const ch=j.choices&&j.choices[0];
+              const text=ch&&(ch.message?ch.message.content:(ch.delta?ch.delta.content:null));
+              if(typeof text==='string'&&text){state.webBuf+=text;if(onChunk)try{onChunk(text);}catch(_){}}
+            }catch(_){}
+          }
+          continue;
+        }
         const raw=line.slice(5).trim();
         if(!raw||raw==='[DONE]')continue;
         try{
@@ -419,7 +436,8 @@ const AI=(function(){
   async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
     const messages=[...initialMessages];
     let lastToolResults=[];
-    let lastBatchId=null;   // 本轮首个写入批次 ID（供对话内一键撤销，复用持久化 undoBatch）
+    let lastBatchIds=[];    // 本轮所有写入批次 ID（供对话内一键撤销整轮，复用持久化 undoBatch）
+    let lastBatchId=null;     // 兼容字段：最后一个批次 ID
     const MAX_ROUNDS=8;  // 阶段3：查询+写入多轮，增加到 8 轮
     for(let round=0;round<MAX_ROUNDS;round++){
       // 上下文压缩：首轮前检查总长度，超阈值时先让模型压缩历史为摘要
@@ -441,7 +459,7 @@ const AI=(function(){
       const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
-        return {content:res.content,lastToolResults,lastBatchId};
+        return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};
       }
       // P0 修复：归一化 tool_calls —— 流式累积可能缺失 id，而 OpenAI 协议要求
       // assistant.tool_calls 的 id 与 tool 响应的 tool_call_id 非空且精确匹配，
@@ -490,6 +508,7 @@ const AI=(function(){
           const batchId=uid('AOB');
           const execRes=AIT.executeOps(confirmed.approvedOps,{aiChatId:aiChatId,batchId:batchId,operator:'ai'});
           lastToolResults=execRes.results;
+          lastBatchIds.push(batchId);
           lastBatchId=batchId;
           // 回填：approvedOps 的执行结果 + 未勾选的「用户未选」
           writeResults=writeOps.map(tc=>{
@@ -508,7 +527,7 @@ const AI=(function(){
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }
-    return {content:'',lastToolResults,lastBatchId};
+    return {content:'',lastToolResults,lastBatchIds,lastBatchId};
   }
   /** 撤销指定批次的 AI 工具改动（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
    *  返回已撤销条数（供 UI 提示）；batchId 无效或已撤销返回 0 */

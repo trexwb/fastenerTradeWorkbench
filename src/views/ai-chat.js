@@ -110,33 +110,37 @@ async function sendAIMessage(message,snapshot){
       const failN=res.lastToolResults.length-okN;
       const tip='已执行 '+okN+' 条操作'+(failN?'，'+failN+' 条失败':'');
       toast(tip,failN?'warning':'success');
-      if(okN>0&&res.lastBatchId){
-        undoBar='<div class="ai-undo-bar" data-batch="'+escAttr(res.lastBatchId)+'"><span class="ai-undo-info">'+icon('check','13')+' 已执行 '+okN+' 条</span><button type="button" class="ai-undo-btn" onclick="undoAIBatch(\''+escAttr(res.lastBatchId)+'\',this)">'+icon('cornerUpLeft','13')+' 撤销本批</button><span class="ai-undo-hint">可在数据管理-操作历史查看</span></div>';
+      const batchIds=(res.lastBatchIds&&res.lastBatchIds.length)?res.lastBatchIds:(res.lastBatchId?[res.lastBatchId]:[]);
+      if(okN>0&&batchIds.length){
+        const bidStr=escAttr(batchIds.join(','));
+        undoBar='<div class="ai-undo-bar" data-batch="'+bidStr+'"><span class="ai-undo-info">'+icon('check','13')+' 已执行 '+okN+' 条</span><button type="button" class="ai-undo-btn" onclick="undoAIBatch(\''+bidStr+'\',this)">'+icon('cornerUpLeft','13')+' 撤销本轮改动</button><span class="ai-undo-hint">可在数据管理-操作历史查看</span></div>';
       }
       if(typeof render==='function'&&okN>0)render();
     }
     pendingEl.outerHTML=aiMessageHTML(assistantMessage)+undoBar;
-  }catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+  }catch(error){const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');pending.content=error&&error.name==='AbortError'?'已停止生成。':'请求失败：'+errMsg;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
 /** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
  *  @param {string} batchId - aiOps 批次 ID
  *  @param {Element} btnEl - 触发按钮（撤销后置灰） */
-function undoAIBatch(batchId,btnEl){
-  if(!batchId){toast('无可撤销的批次','info');return;}
-  const ops=(DB.aiOps||[]).filter(o=>o.batchId===batchId&&!o.undone);
-  if(!ops.length){toast('该批次已无可撤销的操作','info');if(btnEl){btnEl.disabled=true;btnEl.classList.add('done');btnEl.innerHTML=icon('check','13')+' 已撤销';}return;}
-  confirmModal('确认撤销本批 '+ops.length+' 条 AI 操作？将按操作类型反向还原（创建→删除、修改→还原旧值、删除→恢复），不会影响你之后的手动改动。',()=>{
+function undoAIBatch(batchStr,btnEl){
+  const batchIds=batchStr?String(batchStr).split(',').filter(Boolean):[];
+  if(!batchIds.length){toast('无可撤销的批次','info');return;}
+  const ops=(DB.aiOps||[]).filter(o=>batchIds.includes(o.batchId)&&!o.undone);
+  if(!ops.length){toast('该轮已无可撤销的操作','info');if(btnEl){btnEl.disabled=true;btnEl.classList.add('done');btnEl.innerHTML=icon('check','13')+' 已撤销';}return;}
+  confirmModal('确认撤销本轮 '+ops.length+' 条 AI 操作？将按操作类型反向还原（创建→删除、修改→还原旧值、删除→恢复），不会影响你之后的手动改动。',()=>{
     try{
-      const n=AI.undoLastBatch(batchId);
-      toast(n?('已撤销 '+n+' 条操作'):'该批次已无可撤销操作',n?'success':'info');
+      let n=0;
+      batchIds.forEach(function(b){n+=AI.undoLastBatch(b);});
+      toast(n?('已撤销 '+n+' 条操作'):'该轮已无可撤销操作',n?'success':'info');
       if(btnEl){btnEl.disabled=true;btnEl.classList.add('done');btnEl.innerHTML=icon('check','13')+' 已撤销';}
       const bar=btnEl?btnEl.closest('.ai-undo-bar'):null;
-      if(bar){const info=bar.querySelector('.ai-undo-info');if(info)info.innerHTML=icon('cornerUpLeft','13')+' 本批已撤销';}
+      if(bar){const info=bar.querySelector('.ai-undo-info');if(info)info.innerHTML=icon('cornerUpLeft','13')+' 本轮已撤销';}
       if(typeof render==='function')render();
     }catch(e){toast('撤销失败：'+(e&&e.message?e.message:e),'error');}
     closeModal();
-  },'撤销本批');
+  },'撤销本轮');
 }
 
 /* ===== AI 操作提案确认弹窗（写入流程核心交互） ===== */

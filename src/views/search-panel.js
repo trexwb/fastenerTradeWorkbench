@@ -16,11 +16,11 @@ function _cmdSales(o){return typeof orderSales==='function'?orderSales(o):0;}
 
 /** 关键字高亮（escHtml 后按原词索引，q 已小写） */
 function _cmdHit(text,q){
-  const t=escHtml(String(text==null?'':text));
-  if(!q)return t;
-  const i=t.toLowerCase().indexOf(q);
-  if(i<0)return t;
-  return t.slice(0,i)+'<mark class="cmd-hit">'+t.slice(i,i+q.length)+'</mark>'+t.slice(i+q.length);
+  const s=String(text==null?'':text);
+  if(!q)return escHtml(s);
+  const i=s.toLowerCase().indexOf(q);
+  if(i<0)return escHtml(s);
+  return escHtml(s.slice(0,i))+'<mark class="cmd-hit">'+escHtml(s.slice(i,i+q.length))+'</mark>'+escHtml(s.slice(i+q.length));
 }
 
 /** 六源搜索：返回 [{type,title,sub,action}]，按数据源顺序分组 */
@@ -28,42 +28,42 @@ function cmdSearch(q){
   q=(q||'').trim().toLowerCase();
   const out=[];
   if(!q)return out;
-  (DB.orders||[]).forEach(o=>{
+  (DB.orders||[]).forEach(o=>{if(out.length>=40)return;
     const buyer=_cmdUnitName(o.buyerId);
     const items=(o.items||[]).map(it=>(it.sku||'')+' '+(it.name||'')).join(' ');
-    if([o.id,buyer,o.status||'',items].join(' ').toLowerCase().includes(q)){
+    if([o.id,buyer,o.status||'',items,String(_cmdSales(o))].join(' ').toLowerCase().includes(q)){
       out.push({type:'order',title:o.id+' · '+buyer,sub:(o.status||'')+' · '+_cmdMoney(_cmdSales(o)),
         action:function(){curOrderView=o.id;go('orders');}});
     }
   });
-  (DB.units||[]).forEach(u=>{
+  (DB.units||[]).forEach(u=>{if(out.length>=40)return;
     const hay=[u.name,(u.roles||[]).join(' '),u.rating||'',typeof u.contact==='string'?u.contact:'',JSON.stringify(u.contacts||[])].join(' ').toLowerCase();
     if(hay.includes(q)){
       out.push({type:'unit',title:u.name,sub:(u.roles||[]).join('/')+(u.rating?' · '+u.rating:''),
         action:function(){go('units');}});
     }
   });
-  (DB.prices||[]).forEach(p=>{
+  (DB.prices||[]).forEach(p=>{if(out.length>=40)return;
     const sup=_cmdUnitName(p.unitId);
     if([_cmdSpecOf(p),sup,String(p.price||'')].join(' ').toLowerCase().includes(q)){
       out.push({type:'price',title:_cmdSpecOf(p)||'(无规格)',sub:sup+' · '+_cmdMoney(p.price),
         action:function(){go('prices');}});
     }
   });
-  (DB.bom||[]).forEach(b=>{
+  (DB.bom||[]).forEach(b=>{if(out.length>=40)return;
     if([b.sku||'',b.name||'',_cmdSpecOf(b)].join(' ').toLowerCase().includes(q)){
       out.push({type:'bom',title:((b.sku||'')+' '+(b.name||'')).trim(),sub:_cmdSpecOf(b),
         action:function(){go('bom');}});
     }
   });
-  (DB.settlements||[]).forEach(s=>{
+  (DB.settlements||[]).forEach(s=>{if(out.length>=40)return;
     const n=_cmdUnitName(s.unitId);
     if([n,s.type||'',String(s.amount||'')].join(' ').toLowerCase().includes(q)){
       out.push({type:'settle',title:n,sub:(s.type||'')+' · '+_cmdMoney(s.amount),
         action:function(){go('settlements');}});
     }
   });
-  (DB.invoices||[]).forEach(v=>{
+  (DB.invoices||[]).forEach(v=>{if(out.length>=40)return;
     const n=_cmdUnitName(v.unitId);
     if([n,v.type||'',String(v.amount||'')].join(' ').toLowerCase().includes(q)){
       out.push({type:'invoice',title:n,sub:(v.type||'')+' · '+_cmdMoney(v.amount),
@@ -114,10 +114,18 @@ function cmdHighlight(){
 function cmdInputKey(e){
   const k=e.key;
   if(k==='Escape'){e.preventDefault();closeSearchPanel();return;}
-  if(k==='ArrowDown'){e.preventDefault();if(_cmdRendered.length){_cmdSel=Math.min(_cmdSel+1,_cmdRendered.length-1);cmdHighlight();}return;}
-  if(k==='ArrowUp'){e.preventDefault();if(_cmdRendered.length){_cmdSel=Math.max(_cmdSel-1,0);cmdHighlight();}return;}
+  if(k==='ArrowDown'){e.preventDefault();if(_cmdRendered.length){_cmdSel=(_cmdSel+1)%_cmdRendered.length;cmdHighlight();}return;}
+  if(k==='ArrowUp'){e.preventDefault();if(_cmdRendered.length){_cmdSel=(_cmdSel-1+_cmdRendered.length)%_cmdRendered.length;cmdHighlight();}return;}
   if(k==='Enter'){
     e.preventDefault();
+    const inputEl=document.getElementById('cmdInput');
+    const raw=inputEl?inputEl.value:'';
+    const trimmed=raw.trim();
+    // 显式 ? 前缀（半角/全角均可）→ 强制问 AI（即便命中数据，也避免「输入问题却被当作导航」的冲突）
+    if(/^[?？]/.test(trimmed)){
+      askAISearch(trimmed.replace(/^[?？]\s*/,''));
+      return;
+    }
     if(_cmdRendered.length&&_cmdSel>=0){cmdOpen(_cmdSel);return;}
     askAISearch();
     return;
@@ -136,10 +144,13 @@ function cmdOpen(i){
   if(r.action)r.action();
 }
 
-/** 用当前输入直接问 AI（打开 AI 助手并自动发送） */
-function askAISearch(){
-  const input=document.getElementById('cmdInput');
-  const text=input?input.value.trim():'';
+/** 用当前输入直接问 AI（打开 AI 助手并自动发送）
+ *  @param {string} [text] - 可选，缺省时从 #cmdInput 读取；用于 ? 前缀剥离后的纯问题 */
+function askAISearch(text){
+  if(text===undefined||text===''){
+    const input=document.getElementById('cmdInput');
+    text=input?input.value.trim():'';
+  }
   if(!text)return;
   closeSearchPanel();
   if(typeof openAIWithMessage==='function')openAIWithMessage(text,'');
@@ -169,7 +180,7 @@ function openSearchPanel(){
         '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)">'+icon('x','15')+'</button>'+
       '</div></div>'+
       '<div id="cmdResults" class="cmd-results"></div>'+
-      '<div class="cmd-footer"><span><kbd class="cmd-kbd">↑↓</kbd> 选择</span><span><kbd class="cmd-kbd">Enter</kbd> 打开</span><span><kbd class="cmd-kbd">Tab</kbd> 问 AI</span><span><kbd class="cmd-kbd">Esc</kbd> 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' 直接输入问题回车 = 问 AI</span></div>'+
+      '<div class="cmd-footer"><span><kbd class="cmd-kbd">↑↓</kbd> 选择</span><span><kbd class="cmd-kbd">Enter</kbd> 打开</span><span><kbd class="cmd-kbd">Tab</kbd> 问 AI</span><span><kbd class="cmd-kbd">Esc</kbd> 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' <kbd class="cmd-kbd">?</kbd>开头强制问 AI · 无结果回车也问 AI</span></div>'+
     '</div>';
   wrap.addEventListener('mousedown',function(e){if(e.target===wrap)closeSearchPanel();});
   document.body.appendChild(wrap);

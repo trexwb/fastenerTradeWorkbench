@@ -306,7 +306,7 @@ async fn ai_deepseek_chat(
         let text = String::from_utf8_lossy(&raw).into_owned();
         let snippet: String = text.chars().take(500).collect();
         return Err(format!(
-            "DeepSeek 返回错误 (HTTP {code})：{}",
+            "模型服务返回错误 (HTTP {code})：{}",
             if snippet.is_empty() { "无返回内容".into() } else { snippet }
         ));
     }
