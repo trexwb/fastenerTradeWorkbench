@@ -98,7 +98,7 @@ const AI=(function(){
       '1. 写入类工具调用是**提案**，前端将要求用户逐条确认，不会自动执行；不要在 content 中假装操作已完成，应用「我将起草…」语气。查询类（query_*）和功能层（navigate_view 等）工具会立即执行，不需要用户确认。\n'+
       '2. 金额、利润、余额、排名一律以本地快照为准，不要自行重算或编造数字。\n'+
       '3. 状态流转必须守 STATUS_FLOW（待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成）；只能前进到下一站，或转入「异常」「取消」终态分支；「未成交」是从「报价中」分支出的状态，可恢复回「报价中」；终态（完成/异常/取消）不可再流转。\n'+
-      '4. 工具参数中**不要**填写敏感字段（联系人电话/微信、税号、银行账号、单位地址）——这些字段不在 schema 中暴露，由用户在确认弹窗里手动补全；遇到需要补全的场景请在 content 中提示用户。\n'+
+      '4. 联系人电话、税号、银行账号、地址等信息：直接取自用户对话内容，用户提供即可填入 create_unit 参数（contactName/phone/taxId/address/bank/accountNo）；未提供的字段省略。\n'+
       '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。\n'+
       '6. 一条 tool_call 只起草一次操作；多个独立操作可并行起草（多个 tool_calls），但同一条记录不要在同一轮中既修改又删除。\n'+
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
@@ -349,13 +349,19 @@ const AI=(function(){
         // 纯文本总结，结束
         return {content:res.content,lastToolResults};
       }
+      // P0 修复：归一化 tool_calls —— 流式累积可能缺失 id，而 OpenAI 协议要求
+      // assistant.tool_calls 的 id 与 tool 响应的 tool_call_id 非空且精确匹配，
+      // id 缺失会导致 HTTP 400 "Messages with role 'tool' must be a response to..."
+      const calls=res.toolCalls.map(function(tc){
+        return {id:tc.id||uid('TC'),name:tc.name,args:(tc.args&&typeof tc.args==='object')?tc.args:{}};
+      });
       // 阶段3：分流 —— query/flow 类自动执行（不经弹窗），write/delete 类走确认弹窗
       // 阶段4：flow 类（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）自动执行
       // P0 修复：flowSet 防护 AIT 未加载或 FLOW_TOOL_NAMES 为 undefined 的场景
       const flowSet=(typeof AIT!=='undefined'&&AIT.FLOW_TOOL_NAMES)?AIT.FLOW_TOOL_NAMES:null;
-      const flowOps=res.toolCalls.filter(tc=>flowSet&&flowSet.has(tc.name));
-      const queryOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')===0);
-      const writeOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name)));
+      const flowOps=calls.filter(tc=>flowSet&&flowSet.has(tc.name));
+      const queryOps=calls.filter(tc=>tc.name.indexOf('query_')===0);
+      const writeOps=calls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name)));
 
       // 1) 查询类立即执行（无副作用，结果直接回填给模型）
       const queryResults=queryOps.map(tc=>{
@@ -401,7 +407,7 @@ const AI=(function(){
       }
 
       // 3) 回填 assistant + tool 响应（OpenAI 协议要求所有 tool_calls 都有响应）
-      messages.push({role:'assistant',content:res.content||'',tool_calls:res.toolCalls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args||{})}}))});
+      messages.push({role:'assistant',content:res.content||'',tool_calls:calls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args)}}))});
       queryResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       flowResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
