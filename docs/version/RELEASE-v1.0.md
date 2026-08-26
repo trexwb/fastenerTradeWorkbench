@@ -5,43 +5,73 @@
 
 ---
 
-## v1.0.8 · 📝 待发布
+## v1.0.9 · 📝 待发布
 
 > **状态**: 📝 待发布（构建验证后改为 ✅ 已发布）
 > **发布日期**: 2026-08-26
 > **上一版本**: v1.0.7
-> **版本范围**: 多模型接入（OpenAI 兼容格式）
+> **版本范围**: 全局 AI 搜索 + 多模型接入 + 工具撤销回滚 + 本地模型认证适配 + AI 体验修复
 
 ---
 
 ## 变更
 
-### 多模型接入（OpenAI 兼容格式）
+### 1. 全局 AI 搜索（⌘K 命令面板）
+
+- ⌘K / topbar 搜索按钮唤起命令面板，六源搜索（订单 / 客户 / 报价 / BOM / 结算 / 发票），直达详情或对应视图
+- 键盘导航：↑↓ 循环选择、Enter 打开、Tab 问 AI、Esc 关闭；`?`/`？` 前缀强制问 AI；空态一键问 AI
+- 选中条目可作为上下文注入 AI 快照（askAIOnItem）
+- 输入防抖 150ms + 结果 40 条上限 + 关键字高亮（原文定位，实体不错位）；样式与全站表单统一
+
+**变更文件**：`src/views/search-panel.js`（新增）、`src/views/keyboard.js`（⌘K + Esc 优先级 + 快捷键说明）、`src/core/router.js`（topbar 按钮）、`src/App.vue`（SCRIPTS 注册）、`src/styles/components.css`（.cmd-* 样式）
+
+### 2. 多模型接入（OpenAI 兼容格式）
 
 | 项目 | 之前 | 现在 |
 |------|------|------|
-| 模型端点 | 硬编码 DeepSeek（`api.deepseek.com/v1` + `deepseek-v4-flash/pro`） | **设置中可配置 API Base URL + 模型名**，任意 OpenAI 兼容端点 |
-| 预置模型 | deepseek-v4-flash / pro | flash / pro / gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + **自定义模型名** |
-| 本地 Ollama | 不支持 | 支持（Base URL 填 `http://127.0.0.1:11434/v1`，API_KEY 可留空） |
-| 配置存储 | — | 浏览器与桌面版均存 localStorage（API_KEY 存储方式不变：浏览器 localStorage / Tauri 应用数据目录） |
+| 模型端点 | 硬编码 DeepSeek（api.deepseek.com/v1） | **设置中可配置 Base URL + 模型名**，任意 OpenAI 兼容端点（含 Base URL 格式校验） |
+| 预置模型 | deepseek-v4-flash / pro | + gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + 自定义模型名 |
+| 端点预设 | — | 一键按钮：DeepSeek / OpenAI / 通义千问 / 本地 Ollama / 本地 oMLX |
+| 本地 Ollama | 不支持 | 支持（http://127.0.0.1:11434/v1，API_KEY 可留空） |
+| 本地 oMLX | 不支持 | 支持（http://127.0.0.1:8000/v1，API_KEY 需与 oMLX 设置一致） |
+| 端点显示 | 固定"DeepSeek" | providerLabel 按域名自动识别（DeepSeek/OpenAI/通义/智谱/本地模型） |
 
-**变更文件**：`src/core/ai.js`（PRESET_MODELS / DEFAULT_BASE_URL / setProvider / apiChatUrl / webChat 动态端点 / probeProxy 本地端点免 Key）、`src-tauri/src/lib.rs`（ai_deepseek_chat 新增 base_url 参数 + URL 组装 + 模型名校验放宽）、`src/views/ai-chat.js`（设置弹窗新增 Base URL 输入 + 模型预置/自定义切换 + 文案通用化）、`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js`（版本号 v1.0.8 四 处同步）
+**变更文件**：`src/core/ai.js`（PRESET_MODELS / DEFAULT_BASE_URL / setProvider / apiChatUrl / webChat 动态端点 / probeProxy 本地免 Key）、`src-tauri/src/lib.rs`（base_url 参数 + URL 组装 + 模型校验放宽）、`src/views/ai-chat.js`（设置弹窗 + 端点预设 + 回显）
 
-### 工具执行撤销 / 回滚
+### 3. 工具执行撤销 / 回滚
 
 | 项目 | 之前 | 现在 |
 |------|------|------|
-| 工具改动 | 有确认弹窗 + diff 预览，执行后不可撤销 | **执行后一键还原**：消息下方显示「撤销本次 AI 数据改动」按钮，快照式还原整轮改动（含批量操作） |
-| 撤销栈 | — | 内存快照栈（最多 5 层，刷新页面后失效） |
+| 工具改动 | 确认弹窗 + diff 预览，执行后不可撤销 | **持久化批次撤销**：按 aiOps 审计反向回滚（创建→删除、修改→还原旧值、删除→恢复），刷新不失效、不误伤手动改动 |
+| 撤销入口 | — | 消息下方「撤销本轮改动」按钮（支持一轮多批次，逗号分隔批量撤销）；数据管理-操作历史可追溯 |
 
-**变更文件**：`src/core/ai.js`（_undoStack 快照栈 / undoLastToolRun / undoStackLen）、`src/views/ai-chat.js`（撤销按钮条 + undoLastToolRun）、`src/styles/components.css`（.ai-undo-bar 样式）
+**变更文件**：`src/core/ai.js`（lastBatchIds / undoLastBatch）、`src/views/ai-chat.js`（undoAIBatch + 撤销条）、aiOps 审计（undoBatch 持久化回滚）
+
+### 4. 本地模型认证适配（Ollama / oMLX）
+
+- **Ollama**：本地端点无 Key 时发送占位 `Bearer ollama`（其 OpenAI 兼容层要求 Authorization 头非空，空值 401 "API key required"）
+- **oMLX**：**已保存的真实 Key 优先**（oMLX 校验 Key 与自身配置逐字一致，占位会被拒 "Invalid API key"）；修复此前"本地端点一律用占位导致 401"
+- 错误显示增强：连接失败显示 URL + 原因；HTTP 错误附服务端原始响应；未知错误 JSON 兜底——不再出现"请求失败：undefined"
+
+**变更文件**：`src/core/ai.js`（authKey 优先级 / fetch 网络错误包装 / SSE 兼容非 data: 行 / HTTP 原始响应）、`src-tauri/src/lib.rs`（Token 优先级修正：真实 Key > 本地占位 > 报错 / 文案通用化）、`src/views/ai-chat.js`（错误兜底 / oMLX 预设与提示）
+
+### 5. AI 体验修复与打磨
+
+- 欢迎区（"开始一段新对话"）发送消息后残留 → **发送时自动移除**
+- 全局搜索审查修复（9 项）：全角问号触发、高亮实体错位、↑↓ 循环、订单金额搜索、遍历提前终止、多批次撤销、Base URL 格式校验、错误兜底显示
+- 发送确认弹窗只弹一次（localStorage 记忆，延续 v1.0.7）
+
+**变更文件**：`src/views/ai-chat.js`、`src/views/search-panel.js`、`src/core/ai.js`
 
 ---
----
+
+## 版本号
+
+v1.0.7 → v1.0.9（`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js` 四处同步）
 
 ## 📝 规划中 · AI 能力升级（待排期）
 
-> **状态**: 📝 规划中（未发布，不占用版本号）
+> **状态**: ✅ 三项已全部落地（v1.0.9，2026-08-26）；本分节保留作为计划历史
 > **计划来源**: 2026-08-26 AI 升级路线评审
 
 ### 1. 全局 AI 搜索（⌘K 命令面板）
