@@ -279,4 +279,3 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 | `chore` | 构建/工具 |
 
 示例：`fix(orders): 修复订单列表分页跳转异常`
-*（内容由AI生成，仅供参考）*
