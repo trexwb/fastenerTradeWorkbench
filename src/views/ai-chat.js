@@ -86,12 +86,13 @@ async function sendAIMessage(message,snapshot){
     pending.pending=false;
     const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
     pendingEl.outerHTML=aiMessageHTML(assistantMessage);
-    // 工具执行结果汇总提示
+    // 工具执行结果汇总提示 + 刷新当前视图（让录入结果立即可见）
     if(res.lastToolResults&&res.lastToolResults.length){
       const okN=res.lastToolResults.filter(r=>r.ok).length;
       const failN=res.lastToolResults.length-okN;
       const tip='已执行 '+okN+' 条操作'+(failN?'，'+failN+' 条失败':'');
       toast(tip,failN?'warning':'success');
+      if(typeof render==='function'&&okN>0)render();
     }
   }catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
@@ -132,6 +133,8 @@ function confirmOpsModal(toolCalls,pendingEl){
           });
         }
       });
+      // 执行按钮：先关弹窗再返回（用户可立即看到执行过程与结果）
+      closeModal();
       if(!approvedOps.length){resolve({cancelled:true,approvedOps:[]});return;}
       resolve({cancelled:false,approvedOps});
     },true);
@@ -235,11 +238,15 @@ function summarizeOpTarget(it){
   if(it.name==='delete_invoice')return '删除发票：'+a.invoiceId;
   return it.name;
 }
-/** 格式化 diff 值（数组/对象/数字/字符串，统一为可读文本） */
+/** 格式化 diff 值（数组/对象/数字/字符串，统一为可读文本，递归处理嵌套结构） */
 function fmtOpsVal(v){
   if(v==null||v==='')return '(空)';
-  if(Array.isArray(v))return v.join('/');
-  if(typeof v==='object')return JSON.stringify(v);
+  if(Array.isArray(v))return v.map(function(item){return fmtOpsVal(item);}).join(' / ');
+  if(typeof v==='object'){
+    const parts=Object.keys(v).filter(function(k){return v[k]!==undefined&&v[k]!==null&&v[k]!=='';})
+      .map(function(k){return k+'：'+fmtOpsVal(v[k]);});
+    return parts.length?parts.join('，'):'{}';
+  }
   return String(v);
 }
 async function openAISettings(){

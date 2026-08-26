@@ -25,6 +25,18 @@ const AIT=(function(){
     {
       type:'function',
       function:{
+        name:'query_help',
+        description:'查询系统使用帮助（操作步骤/功能说明/常见问题）。当用户询问"怎么操作/怎么做/如何使用/在哪"等系统使用问题时，先调用本工具检索完整帮助，再结合结果回答。立即执行，不需确认。',
+        parameters:{
+          type:'object',
+          properties:{keyword:{type:'string',description:'检索关键词，如：订单、寻货、报价、回收站、备份、发票、结算、导入'}},
+          required:['keyword']
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
         name:'create_unit',
         description:'起草新增关联单位（采购商/供应商）。'+PROPOSAL_NOTE+SENSITIVE_NOTE,
         parameters:{
@@ -672,6 +684,39 @@ const AIT=(function(){
           required:['invoiceId']
         }
       }
+    },
+    // ===== 系统操作协助：打开业务表单（AI 手把手引导用户操作）=====
+    {
+      type:'function',
+      function:{
+        name:'open_unit_form',
+        description:'打开「新建关联单位」表单（辅助用户手动录入，AI 不代填）。此工具立即执行，不需确认。',
+        parameters:{type:'object',properties:{},required:[]}
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'open_order_form',
+        description:'打开「新建采购订单」表单（辅助用户手动录入，AI 不代填）。此工具立即执行，不需确认。',
+        parameters:{type:'object',properties:{},required:[]}
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'open_price_form',
+        description:'打开「新建报价」表单（辅助用户手动录入，AI 不代填）。此工具立即执行，不需确认。',
+        parameters:{type:'object',properties:{},required:[]}
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'open_bom_form',
+        description:'打开「新建 BOM」表单（辅助用户手动录入，AI 不代填）。此工具立即执行，不需确认。',
+        parameters:{type:'object',properties:{},required:[]}
+      }
     }
   ];
 
@@ -683,6 +728,7 @@ const AIT=(function(){
     update_price:{label:'修改报价',tagCls:'info',kind:'write'},
     flow_order_status:{label:'状态流转',tagCls:'warn',kind:'flow'},
     // 阶段3：查询类（kind: query，自动执行不经弹窗）
+    query_help:{label:'查询帮助',tagCls:'info',kind:'query'},
     query_units:{label:'查询单位',tagCls:'info',kind:'query'},
     query_specs:{label:'查询属性',tagCls:'info',kind:'query'},
     query_bom:{label:'查询BOM',tagCls:'info',kind:'query'},
@@ -720,11 +766,15 @@ const AIT=(function(){
     navigate_view:{label:'视图导航',tagCls:'info',kind:'flow'},
     export_order_excel:{label:'导出Excel',tagCls:'info',kind:'flow'},
     open_settlement_drawer:{label:'打开结算',tagCls:'info',kind:'flow'},
-    open_invoice_drawer:{label:'打开发票',tagCls:'info',kind:'flow'}
+    open_invoice_drawer:{label:'打开发票',tagCls:'info',kind:'flow'},
+    open_unit_form:{label:'打开单位表单',tagCls:'info',kind:'flow'},
+    open_order_form:{label:'打开订单表单',tagCls:'info',kind:'flow'},
+    open_price_form:{label:'打开报价表单',tagCls:'info',kind:'flow'},
+    open_bom_form:{label:'打开BOM表单',tagCls:'info',kind:'flow'}
   };
 
   /** 阶段4：功能层工具名集合（用于 aiWriteLoop 分流，自动执行不经弹窗） */
-  const FLOW_TOOL_NAMES=new Set(['navigate_view','export_order_excel','open_settlement_drawer','open_invoice_drawer']);
+  const FLOW_TOOL_NAMES=new Set(['navigate_view','export_order_excel','open_settlement_drawer','open_invoice_drawer','open_unit_form','open_order_form','open_price_form','open_bom_form']);
 
   /** 工具校验：name → (args) → {ok:boolean,error:string,preview:object} */
   const validators={
@@ -1472,6 +1522,31 @@ const AIT=(function(){
         openInvEdit(args.invoiceId);
         return JSON.stringify({ok:true,message:'已打开发票抽屉：'+args.invoiceId});
       }
+      // ===== 系统操作协助：打开业务表单 =====
+      if(name==='open_unit_form'){
+        if(typeof newUnit!=='function')return JSON.stringify({ok:false,error:'newUnit() 未加载'});
+        if(typeof closeDrawer==='function')closeDrawer();
+        newUnit();
+        return JSON.stringify({ok:true,message:'已打开「新建关联单位」表单'});
+      }
+      if(name==='open_order_form'){
+        if(typeof newOrder!=='function')return JSON.stringify({ok:false,error:'newOrder() 未加载'});
+        if(typeof closeDrawer==='function')closeDrawer();
+        newOrder();
+        return JSON.stringify({ok:true,message:'已打开「新建采购订单」表单'});
+      }
+      if(name==='open_price_form'){
+        if(typeof newPrice!=='function')return JSON.stringify({ok:false,error:'newPrice() 未加载'});
+        if(typeof closeDrawer==='function')closeDrawer();
+        newPrice();
+        return JSON.stringify({ok:true,message:'已打开「新建报价」表单'});
+      }
+      if(name==='open_bom_form'){
+        if(typeof openBOMForm!=='function')return JSON.stringify({ok:false,error:'openBOMForm() 未加载'});
+        if(typeof closeDrawer==='function')closeDrawer();
+        openBOMForm(-1);
+        return JSON.stringify({ok:true,message:'已打开「新建 BOM」表单'});
+      }
       return JSON.stringify({ok:false,error:'未知功能层工具：'+name});
     }catch(e){
       return JSON.stringify({ok:false,error:'功能层执行异常：'+e.message});
@@ -1486,6 +1561,10 @@ const AIT=(function(){
   function runQuery(name,args){
     args=args||{};
     try{
+      if(name==='query_help'){
+        if(typeof helpSearch==='function')return helpSearch(args.keyword);
+        return JSON.stringify({ok:false,error:'帮助知识库未加载'});
+      }
       if(name==='query_units'){
         let list=DB.units.slice();
         if(args.keyword)list=list.filter(u=>(u.name||'').includes(args.keyword));
