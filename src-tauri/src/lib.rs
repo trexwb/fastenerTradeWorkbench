@@ -31,7 +31,8 @@ fn token_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn valid_model(model: &str) -> bool {
-    ALLOWED_MODELS.iter().any(|m| *m == model)
+    // 多模型接入：允许任意 OpenAI 兼容模型名（仅限制非空与长度）
+    !model.trim().is_empty() && model.len() <= 100
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -219,6 +220,7 @@ async fn ai_deepseek_chat(
     max_tokens: Option<u32>,
     stream_event: Option<String>,
     tools: Option<serde_json::Value>,
+    base_url: Option<String>,
 ) -> Result<String, String> {
     let token = {
         let p = token_path(&app)?;
@@ -263,8 +265,17 @@ async fn ai_deepseek_chat(
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
 
+    // 多模型接入：优先使用前端传入的 Base URL（OpenAI 兼容端点，如 Ollama http://127.0.0.1:11434/v1）
+    let req_url = match base_url {
+        Some(b) if !b.trim().is_empty() => {
+            let b = b.trim().trim_end_matches('/').to_string();
+            if b.ends_with("/chat/completions") { b } else { format!("{b}/chat/completions") }
+        }
+        _ => DEEPSEEK_BASE_URL.to_string(),
+    };
+
     let req = client
-        .post(DEEPSEEK_BASE_URL)
+        .post(req_url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", if stream { "text/event-stream" } else { "application/json" })

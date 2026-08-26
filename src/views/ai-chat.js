@@ -55,7 +55,7 @@ function openAIAssistant(){
   const hasChat=!!(DB.aiChats&&DB.aiChats.length);
   const quickSection=hasChat?'':'<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section>';
   const body='<section class="ai-chat" aria-label="AI 助手">'+
-    '<header class="ai-chat-head"><div><span class="ai-eyebrow">DEEPSEEK · '+escHtml(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
+    '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">⌘ / Ctrl + Enter 发送 · Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
@@ -103,18 +103,30 @@ async function sendAIMessage(message,snapshot){
     pending.content=res.content||'(操作已处理)';
     pending.pending=false;
     const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
-    pendingEl.outerHTML=aiMessageHTML(assistantMessage);
-    // 工具执行结果汇总提示 + 刷新当前视图（让录入结果立即可见）
+    // 工具执行成功时在消息下方附「撤销」条（内存快照，刷新后失效）
+    let undoBar='';
     if(res.lastToolResults&&res.lastToolResults.length){
       const okN=res.lastToolResults.filter(r=>r.ok).length;
       const failN=res.lastToolResults.length-okN;
       const tip='已执行 '+okN+' 条操作'+(failN?'，'+failN+' 条失败':'');
       toast(tip,failN?'warning':'success');
+      if(okN>0){
+        const stackN=(typeof AI.undoStackLen==='function')?AI.undoStackLen():0;
+        undoBar='<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="undoLastToolRun(this)">'+icon('refresh','13')+' 撤销本次 AI 数据改动</button><span class="ai-undo-hint">可撤销最近 '+stackN+' 次（刷新后失效）</span></div>';
+      }
       if(typeof render==='function'&&okN>0)render();
     }
+    pendingEl.outerHTML=aiMessageHTML(assistantMessage)+undoBar;
   }catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
+/** 一键撤销最近一次 AI 工具改动（快照式还原） */
+function undoLastToolRun(btn){
+  if(!AI.undoLastToolRun()){toast('没有可撤销的 AI 改动','info');return;}
+  const bar=btn&&btn.closest?btn.closest('.ai-undo-bar'):null;
+  if(bar)bar.remove();
+  toast('已撤销本次 AI 数据改动','success');
+}
 
 /* ===== AI 操作提案确认弹窗（写入流程核心交互） ===== */
 /** AI 操作确认弹窗：渲染 tool_calls 列表，用户勾选后执行

@@ -152,12 +152,12 @@ function openSearchPanel(){
   wrap.className='cmd-overlay';
   wrap.innerHTML=
     '<div class="cmd-panel" role="dialog" aria-label="全局搜索">'+
-      '<div class="cmd-input-wrap">'+icon('search','18')+
-        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索订单 / 客户 / 报价 / BOM / 结算 / 发票，或直接提问…" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value)">'+
-        '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)">'+icon('x','16')+'</button>'+
-      '</div>'+
+      '<div class="cmd-input-wrap"><div class="cmd-input-box">'+icon('search','18')+
+        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索或直接提问…" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value)">'+
+        '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)">'+icon('x','15')+'</button>'+
+      '</div></div>'+
       '<div id="cmdResults" class="cmd-results"></div>'+
-      '<div class="cmd-footer"><span>'+icon('keyboard','12')+' ↑↓ 选择</span><span>Enter 打开</span><span>Tab 问 AI</span><span>Esc 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' 直接输入问题回车 = 问 AI</span></div>'+
+      '<div class="cmd-footer"><span><kbd class="cmd-kbd">↑↓</kbd> 选择</span><span><kbd class="cmd-kbd">Enter</kbd> 打开</span><span><kbd class="cmd-kbd">Tab</kbd> 问 AI</span><span><kbd class="cmd-kbd">Esc</kbd> 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' 直接输入问题回车 = 问 AI</span></div>'+
     '</div>';
   wrap.addEventListener('mousedown',function(e){if(e.target===wrap)closeSearchPanel();});
   document.body.appendChild(wrap);

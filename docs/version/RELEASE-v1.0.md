@@ -5,6 +5,40 @@
 
 ---
 
+## v1.0.8 · 📝 待发布
+
+> **状态**: 📝 待发布（构建验证后改为 ✅ 已发布）
+> **发布日期**: 2026-08-26
+> **上一版本**: v1.0.7
+> **版本范围**: 多模型接入（OpenAI 兼容格式）
+
+---
+
+## 变更
+
+### 多模型接入（OpenAI 兼容格式）
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 模型端点 | 硬编码 DeepSeek（`api.deepseek.com/v1` + `deepseek-v4-flash/pro`） | **设置中可配置 API Base URL + 模型名**，任意 OpenAI 兼容端点 |
+| 预置模型 | deepseek-v4-flash / pro | flash / pro / gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + **自定义模型名** |
+| 本地 Ollama | 不支持 | 支持（Base URL 填 `http://127.0.0.1:11434/v1`，API_KEY 可留空） |
+| 配置存储 | — | 浏览器与桌面版均存 localStorage（API_KEY 存储方式不变：浏览器 localStorage / Tauri 应用数据目录） |
+
+**变更文件**：`src/core/ai.js`（PRESET_MODELS / DEFAULT_BASE_URL / setProvider / apiChatUrl / webChat 动态端点 / probeProxy 本地端点免 Key）、`src-tauri/src/lib.rs`（ai_deepseek_chat 新增 base_url 参数 + URL 组装 + 模型名校验放宽）、`src/views/ai-chat.js`（设置弹窗新增 Base URL 输入 + 模型预置/自定义切换 + 文案通用化）、`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js`（版本号 v1.0.8 四 处同步）
+
+### 工具执行撤销 / 回滚
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 工具改动 | 有确认弹窗 + diff 预览，执行后不可撤销 | **执行后一键还原**：消息下方显示「撤销本次 AI 数据改动」按钮，快照式还原整轮改动（含批量操作） |
+| 撤销栈 | — | 内存快照栈（最多 5 层，刷新页面后失效） |
+
+**变更文件**：`src/core/ai.js`（_undoStack 快照栈 / undoLastToolRun / undoStackLen）、`src/views/ai-chat.js`（撤销按钮条 + undoLastToolRun）、`src/styles/components.css`（.ai-undo-bar 样式）
+
+---
+---
+
 ## 📝 规划中 · AI 能力升级（待排期）
 
 > **状态**: 📝 规划中（未发布，不占用版本号）
