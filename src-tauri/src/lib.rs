@@ -14,6 +14,7 @@ const DEFAULT_MODEL: &str = "deepseek-v4-flash";
 const ALLOWED_MODELS: [&str; 2] = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const MAX_MESSAGES: usize = 20;
 const MAX_MESSAGE_BYTES: usize = 30_000;
+const MAX_TOOL_MESSAGE_BYTES: usize = 200_000; // tool 消息（查询结果 JSON）上限
 const MAX_TOKENS: u32 = 4096;
 const MAX_DATA_BYTES: usize = 128 * 1024 * 1024; // 主数据文件大小上限 128MB
 const REQUEST_TIMEOUT_SECS: u64 = 180;
@@ -37,6 +38,12 @@ fn valid_model(model: &str) -> bool {
 struct ChatMessage {
     role: String,
     content: String,
+    /// assistant 工具调用消息（OpenAI 协议：tool 消息必须紧跟带 tool_calls 的 assistant）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<serde_json::Value>,
+    /// tool 角色消息的关联 ID（须与 assistant.tool_calls[].id 精确匹配）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
 }
 
 fn valid_messages(messages: &[ChatMessage]) -> bool {
@@ -44,8 +51,10 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
         return false;
     }
     messages.iter().all(|m| {
-        matches!(m.role.as_str(), "system" | "user" | "assistant")
-            && m.content.len() <= MAX_MESSAGE_BYTES
+        let role_ok = matches!(m.role.as_str(), "system" | "user" | "assistant" | "tool");
+        // tool 消息承载查询结果 JSON，上限放宽到 200KB；其余角色维持 30KB
+        let limit = if m.role == "tool" { MAX_TOOL_MESSAGE_BYTES } else { MAX_MESSAGE_BYTES };
+        role_ok && m.content.len() <= limit
     })
 }
 
