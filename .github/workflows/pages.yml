@@ -3,10 +3,14 @@
 # ───────────────────────────────────────────────────────────────────
 # 触发：main 分支推送 或 手动 workflow_dispatch（可选任意分支）
 # 做了什么：
-#   1. node scripts/copy-frontend.mjs 生成 dist/（纯 Node 拷贝，
-#      零依赖安装，秒级完成）
+#   1. npm ci + npm run vite:build 生成 dist/（与 Tauri 桌面版同一套
+#      构建；vite.config.js 的 base:'./' 保证资源为相对路径，
+#      GitHub Pages 子路径（/fastenerTradeWorkbench/）下可正确加载）
 #   2. 将 dist/ 部署到 GitHub Pages
 # 部署后访问地址以仓库 Settings → Pages 显示为准。
+# ⚠️ 不要改用 scripts/copy-frontend.mjs 生成 dist：该脚本面向旧版
+#    单文件结构（src/css|js|images），项目迁移 Vue3+Vite 后已不适用，
+#    产物残缺且 index.html 仍引用根路径 /main.js 导致 404。
 #
 # ⚠️ 首次使用需在仓库 Settings → Pages → Build and deployment →
 #    Source 选择 "GitHub Actions"（一次性配置）
@@ -43,13 +47,18 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
 
-      # copy-frontend.mjs 仅用 Node 内置模块（fs/path），无需 npm install
-      - name: 生成 dist 目录
-        run: node scripts/copy-frontend.mjs
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建前端产物（vite build，base './' 相对路径）
+        run: npm run vite:build
 
       - name: 验证 dist 产物
-        run: ls -la dist/ && test -f dist/index.html
+        run: |
+          ls -la dist/ && test -f dist/index.html && test -f dist/assets/js/index.js
+          grep -q 'src="./assets/js/index.js"' dist/index.html && echo "资源路径为相对路径，自检通过"
 
       - name: 上传 Pages 产物
         uses: actions/upload-pages-artifact@v5
