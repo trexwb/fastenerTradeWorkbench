@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.0';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.5';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -66,7 +66,7 @@ const STATUS_FLOW=['待确认','寻货中','报价中','签约完成','送货中
  * 全局数据主存储对象（主力存储：IndexedDB）
  * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, seq: number, orderSeq: number, _savedAt?: number}}
  */
-let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
+let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[]};
 
 /* 补齐 DB 可能缺失的字段（供 idbLoad 和 loadFromFile 复用） */
 /**
@@ -79,6 +79,8 @@ function ensureDBFields(){
   if(!DB.settlements)DB.settlements=[];
   if(!DB.invoices)DB.invoices=[];
   if(!Array.isArray(DB.aiChats))DB.aiChats=[];
+  if(!Array.isArray(DB.trash))DB.trash=[];          // 回收站（软删除隔离区，AI 永不触碰）
+  if(!Array.isArray(DB.aiOps))DB.aiOps=[];          // AI/用户操作日志（审计+回滚依据）
   if(!DB.seq)DB.seq=100;
   if(!DB._savedAt)DB._savedAt=Date.now();
   if(!DB.orderSeq){
@@ -377,7 +379,9 @@ async function saveToFile(){
   if(!fileHandle||fileSync!==true||bindingInProgress)return;
   try{
     const w=await fileHandle.createWritable();
-    await w.write(JSON.stringify(DB,null,2));
+    // 导出/文件同步不含回收站与操作历史（用户明确约束）
+    const exportData={...DB};delete exportData.trash;delete exportData.aiOps;
+    await w.write(JSON.stringify(exportData,null,2));
     await w.close();
     fileLastSave=now();
   }catch(e){
@@ -400,6 +404,8 @@ async function loadFromFile(){
     const file=await fileHandle.getFile();
     const text=await file.text();
     const data=JSON.parse(text);
+    // 导入数据不含回收站/操作历史（用户约束）：强制丢弃文件中可能存在的 trash/aiOps，本机保留空态由 ensureDBFields 补齐
+    if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
     // 只要文件是合法 JSON 对象即进入处理（不再硬性要求 units/prices/orders 三字段齐全，
     // 避免结构不完整的数据文件被误判为"无数据"而触发反向覆盖清空）
     if(data&&typeof data==='object'&&!Array.isArray(data)){
@@ -602,6 +608,7 @@ async function initApp(){
       // 2. 恢复文件同步（必须在渲染前完成，确保 fileSync 状态正确）
       await initFileHandle();
       // 数据加载完成，调用 onAppReady 恢复 hash 路由
+      autoPurgeTrash();  // 回收站自动清理（超保留期条目，启动时触发）
       if(typeof onAppReady==='function')onAppReady();else render();
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
@@ -630,6 +637,7 @@ async function initApp(){
     await initFileHandle();
     render();
   }
+  autoPurgeTrash();
 }
 
 /**
@@ -703,6 +711,225 @@ async function _safeIdbSave(){
   await idbSave();
   _checkIdbErrorToast();
 }
+
+/* ===== 软删除 / 回收站 / 操作日志（阶段1 数据底座，供手动删除与阶段2 AI 写入复用）===== */
+const AI_OPS_LIMIT=2000;  // 操作日志保留上限（FIFO 滚动）
+const TRASH_RETENTION_DAYS=90;             // 回收站保留期（天），超期自动清理
+const TRASH_CLEANUP_KEY='wb_fastener_trash_cleanup';  // 上次自动清理时间戳（localStorage）
+/** 业务表名映射（spec/order_item 走特殊路径，不在此映射） */
+const _SOFT_DEL_TABLE={unit:'units',bom:'bom',price:'prices',order:'orders',settlement:'settlements',invoice:'invoices'};
+/** 深拷贝快照（沿用项目既有 JSON 克隆模式） */
+function _snap(obj){return obj==null?null:JSON.parse(JSON.stringify(obj));}
+
+/** 记录一条操作日志（unshift 在前；超限 FIFO 截断尾部最旧） */
+function recordAiOp(opts){
+  opts=opts||{};
+  const op={id:uid('AO'),batchId:opts.batchId||uid('AOB'),op:opts.op,type:opts.type,
+    targetId:opts.targetId||null,before:_snap(opts.before),after:_snap(opts.after),
+    operator:opts.operator||'user',timestamp:Date.now(),aiChatId:opts.aiChatId||null,
+    undone:false,undoneAt:null};
+  DB.aiOps.unshift(op);
+  if(DB.aiOps.length>AI_OPS_LIMIT)DB.aiOps.length=AI_OPS_LIMIT;
+  return op;
+}
+
+/** 通用软删除（数组类业务表：unit/bom/price/order/settlement/invoice） */
+function softDelete(type,id,opts){
+  opts=opts||{};
+  const arrName=_SOFT_DEL_TABLE[type];
+  if(!arrName)throw new Error('不支持的软删除类型：'+type);
+  const arr=DB[arrName];
+  const idx=arr.findIndex(r=>r&&r.id===id);
+  if(idx<0)throw new Error('记录不存在或已删除：'+type+'/'+id);
+  const snapshot=_snap(arr[idx]);
+  arr.splice(idx,1);
+  const trashEntry={id:uid('TR'),type:type,originalId:id,data:snapshot,deletedAt:Date.now(),
+    operator:opts.operator||'user',reason:opts.reason||'',aiBatchId:opts.batchId||null};
+  DB.trash.unshift(trashEntry);
+  const op=recordAiOp({op:'delete',type:type,targetId:id,before:snapshot,after:null,
+    batchId:opts.batchId,operator:opts.operator||'user',aiChatId:opts.aiChatId});
+  saveDB();
+  return {trashEntry,op};
+}
+
+/** 软删除规格枚举值（DB.specs 是字典，按 field 删 value） */
+function softDeleteSpecOption(field,value,opts){
+  opts=opts||{};
+  if(!DB.specs[field]||!Array.isArray(DB.specs[field]))throw new Error('规格字段不存在：'+field);
+  const idx=DB.specs[field].indexOf(value);
+  if(idx<0)throw new Error('规格值不存在：'+field+'/'+value);
+  DB.specs[field].splice(idx,1);
+  const snapshot={field:field,value:value};
+  const trashEntry={id:uid('TR'),type:'spec',originalId:field+':'+value,data:snapshot,deletedAt:Date.now(),
+    operator:opts.operator||'user',reason:opts.reason||'',aiBatchId:opts.batchId||null};
+  DB.trash.unshift(trashEntry);
+  recordAiOp({op:'delete',type:'spec',targetId:field+':'+value,before:snapshot,after:null,
+    batchId:opts.batchId,operator:opts.operator||'user',aiChatId:opts.aiChatId});
+  saveDB();
+  return {trashEntry};
+}
+
+/** 软删除订单明细行（order_item，订单内 items[i]） */
+function softDeleteOrderItem(orderId,itemId,opts){
+  opts=opts||{};
+  const order=DB.orders.find(o=>o.id===orderId);
+  if(!order||!Array.isArray(order.items))throw new Error('订单或明细不存在：'+orderId);
+  const idx=order.items.findIndex(it=>it.id===itemId);
+  if(idx<0)throw new Error('明细不存在：'+itemId);
+  const snapshot=_snap(order.items[idx]);
+  order.items.splice(idx,1);
+  const trashEntry={id:uid('TR'),type:'order_item',originalId:itemId,
+    data:Object.assign(_snap(snapshot),{orderId}),deletedAt:Date.now(),
+    operator:opts.operator||'user',reason:opts.reason||'',aiBatchId:opts.batchId||null};
+  DB.trash.unshift(trashEntry);
+  recordAiOp({op:'delete',type:'order_item',targetId:itemId,before:snapshot,after:null,
+    batchId:opts.batchId,operator:opts.operator||'user',aiChatId:opts.aiChatId});
+  saveDB();
+  return {trashEntry};
+}
+
+/** 从回收站恢复一条记录到业务表（同时记一条 restore 的 aiOps） */
+function restoreFromTrash(trashId){
+  const idx=DB.trash.findIndex(t=>t.id===trashId);
+  if(idx<0)throw new Error('回收站条目不存在：'+trashId);
+  const entry=DB.trash[idx];
+  if(entry.type==='spec'){
+    const d=entry.data;
+    if(!DB.specs[d.field])DB.specs[d.field]=[];
+    if(!DB.specs[d.field].includes(d.value))DB.specs[d.field].push(d.value);
+  }else if(entry.type==='order_item'){
+    const order=DB.orders.find(o=>o.id===entry.data.orderId);
+    if(order&&Array.isArray(order.items)){
+      const itemData=_snap(entry.data);delete itemData.orderId;
+      if(!order.items.some(it=>it.id===entry.originalId))order.items.push(itemData);
+    }
+  }else{
+    const arrName=_SOFT_DEL_TABLE[entry.type];
+    if(arrName&&entry.data){
+      if(!DB[arrName].some(r=>r.id===entry.originalId))DB[arrName].push(_snap(entry.data));
+    }
+  }
+  DB.trash.splice(idx,1);
+  recordAiOp({op:'restore',type:entry.type,targetId:entry.originalId,before:null,after:_snap(entry.data),
+    operator:'user'});
+  saveDB();
+  return entry;
+}
+
+/** 物理删除回收站单条（不可恢复，仅用户手动） */
+function purgeTrash(trashId){
+  const idx=DB.trash.findIndex(t=>t.id===trashId);
+  if(idx<0)return false;
+  DB.trash.splice(idx,1);
+  saveDB();
+  return true;
+}
+
+/** 清空回收站（物理删除全部，不可恢复，仅用户手动） */
+function clearTrash(){
+  DB.trash=[];
+  saveDB();
+}
+
+/** 回收站自动清理：删除超过保留期（TRASH_RETENTION_DAYS）的条目
+ *  - 幂等：每天最多执行一次（force 可绕过，供手动/自检调用）
+ *  - 清理时把关联的未回滚 delete 类 aiOps 标记 autoPurged（不可再回滚，避免 restoreFromTrash 落空）
+ *  - 系统自动行为，与 AI 完全隔离原则不冲突（AI 不操作回收站，清理是平台机制）
+ *  @param {boolean} [force=false] 强制清理（忽略每日频率限制）
+ *  @returns {number} 本次清理条数
+ */
+function autoPurgeTrash(force){
+  const nowTs=Date.now();
+  try{
+    const last=Number(localStorage.getItem(TRASH_CLEANUP_KEY)||0);
+    if(!force&&nowTs-last<24*3600*1000)return 0;  // 一天最多清理一次
+    const cutoff=nowTs-TRASH_RETENTION_DAYS*24*3600*1000;
+    const expired=(DB.trash||[]).filter(t=>t&&t.deletedAt<cutoff);
+    if(!expired.length){
+      try{localStorage.setItem(TRASH_CLEANUP_KEY,String(nowTs));}catch(_){}
+      return 0;
+    }
+    // 关联 aiOps：标记 autoPurged，UI 不再提供回滚
+    expired.forEach(t=>{
+      (DB.aiOps||[]).forEach(op=>{
+        if(!op.undone&&!op.autoPurged&&op.op==='delete'&&op.type===t.type&&op.targetId===t.originalId){
+          op.autoPurged=true;op.undoneAt=nowTs;
+        }
+      });
+    });
+    DB.trash=DB.trash.filter(t=>t&&t.deletedAt>=cutoff);
+    saveDB();
+    try{localStorage.setItem(TRASH_CLEANUP_KEY,String(nowTs));}catch(_){}
+    return expired.length;
+  }catch(e){
+    console.error('回收站自动清理失败:',e);
+    return 0;
+  }
+}
+
+/** 单条回滚操作（按 op 反向执行；标 undone 单向不可再回滚） */
+function undoAiOp(aiOpId){
+  const op=DB.aiOps.find(o=>o.id===aiOpId);
+  if(!op)throw new Error('操作记录不存在：'+aiOpId);
+  if(op.undone)throw new Error('该操作已回滚，不可重复回滚');
+  if(op.autoPurged)throw new Error('该记录已被自动清理，不可回滚');
+  switch(op.op){
+    case 'create':
+      try{softDelete(op.type,op.targetId,{operator:'user',reason:'回滚创建'});}
+      catch(e){throw new Error('回滚失败：记录可能已被删除 - '+e.message);}
+      break;
+    case 'update':{
+      const arrName=_SOFT_DEL_TABLE[op.type];
+      if(arrName&&op.before){
+        const arr=DB[arrName];
+        const i=arr.findIndex(r=>r.id===op.targetId);
+        if(i>=0)arr[i]=_snap(op.before);
+        else arr.push(_snap(op.before));
+      }
+      break;
+    }
+    case 'delete':{
+      const tIdx=DB.trash.findIndex(t=>t.type===op.type&&t.originalId===op.targetId);
+      if(tIdx<0)throw new Error('回滚失败：回收站已无该条目（可能已清空）');
+      restoreFromTrash(DB.trash[tIdx].id);
+      break;
+    }
+    case 'restore':
+      try{softDelete(op.type,op.targetId,{operator:'user',reason:'回滚恢复'});}
+      catch(e){throw new Error('回滚失败 - '+e.message);}
+      break;
+    case 'flow':
+      if(op.before){const order=DB.orders.find(o=>o.id===op.targetId);if(order)order.status=op.before.status;}
+      break;
+    case 'assign':
+      if(op.before&&op.before.orderId){
+        const order=DB.orders.find(o=>o.id===op.before.orderId);
+        if(order&&Array.isArray(order.items)){
+          const item=order.items.find(it=>it.id===op.targetId);
+          if(item)item.options=_snap(op.before.options||[]);
+        }
+      }
+      break;
+    case 'export':
+      throw new Error('导出操作不可回滚');
+  }
+  op.undone=true;op.undoneAt=Date.now();
+  saveDB();
+}
+
+/** 整批回滚（同 batchId 的未回滚操作，逆序撤销以保证依赖正确） */
+function undoBatch(batchId){
+  const ops=DB.aiOps.filter(o=>o.batchId===batchId&&!o.undone);
+  for(let i=ops.length-1;i>=0;i--){
+    try{undoAiOp(ops[i].id);}catch(e){console.warn('批次回滚部分失败：',ops[i].id,e.message);}
+  }
+}
+
+/**
+ * 阶段4：AI 操控相关关键函数名清单（供 data.js 自检引用，避免硬编码）
+ * 新增/重命名函数时只需更新此处，自检逻辑自动同步
+ */
+const _AI_OPS_FNS=['recordAiOp','undoAiOp','undoBatch','softDelete','softDeleteSpecOption','restoreFromTrash','purgeTrash','clearTrash'];
 
 
 

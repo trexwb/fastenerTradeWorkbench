@@ -248,8 +248,7 @@ function confirmBOMDel(idx){
     msg+=parts.join('、')+'。删除后相关记录将无法匹配到此 BOM，仅显示为 ID。';
   }
   confirmModal(msg,function(){
-    DB.bom.splice(idx,1);
-    saveDB();
+    softDelete('bom',bom.id,{operator:'user'});
     refreshBOMTable();
     toast('BOM「'+escHtml(sku)+'」已删除','info');
   },'确认删除');
@@ -650,8 +649,8 @@ function batchDeleteBOM(){
     msg+='\n\n删除后这些 BOM 将从系统中移除。';
   }
   confirmModal(msg,function(){
-    indices.forEach(function(i){if(DB.bom[i])DB.bom.splice(i,1);});
-    saveDB();render();toast('已删除 '+indices.length+' 条 BOM','info');
+    const bid=uid('AOB');indices.map(function(i){return DB.bom[i]&&DB.bom[i].id;}).filter(Boolean).forEach(function(id){try{softDelete('bom',id,{operator:'user',batchId:bid});}catch(e){}});
+    render();toast('已删除 '+indices.length+' 条 BOM','info');
   },'确认删除');
 }
 

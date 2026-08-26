@@ -21,7 +21,7 @@
 2. `src-tauri/tauri.conf.json` 的 version 字段（Tauri 桌面版）
 3. `AGENTS.md` 中的「当前基准版本」
 
-当前基准版本：**v1.0.0**。
+当前基准版本：**v1.0.5**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -279,4 +279,3 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 | `chore` | 构建/工具 |
 
 示例：`fix(orders): 修复订单列表分页跳转异常`
-*（内容由AI生成，仅供参考）*

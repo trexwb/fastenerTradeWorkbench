@@ -24,6 +24,7 @@ const SCRIPTS = [
   'core/store.js',
   'core/exporter.js',
   'core/ai.js',
+  'core/ai-tools.js',
   'views/dashboard.js',
   'views/units.js',
   'views/specs.js',

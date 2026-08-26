@@ -332,7 +332,7 @@ function delUnit(id){
   const usedPrice=DB.prices.some(pr=>pr.unitId===id);
   let msg='确认删除关联单位「'+escHtml(p.name)+'」?';
   if(used||usedPrice)msg='「'+escHtml(p.name)+'」已被订单或价格记录引用，删除后相关记录将显示为ID。确认删除?';
-  confirmModal(msg,()=>{DB.units=DB.units.filter(x=>x.id!==id);saveDB();closeModal();render();toast('已删除','info');},'确认删除');
+  confirmModal(msg,()=>{softDelete('unit',id,{operator:'user'});closeModal();render();toast('已删除','info');},'确认删除');
 }
 
 /** 渲染单条联系人编辑行 HTML
@@ -485,7 +485,7 @@ function batchDeleteUnits(){
   }
   confirmModal(msg,function(){
     const idSet=new Set(ids);
-    DB.units=DB.units.filter(function(x){return !idSet.has(x.id);});
-    saveDB();render();toast('已删除 '+ids.length+' 个','info');
+    const bid=uid('AOB');ids.forEach(function(id){try{softDelete('unit',id,{operator:'user',batchId:bid});}catch(e){}});
+    render();toast('已删除 '+ids.length+' 个','info');
   },'确认删除');
 }

@@ -1024,6 +1024,30 @@ API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，
 
 **AI 命令约束**：模型白名单 `deepseek-v4-flash` / `deepseek-v4-pro`；消息数 ≤ 20 条、单条 ≤ 30KB；`max_tokens` 上限 4096；请求超时 180s；响应体上限 2MB。Token 缺失、消息超限、非白名单模型、上游 HTTP 非 2xx 均返回错误字符串。
 
-### 7.4 运行形态判定
+### 7.4 前端 AI 工具协议（ai.js / ai-tools.js）
+
+**核心流程**（`AI.aiWriteLoop`）：带 `tools` 的 chat 请求 → 流式解析 tool_calls（web/tauri 双通道按 index 累积）→ 三分流：
+- `query_*`（7 个）：自动执行（`AIT.runQuery`，结果脱敏回填），不经确认弹窗
+- 功能层 `flow`（4 个，`AIT.FLOW_TOOL_NAMES`）：**自动执行**（`AIT.runFlow`，纯系统动作）——纯 UI 动作（导航/打开抽屉）不确认不审计；导出（生成文件）记 `op:'export'` 审计（操作历史可追溯，不可回滚）
+- 写入/删除/流转（25 个）：`confirmOpsModal` 确认弹窗（字段 diff + 敏感字段待补 + 删除提示）→ `AIT.executeOps` 批量执行（单条失败不中断）→ 结果回填 → 继续多轮（上限 8 轮）
+
+**工具清单**（`AIT.TOOLS_DEFS`，约 36 个）：
+- 查询 7：query_units / query_specs / query_bom / query_prices / query_orders / query_settlements / query_invoices
+- 写入 21：create/update_unit、create/update_price、create/update_bom、set_spec_value、create_order、update_order_meta、add/update_order_item、assign_supplier、add_manual_supplier、remove_sourcing_option、create/update_settlement、create/update_invoice、flow_order_status
+- 软删除 8：delete_unit/bom/price/order/spec_value/settlement/invoice + remove_order_item（均进回收站）
+- 功能层 4：navigate_view / export_order_excel / open_settlement_drawer / open_invoice_drawer（`AIT.runFlow`，纯系统动作）
+
+**安全机制**：
+- 校验层：`AIT.validateOp` 复用业务规则（查重/角色/状态机/剩余量/引用完整性）
+- 确认层：确认弹窗不可跳过，拒绝零写入
+- 审计层：`DB.aiOps`（2000 条 FIFO），`undoAiOp`/`undoBatch` 回滚
+- 并发保护：确认弹窗生成 `__beforeFingerprint`，执行前对比，数据被改动则拒绝
+- 隔离原则：回收站（`DB.trash`）与 AI 完全隔离；序列化剥离 trash/aiOps
+
+**运行形态判定**：`window.__TAURI__` 存在 → tauri（Rust 代理，lib.rs `ai_deepseek_chat` 透传 tools + tool_calls emit）；否则 web（前端直连）。
+
+**回收站自动清理**（`autoPurgeTrash`）：`DB.trash` 条目保留 `TRASH_RETENTION_DAYS`（90 天），超期自动物理清理——触发点：应用启动 + 打开回收站（幂等，每天最多一次，`force` 可绕过）；清理时关联的未回滚 delete 类 aiOps 标记 `autoPurged`（操作历史显示「已自动清理」，回滚被拒绝）。系统平台行为，与「AI 与回收站隔离」原则不冲突。
+
+### 7.5 运行形态判定
 
 前端 `src/core/ai.js` / `src/core/store.js` 以 `window.__TAURI__?.core.invoke` 是否存在判定桌面版（`tauri`）或浏览器版（`web`），无单独探测命令。

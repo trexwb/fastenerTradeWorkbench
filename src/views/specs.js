@@ -211,8 +211,7 @@ function delSpecVal(k,i){
     impactMsg='\n\n该值未被任何记录引用，可安全删除。';
   }
   confirmModal('确认删除「'+escHtml(v)+'」？'+impactMsg,function(){
-    DB.specs[k].splice(i,1);
-    saveDB();
+    softDeleteSpecOption(k,v,{operator:'user'});
     render();
     toast(SPEC_LABELS[k]+'值「'+v+'」已删除','info');
   },'确认删除');
