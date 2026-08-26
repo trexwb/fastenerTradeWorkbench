@@ -562,3 +562,18 @@ function bindView(){
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   外链处理：Tauri 桌面版 WebView 不处理 target="_blank" 导航，
+   点击时改为 invoke Rust open_external 命令用系统浏览器打开；
+   浏览器版保持原生行为（target="_blank" 新标签页）。
+   ═══════════════════════════════════════════════════════════════ */
+document.addEventListener('click', function (e) {
+  if (typeof IS_TAURI_RUNTIME === 'undefined' || !IS_TAURI_RUNTIME) return;
+  var t = e.target;
+  var a = t && t.closest ? t.closest('a[target="_blank"]') : null;
+  if (!a || !a.href) return;
+  e.preventDefault();
+  window.__TAURI__.core.invoke('open_external', { url: a.href })['catch'](function (err) {
+    console.error('[router] 打开外部链接失败:', err);
+  });
+});
