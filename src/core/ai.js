@@ -364,8 +364,16 @@ const AI=(function(){
       });
 
       // 1.5) 功能层立即执行（UI 动作：导航/导出/打开抽屉，不写 DB，结果回填给模型）
+      // 确认策略：纯 UI 动作（导航/打开抽屉）零副作用 → 自动执行不确认不审计；
+      // 导出（生成文件）有副作用 → 自动执行 + 记审计（操作历史可追溯，不可回滚）
       const flowResults=flowOps.map(tc=>{
         const content=(typeof AIT!=='undefined'&&AIT.runFlow)?AIT.runFlow(tc.name,tc.args||{}):JSON.stringify({ok:false,error:'AIT.runFlow 未加载'});
+        if(tc.name==='export_order_excel'){
+          try{
+            recordAiOp({op:'export',type:'export',targetId:(tc.args&&tc.args.orderId)||null,
+              before:null,after:{orderId:(tc.args&&tc.args.orderId)||null},operator:'ai',aiChatId:aiChatId});
+          }catch(e){}
+        }
         return {toolCallId:tc.id,content:content};
       });
 

@@ -252,10 +252,76 @@ function clearAllData(){
 }
 
 /* ===== 操作历史 / 回收站（阶段1：数据底座的用户操作面）===== */
-const OP_LABEL={create:'新增',update:'修改',delete:'删除',restore:'恢复',flow:'流转',assign:'寻货'};
-const TRASH_TYPE_LABEL={unit:'单位',spec:'属性',bom:'BOM',price:'报价',order:'订单',order_item:'订单明细',settlement:'结算',invoice:'发票'};
-function _opTagCls(op){return op==='delete'?'err':(op==='create'?'green':(op==='restore'?'purple':''));}
+const OP_LABEL={create:'新增',update:'修改',delete:'删除',restore:'恢复',flow:'流转',assign:'寻货',export:'导出'};
+const TRASH_TYPE_LABEL={unit:'单位',spec:'属性',bom:'BOM',price:'报价',order:'订单',order_item:'订单明细',settlement:'结算',invoice:'发票',export:'导出'};
+function _opTagCls(op){return op==='delete'?'err':(op==='create'?'green':(op==='restore'?'purple':(op==='export'?'info':'')));}
 /** 阶段4：操作历史筛选器渲染 */
+/** AI 操作统计报表（操作历史 tab 顶部，全量统计不受筛选影响） */
+function renderOpsStats(){
+  const ops=DB.aiOps||[];
+  if(!ops.length)return '';
+  const total=ops.length;
+  const aiN=ops.filter(o=>o.operator==='ai').length;
+  const userN=total-aiN;
+  const undoneN=ops.filter(o=>o.undone).length;
+  const autoPurgedN=ops.filter(o=>o.autoPurged).length;
+  const batchN=new Set(ops.map(o=>o.batchId).filter(Boolean)).size;
+  const aiPct=total?Math.round(aiN/total*100):0;
+  const undonePct=aiN?Math.round(ops.filter(o=>o.operator==='ai'&&o.undone).length/aiN*100):0;
+  // 按操作类型 × 操作者
+  const opKeys=Object.keys(OP_LABEL);
+  const byOp=opKeys.map(k=>{
+    const all=ops.filter(o=>o.op===k).length;
+    const ai=ops.filter(o=>o.op===k&&o.operator==='ai').length;
+    return {k,label:OP_LABEL[k],all,ai,user:all-ai};
+  }).filter(r=>r.all>0);
+  // 按数据域
+  const typeMap={};
+  ops.forEach(o=>{typeMap[o.type]=(typeMap[o.type]||0)+1;});
+  const byType=Object.keys(typeMap).map(t=>({label:TRASH_TYPE_LABEL[t]||t,n:typeMap[t]})).sort((a,b)=>b.n-a.n);
+  // 近 7 天趋势
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);
+    const start=d.getTime();
+    const n=ops.filter(o=>o.timestamp>=start&&o.timestamp<start+86400000).length;
+    days.push({label:(d.getMonth()+1)+'/'+d.getDate(),n});
+  }
+  const maxN=Math.max(1,...days.map(d=>d.n));
+  // 指标卡
+  const cards=[
+    {label:'总操作',val:total},
+    {label:'AI 操作',val:aiN+' <span class="ops-stats-sub">('+aiPct+'%)</span>'},
+    {label:'用户操作',val:userN},
+    {label:'已回滚',val:undoneN+' <span class="ops-stats-sub">AI 回滚率 '+undonePct+'%</span>'},
+    {label:'操作批次',val:batchN},
+    {label:'自动清理',val:autoPurgedN}
+  ];
+  const cardsHTML=cards.map(c=>'<div class="ops-stat-card"><div class="ops-stat-val">'+c.val+'</div><div class="ops-stat-label">'+c.label+'</div></div>').join('');
+  // 类型分布
+  const opRows=byOp.map(r=>'<tr><td>'+escHtml(r.label)+'</td><td>'+r.all+'</td><td>'+r.ai+'</td><td>'+r.user+'</td>'+
+    '<td><div class="ops-bar"><div class="ops-bar-ai" style="width:'+(r.all?Math.round(r.ai/r.all*100):0)+'%"></div></div></td></tr>').join('');
+  // 数据域分布（条形）
+  const typeRows=byType.map(t=>'<tr><td>'+escHtml(t.label)+'</td><td>'+t.n+'</td>'+
+    '<td><div class="ops-bar"><div class="ops-bar-type" style="width:'+Math.round(t.n/total*100)+'%"></div></div></td></tr>').join('');
+  // 趋势
+  const trendHTML=days.map(d=>{
+    const h=Math.round(d.n/maxN*100);
+    return '<div class="ops-trend-col"><div class="ops-trend-bar" style="height:'+Math.max(h,2)+'%"><span class="ops-trend-n">'+(d.n||'')+'</span></div><div class="ops-trend-label">'+d.label+'</div></div>';
+  }).join('');
+  return '<div class="ops-stats">'+
+    '<div class="ops-stats-cards">'+cardsHTML+'</div>'+
+    '<div class="ops-stats-grid">'+
+      '<div class="ops-stats-block"><div class="ops-stats-title">操作类型分布</div>'+
+        '<div class="table-wrap"><table><thead><tr><th>类型</th><th>合计</th><th>AI</th><th>用户</th><th style="width:34%">AI 占比</th></tr></thead><tbody>'+opRows+'</tbody></table></div></div>'+
+      '<div class="ops-stats-block"><div class="ops-stats-title">数据域分布</div>'+
+        '<div class="table-wrap"><table><thead><tr><th>数据域</th><th>次数</th><th style="width:34%">占比</th></tr></thead><tbody>'+typeRows+'</tbody></table></div></div>'+
+    '</div>'+
+    '<div class="ops-stats-block"><div class="ops-stats-title">近 7 天操作趋势</div>'+
+      '<div class="ops-trend">'+trendHTML+'</div></div>'+
+  '</div>';
+}
+
 function renderOpsFilter(){
   const f=window._aiOpsFilter||{op:'',operator:'',batchId:''};
   const opOpts=['',...Object.keys(OP_LABEL)].map(k=>'<option value="'+k+'"'+(f.op===k?' selected':'')+'>'+(k?OP_LABEL[k]:'全部操作')+'</option>').join('');
@@ -328,7 +394,8 @@ function renderOpsHistory(){
   if(f.operator)ops=ops.filter(o=>o.operator===f.operator);
   if(f.batchId)ops=ops.filter(o=>o.batchId===f.batchId);
   const filterBar=renderOpsFilter();
-  if(!ops.length)return filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
+  const statsHTML=renderOpsStats();
+  if(!ops.length)return statsHTML+filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
   // P2 修复：batchUndoneCount 基于全量 allOps 统计，避免筛选后计数偏小与 undoBatchConfirm 不一致
   const batchUndoneCount={};
   allOps.forEach(function(op){
@@ -340,8 +407,8 @@ function renderOpsHistory(){
     const typeLabel=TRASH_TYPE_LABEL[op.type]||op.type;
     const target=op.targetId?escHtml(String(op.targetId)):'—';
     const batchIdShort=op.batchId?escHtml(op.batchId.slice(0,8)):'—';
-    const undoneTag=op.undone?'<span class="tag gray">已回滚</span>':'';
-    const undoBtn=op.undone?'':'<button class="btn sm" onclick="undoAiOp(\''+escAttr(op.id)+'\');render();toast(\'已回滚\',\'info\');">回滚</button>';
+    const undoneTag=op.undone?'<span class="tag gray">已回滚</span>':(op.autoPurged?'<span class="tag gray">已自动清理</span>':'');
+    const undoBtn=(op.undone||op.autoPurged||op.op==='export')?'':'<button class="btn sm" onclick="undoAiOp(\''+escAttr(op.id)+'\');render();toast(\'已回滚\',\'info\');">回滚</button>';
     // 同批次多条未回滚操作时显示「整批回滚」按钮
     const batchBtn=(!op.undone&&op.batchId&&(batchUndoneCount[op.batchId]||0)>1)
       ?'<button class="btn sm" style="margin-left:4px" onclick="undoBatchConfirm(\''+escAttr(op.batchId)+'\');">整批回滚('+(batchUndoneCount[op.batchId])+')</button>'
@@ -354,7 +421,7 @@ function renderOpsHistory(){
       '<td class="td-act">'+undoneTag+undoBtn+batchBtn+'</td></tr>';
   }).join('');
   const summary='<div class="ops-filter-summary">筛选后 '+ops.length+' / 共 '+allOps.length+' 条</div>';
-  return filterBar+summary+'<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>类型</th><th>目标</th><th>操作者</th><th>批次</th><th class="td-act">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  return statsHTML+filterBar+summary+'<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>类型</th><th>目标</th><th>操作者</th><th>批次</th><th class="td-act">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /** 确认整批回滚（调用 store.js 的 undoBatch） */
 function undoBatchConfirm(batchId){
@@ -367,12 +434,15 @@ function undoBatchConfirm(batchId){
 }
 /** 渲染回收站 tab：按类型分组，可恢复/彻底删除/全部清空 */
 function renderTrash(){
+  // 自动清理：超保留期条目先清理（系统平台行为，AI 隔离原则不受影响）
+  const purged=autoPurgeTrash();
+  if(purged>0)toast('已自动清理 '+purged+' 条超过 '+TRASH_RETENTION_DAYS+' 天的回收站记录','info');
   const trash=DB.trash||[];
   if(!trash.length)return '<div class="empty-state">回收站为空</div>';
   const groups={};
   trash.forEach(function(t){(groups[t.type]=groups[t.type]||[]).push(t);});
   const TYPE_ORDER=['unit','spec','bom','price','order','order_item','settlement','invoice'];
-  let html='<div class="trash-toolbar"><span class="muted">共 '+trash.length+' 条</span> <button class="btn sm" onclick="clearTrashConfirm()">全部清空</button></div>';
+  let html='<div class="trash-toolbar"><span class="muted">共 '+trash.length+' 条 · 保留 '+TRASH_RETENTION_DAYS+' 天，超期自动清理</span> <button class="btn sm" onclick="clearTrashConfirm()">全部清空</button></div>';
   TYPE_ORDER.forEach(function(type){
     if(!groups[type])return;
     html+='<h4 class="trash-group-title">'+(TRASH_TYPE_LABEL[type]||type)+'（'+groups[type].length+'）</h4>';

@@ -604,3 +604,22 @@ kbd{display:inline-block;background:var(--bg-soft);border:1px solid var(--line);
 .ops-note{color:var(--gray);font-size:12px;padding:2px 0 0;}
 /* .modal.wide 宽版弹窗在 ai 确认弹窗下限制高度，避免遮挡抽屉 */
 .modal.wide .mb{max-height:65vh;overflow-y:auto;}
+
+/* ── AI 操作统计报表 ── */
+.ops-stats{margin-bottom:14px;display:flex;flex-direction:column;gap:12px;}
+.ops-stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;}
+.ops-stat-card{background:var(--bg-tint,#f7f8fa);border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:10px 12px;text-align:center;}
+.ops-stat-val{font-size:20px;font-weight:600;color:var(--ink,#222);line-height:1.3;}
+.ops-stat-val .ops-stats-sub{font-size:11px;font-weight:400;color:var(--gray,#888);}
+.ops-stat-label{font-size:12px;color:var(--gray,#888);margin-top:2px;}
+.ops-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;}
+.ops-stats-block{background:var(--bg-tint,#f7f8fa);border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:10px 12px;}
+.ops-stats-title{font-size:13px;font-weight:600;color:var(--ink,#222);margin-bottom:8px;}
+.ops-bar{height:10px;background:rgba(0,0,0,.06);border-radius:5px;overflow:hidden;}
+.ops-bar-ai{height:100%;background:var(--accent,#4da3ff);border-radius:5px;min-width:2px;}
+.ops-bar-type{height:100%;background:var(--green,#34c98f);border-radius:5px;min-width:2px;}
+.ops-trend{display:flex;align-items:flex-end;gap:6px;height:90px;padding:4px 2px;}
+.ops-trend-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;}
+.ops-trend-bar{width:70%;background:var(--accent,#4da3ff);border-radius:3px 3px 0 0;position:relative;min-height:2px;opacity:.85;}
+.ops-trend-bar .ops-trend-n{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--gray,#888);white-space:nowrap;}
+.ops-trend-label{font-size:10px;color:var(--gray,#999);}

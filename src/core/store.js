@@ -608,6 +608,7 @@ async function initApp(){
       // 2. 恢复文件同步（必须在渲染前完成，确保 fileSync 状态正确）
       await initFileHandle();
       // 数据加载完成，调用 onAppReady 恢复 hash 路由
+      autoPurgeTrash();  // 回收站自动清理（超保留期条目，启动时触发）
       if(typeof onAppReady==='function')onAppReady();else render();
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
@@ -636,6 +637,7 @@ async function initApp(){
     await initFileHandle();
     render();
   }
+  autoPurgeTrash();
 }
 
 /**
@@ -712,6 +714,8 @@ async function _safeIdbSave(){
 
 /* ===== 软删除 / 回收站 / 操作日志（阶段1 数据底座，供手动删除与阶段2 AI 写入复用）===== */
 const AI_OPS_LIMIT=2000;  // 操作日志保留上限（FIFO 滚动）
+const TRASH_RETENTION_DAYS=90;             // 回收站保留期（天），超期自动清理
+const TRASH_CLEANUP_KEY='wb_fastener_trash_cleanup';  // 上次自动清理时间戳（localStorage）
 /** 业务表名映射（spec/order_item 走特殊路径，不在此映射） */
 const _SOFT_DEL_TABLE={unit:'units',bom:'bom',price:'prices',order:'orders',settlement:'settlements',invoice:'invoices'};
 /** 深拷贝快照（沿用项目既有 JSON 克隆模式） */
@@ -827,11 +831,48 @@ function clearTrash(){
   saveDB();
 }
 
+/** 回收站自动清理：删除超过保留期（TRASH_RETENTION_DAYS）的条目
+ *  - 幂等：每天最多执行一次（force 可绕过，供手动/自检调用）
+ *  - 清理时把关联的未回滚 delete 类 aiOps 标记 autoPurged（不可再回滚，避免 restoreFromTrash 落空）
+ *  - 系统自动行为，与 AI 完全隔离原则不冲突（AI 不操作回收站，清理是平台机制）
+ *  @param {boolean} [force=false] 强制清理（忽略每日频率限制）
+ *  @returns {number} 本次清理条数
+ */
+function autoPurgeTrash(force){
+  const nowTs=Date.now();
+  try{
+    const last=Number(localStorage.getItem(TRASH_CLEANUP_KEY)||0);
+    if(!force&&nowTs-last<24*3600*1000)return 0;  // 一天最多清理一次
+    const cutoff=nowTs-TRASH_RETENTION_DAYS*24*3600*1000;
+    const expired=(DB.trash||[]).filter(t=>t&&t.deletedAt<cutoff);
+    if(!expired.length){
+      try{localStorage.setItem(TRASH_CLEANUP_KEY,String(nowTs));}catch(_){}
+      return 0;
+    }
+    // 关联 aiOps：标记 autoPurged，UI 不再提供回滚
+    expired.forEach(t=>{
+      (DB.aiOps||[]).forEach(op=>{
+        if(!op.undone&&!op.autoPurged&&op.op==='delete'&&op.type===t.type&&op.targetId===t.originalId){
+          op.autoPurged=true;op.undoneAt=nowTs;
+        }
+      });
+    });
+    DB.trash=DB.trash.filter(t=>t&&t.deletedAt>=cutoff);
+    saveDB();
+    try{localStorage.setItem(TRASH_CLEANUP_KEY,String(nowTs));}catch(_){}
+    return expired.length;
+  }catch(e){
+    console.error('回收站自动清理失败:',e);
+    return 0;
+  }
+}
+
 /** 单条回滚操作（按 op 反向执行；标 undone 单向不可再回滚） */
 function undoAiOp(aiOpId){
   const op=DB.aiOps.find(o=>o.id===aiOpId);
   if(!op)throw new Error('操作记录不存在：'+aiOpId);
   if(op.undone)throw new Error('该操作已回滚，不可重复回滚');
+  if(op.autoPurged)throw new Error('该记录已被自动清理，不可回滚');
   switch(op.op){
     case 'create':
       try{softDelete(op.type,op.targetId,{operator:'user',reason:'回滚创建'});}
@@ -869,6 +910,8 @@ function undoAiOp(aiOpId){
         }
       }
       break;
+    case 'export':
+      throw new Error('导出操作不可回滚');
   }
   op.undone=true;op.undoneAt=Date.now();
   saveDB();
