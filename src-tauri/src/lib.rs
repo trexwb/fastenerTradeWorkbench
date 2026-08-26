@@ -14,6 +14,7 @@ const ALLOWED_MODELS: [&str; 2] = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const MAX_MESSAGES: usize = 20;
 const MAX_MESSAGE_BYTES: usize = 30_000;
 const MAX_TOKENS: u32 = 4096;
+const MAX_DATA_BYTES: usize = 128 * 1024 * 1024; // 主数据文件大小上限 128MB
 const REQUEST_TIMEOUT_SECS: u64 = 180;
 const RESPONSE_BODY_CAP: usize = 2_000_000; // 2MB
 
@@ -63,7 +64,17 @@ fn ai_deepseek_token_write(app: tauri::AppHandle, token: String) -> Result<(), S
     }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
-    fs::write(token_path(&app)?, token).map_err(|e| format!("写入 Token 文件失败: {e}"))
+    let p = token_path(&app)?;
+    let tmp = p.with_extension("tmp");
+    fs::write(&tmp, &token).map_err(|e| format!("写入 Token 文件失败: {e}"))?;
+    // Unix 下将 Token 文件权限收紧为仅属主可读写
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, PermissionsExt::from_mode(0o600))
+            .map_err(|e| format!("设置 Token 文件权限失败: {e}"))?;
+    }
+    fs::rename(&tmp, &p).map_err(|e| format!("替换 Token 文件失败: {e}"))
 }
 
 #[tauri::command]
@@ -74,16 +85,6 @@ fn ai_deepseek_token_has(app: tauri::AppHandle) -> Result<bool, String> {
     }
     let tok = fs::read_to_string(&p).map_err(|e| format!("读取 Token 文件失败: {e}"))?;
     Ok(!tok.trim().is_empty())
-}
-
-#[tauri::command]
-fn ai_deepseek_model_default() -> String {
-    DEFAULT_MODEL.to_string()
-}
-
-#[tauri::command]
-fn ai_runtime_kind() -> &'static str {
-    "tauri"
 }
 
 /// 返回应用数据目录（IndexedDB 之外的 Token 等文件也存于此）。
@@ -108,15 +109,24 @@ fn data_file_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
     if raw.is_empty() {
         return Ok(None);
     }
-    Ok(Some(String::from_utf8_lossy(&raw).into_owned()))
+    // 严格 UTF-8 校验：文件损坏时返回错误而非静默替换字符
+    String::from_utf8(raw)
+        .map(Some)
+        .map_err(|e| format!("数据文件不是有效 UTF-8（可能已损坏）: {e}"))
 }
 
-/// 将主数据 JSON 写入应用数据目录。
+/// 将主数据 JSON 写入应用数据目录（原子写入：临时文件 + rename，避免写一半损坏）。
 #[tauri::command]
 fn data_file_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
+    if content.len() > MAX_DATA_BYTES {
+        return Err(format!("数据过大（{} 字节，上限 {}），拒绝写入", content.len(), MAX_DATA_BYTES));
+    }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
-    fs::write(root.join(DATA_FILENAME), content).map_err(|e| format!("写入数据文件失败: {e}"))
+    let p = root.join(DATA_FILENAME);
+    let tmp = p.with_extension("tmp");
+    fs::write(&tmp, content.as_bytes()).map_err(|e| format!("写入数据文件失败: {e}"))?;
+    fs::rename(&tmp, &p).map_err(|e| format!("替换数据文件失败: {e}"))
 }
 
 #[derive(Debug, Serialize)]
@@ -295,15 +305,12 @@ async fn ai_deepseek_chat(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            ai_runtime_kind,
             data_dir_get,
             data_file_load,
             data_file_save,
             ai_deepseek_token_write,
             ai_deepseek_token_has,
-            ai_deepseek_model_default,
             ai_deepseek_chat,
         ])
         .run(tauri::generate_context!())

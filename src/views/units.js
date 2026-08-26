@@ -19,6 +19,41 @@ function unitCounts(){
   return {total,buyers,suppliers,both,noContacts};
 }
 
+/** 渲染单个联系人信息行 HTML（单位行内嵌，含脱敏电话与悬浮提示）
+ * @param {Object} c - 联系人对象（name/phone/wechat/side/sides）
+ * @returns {string} .ci-row HTML
+ */
+function unitContactRowHTML(c){
+  const name=escHtml(c.name||'');
+  const phone=escHtml(c.phone||'');
+  const wechat=escHtml(c.wechat||'');
+  const maskedPhone=phone.length>4?phone.slice(0,-4).replace(/./g,'*')+phone.slice(-4):phone;
+  const sideTag=((c.sides||[c.side]).includes('采购')||c.side==='采购商')?'采':'供';
+  const tip=phone||wechat?'电话：'+phone+(wechat?'\n微信：'+wechat:''):'';
+  return '<div class="ci-row" '+(tip?'title="'+tip.replace(/\n/g,'&#10;')+'"':'')+'>'+
+    '<span class="ci-name">'+name+'</span>'+
+    '<span class="ci-side">('+sideTag+')</span>'+
+    '<span class="ci-phone muted">'+(phone?' '+maskedPhone:'')+'</span>'+
+  '</div>';
+}
+
+/** 渲染单条关联单位表格行 HTML（列表页与局部刷新共用，避免两份模板漏改）
+ * @param {Object} p - 单位对象
+ * @returns {string} <tr> 行 HTML
+ */
+function unitRowHTML(p){
+  const contacts=(p.contacts||[]).map(unitContactRowHTML).join('')||'<span class="muted" style="font-size:13px">无联系人</span>';
+  return '<tr>'+
+    '<td><input type="checkbox" class="unit-check" data-id="'+p.id+'" onchange="updateUnitBatchBtn()"></td>'+
+    '<td><div style="display:flex;align-items:center;gap:10px"><div class="td-img">'+escHtml(p.name[0])+'</div><b>'+escHtml(p.name)+'</b></div></td>'+
+    '<td>'+roleBadge(p.roles)+'</td>'+
+    '<td>'+escHtml(p.term||'-')+'</td>'+
+    '<td><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
+    '<td class="td-contacts">'+contacts+'</td>'+
+    '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')">'+icon('trash')+'删除</button></td>'+
+  '</tr>';
+}
+
 /** 渲染关联单位列表视图（含搜索、角色/评级筛选标签、分页）
  * @returns {string} 关联单位列表HTML字符串
  */
@@ -27,30 +62,7 @@ function viewUnits(){
   const totalPages=Math.max(1,Math.ceil(all.length/PAGE_SIZE));
   if(_unitPage>totalPages)_unitPage=totalPages;
   const pageData=all.slice((_unitPage-1)*PAGE_SIZE,_unitPage*PAGE_SIZE);
-  const rows=pageData.map(p=>{
-    const contacts=(p.contacts||[]).map(c=>{
-      const name=escHtml(c.name||'');
-      const phone=escHtml(c.phone||'');
-      const wechat=escHtml(c.wechat||'');
-      const maskedPhone=phone.length>4?phone.slice(0,-4).replace(/./g,'*')+phone.slice(-4):phone;
-      const sideTag=((c.sides||[c.side]).includes('采购')||c.side==='采购商')?'采':'供';
-      const tip=phone||wechat?'电话：'+phone+(wechat?'\n微信：'+wechat:''):'';
-      return '<div class="ci-row" '+(tip?'title="'+tip.replace(/\n/g,'&#10;')+'"':'')+'>'+
-        '<span class="ci-name">'+name+'</span>'+
-        '<span class="ci-side">('+sideTag+')</span>'+
-        '<span class="ci-phone muted">'+(phone?' '+maskedPhone:'')+'</span>'+
-      '</div>';
-    }).join('')||'<span class="muted" style="font-size:13px">无联系人</span>';
-    return '<tr>'+
-      '<td><input type="checkbox" class="unit-check" data-id="'+p.id+'" onchange="updateUnitBatchBtn()"></td>'+
-      '<td><div style="display:flex;align-items:center;gap:10px"><div class="td-img">'+escHtml(p.name[0])+'</div><b>'+escHtml(p.name)+'</b></div></td>'+
-      '<td>'+roleBadge(p.roles)+'</td>'+
-      '<td>'+escHtml(p.term||'-')+'</td>'+
-      '<td><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
-      '<td class="td-contacts">'+contacts+'</td>'+
-      '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')">'+icon('trash')+'删除</button></td>'+
-    '</tr>';
-  }).join('');
+  const rows=pageData.map(unitRowHTML).join('');
   const total=DB.units.length;
   const matched=all.length;
   const cnt=unitCounts();
@@ -79,7 +91,7 @@ function viewUnits(){
   '</div>';
   return '<div class="toolbar">'+
     '<div class="search-box'+(unitSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" onclick="onUnitSearch(document.getElementById(\'unitSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<a href="javascript:void(0)" data-search-fn="onUnitSearch" onclick="onUnitSearch(document.getElementById(\'unitSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="unitSearchInput" type="text" tabindex="1" value="'+escAttr(unitSearch)+'" placeholder="搜索单位名称、联系人、电话..." onkeydown="if(event.key===\'Enter\')onUnitSearch(this.value)">'+
       '<span class="clear-btn" onclick="onUnitSearch(\'\')">×</span>'+
     '</div>'+
@@ -106,30 +118,7 @@ function refreshUnitList(){
   let totalPages=Math.max(1,Math.ceil(all.length/PAGE_SIZE));
   if(_unitPage>totalPages)_unitPage=totalPages;
   let pageData=all.slice((_unitPage-1)*PAGE_SIZE,_unitPage*PAGE_SIZE);
-  let rows=pageData.map(function(p){
-    let contacts=(p.contacts||[]).map(function(c){
-      let name=escHtml(c.name||'');
-      let phone=escHtml(c.phone||'');
-      let wechat=escHtml(c.wechat||'');
-      let maskedPhone=phone.length>4?phone.slice(0,-4).replace(/./g,'*')+phone.slice(-4):phone;
-      let sideTag=((c.sides||[c.side]).includes('采购')||c.side==='采购商')?'采':'供';
-      let tip=phone||wechat?'电话：'+phone+(wechat?'&#10;微信：'+wechat:''):'';
-      return '<div class="ci-row"'+(tip?' title="'+tip.replace(/\n/g,'&#10;')+'"':'')+'>'+
-        '<span class="ci-name">'+name+'</span>'+
-        '<span class="ci-side">('+sideTag+')</span>'+
-        '<span class="ci-phone muted">'+(phone?' '+maskedPhone:'')+'</span>'+
-      '</div>';
-    }).join('')||'<span class="muted" style="font-size:13px">无联系人</span>';
-    return '<tr>'+
-      '<td><input type="checkbox" class="unit-check" data-id="'+p.id+'" onchange="updateUnitBatchBtn()"></td>'+
-      '<td><div style="display:flex;align-items:center;gap:10px"><div class="td-img">'+escHtml(p.name[0])+'</div><b>'+escHtml(p.name)+'</b></div></td>'+
-      '<td>'+roleBadge(p.roles)+'</td>'+
-      '<td>'+escHtml(p.term||'-')+'</td>'+
-      '<td><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
-      '<td class="td-contacts">'+contacts+'</td>'+
-      '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')">'+icon('trash')+'删除</button></td>'+
-    '</tr>';
-  }).join('');
+  let rows=pageData.map(unitRowHTML).join('');
   body.innerHTML=rows||'<tr><td colspan="7"><div class="no-data">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配结果':'暂无关联单位，点击「新建关联单位」开始')+'</div></td></tr>';
   if(paging)paging.innerHTML=totalPages>1?buildPaging(all.length,_unitPage,totalPages,'unitPage',{id:'unitPaging',showCount:false}):'';
   let tag=document.getElementById('unitCountTag');
@@ -215,7 +204,7 @@ function unitForm(p){
   const hasInvoice=isEdit&&p&&p.invoice&&(p.invoice.taxId||p.invoice.bank||p.invoice.accountNo);
   return '<div class="unit-section"><div class="sec-hd">基本信息</div>'+
     '<div class="sec-body">'+
-      '<div class="field"><label class="f">单位名称 <span style="color:#ef4444">*</span></label><input id="f_name" tabindex="10" value="'+escAttr(p?p.name:'')+'" placeholder="请输入单位全称" style="font-size:14px"></div>'+
+      '<div class="field"><label class="f">单位名称 <span style="color:var(--red)">*</span></label><input id="f_name" tabindex="10" value="'+escAttr(p?p.name:'')+'" placeholder="请输入单位全称" style="font-size:14px"></div>'+
       '<div class="grid2">'+
         '<div class="field"><label class="f">角色（可多选）</label>'+
           '<div class="role-pick">'+
@@ -277,10 +266,10 @@ function toggleInvoiceSection(el){
  * @returns {void}
  */
 function newUnit(){
-  var onSave=function(){
-    var vr=validateAndCollectUnitForm(null);
+  let onSave=function(){
+    let vr=validateAndCollectUnitForm(null);
     if(vr.error){toast(vr.error,'warning');return;}
-    var _a=vr.data, name=_a.name, roles=_a.roles, contacts=_a.contacts, term=_a.term, rating=_a.rating, invoice=_a.invoice;
+    let _a=vr.data, name=_a.name, roles=_a.roles, contacts=_a.contacts, term=_a.term, rating=_a.rating, invoice=_a.invoice;
     DB.units.push({id:uid('U'),name:name,roles:roles,contacts:contacts,term:term,rating:rating,invoice:invoice});
     clearDraft(DRAFT_TYPES.unit);
     saveDB();closeDrawer();render();toast('关联单位已保存','success');
@@ -290,21 +279,21 @@ function newUnit(){
     setTimeout(function(){
       restoreUnitDraft(d);
       updateContactSides();
-      var panel=document.querySelector('.drawer-panel');
+      let panel=document.querySelector('.drawer-panel');
       if(panel)bindDraftSave(panel,collectUnitDraft,DRAFT_TYPES.unit);
     },100);
   },function(){
     openDrawer('新建关联单位',unitForm(null),onSave,true);
     setTimeout(function(){
       updateContactSides();
-      var panel=document.querySelector('.drawer-panel');
+      let panel=document.querySelector('.drawer-panel');
       if(panel)bindDraftSave(panel,collectUnitDraft,DRAFT_TYPES.unit);
     },100);
   },'关联单位'))return;
   openDrawer('新建关联单位',unitForm(null),onSave,true);
   setTimeout(function(){
     updateContactSides();
-    var panel=document.querySelector('.drawer-panel');
+    let panel=document.querySelector('.drawer-panel');
     if(panel)bindDraftSave(panel,collectUnitDraft,DRAFT_TYPES.unit);
   },100);
 }
@@ -341,8 +330,8 @@ function delUnit(id){
   if(!p)return;
   const used=DB.orders.some(o=>o.buyerId===id||o.items.some(i=>(i.options||[]).some(opt=>opt.supplierId===id)));
   const usedPrice=DB.prices.some(pr=>pr.unitId===id);
-  let msg='确认删除关联单位「'+p.name+'」?';
-  if(used||usedPrice)msg='「'+p.name+'」已被订单或价格记录引用，删除后相关记录将显示为ID。确认删除?';
+  let msg='确认删除关联单位「'+escHtml(p.name)+'」?';
+  if(used||usedPrice)msg='「'+escHtml(p.name)+'」已被订单或价格记录引用，删除后相关记录将显示为ID。确认删除?';
   confirmModal(msg,()=>{DB.units=DB.units.filter(x=>x.id!==id);saveDB();closeModal();render();toast('已删除','info');},'确认删除');
 }
 
@@ -468,7 +457,7 @@ function batchDeleteUnits(){
     const id=c.dataset.id;
     ids.push(id);
     const p=DB.units.find(function(x){return x.id===id;});
-    if(p)names.push(p.name);
+    if(p)names.push(escHtml(p.name));
   });
   // 关联检查聚合
   const refParts=[];
@@ -487,7 +476,7 @@ function batchDeleteUnits(){
       const tag=[];
       if(priceCnt>0)tag.push('报价'+priceCnt);
       if(orderCnt>0)tag.push('订单'+orderCnt);
-      refParts.push(p.name+'('+tag.join('/')+')');
+      refParts.push(escHtml(p.name)+'('+tag.join('/')+')');
     }
   });
   let msg='确认删除选中的 '+ids.length+' 个单位？\n\n'+names.join('、');

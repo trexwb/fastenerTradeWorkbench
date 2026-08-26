@@ -210,7 +210,7 @@ function delSpecVal(k,i){
   }else{
     impactMsg='\n\n该值未被任何记录引用，可安全删除。';
   }
-  confirmModal('确认删除「'+v+'」？'+impactMsg,function(){
+  confirmModal('确认删除「'+escHtml(v)+'」？'+impactMsg,function(){
     DB.specs[k].splice(i,1);
     saveDB();
     render();
@@ -286,6 +286,15 @@ function openBatchImportSpec(k){
 }
 
 /* 导出全部属性 */
+/** CSV 单元格转义：值含逗号/引号/换行时加双引号包裹并转义内部引号（RFC 4180）
+ * @param {*} v - 单元格值
+ * @returns {string} 转义后的 CSV 字段
+ */
+function csvCell(v){
+  const s=String(v==null?'':v);
+  return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+
 /**
  * 导出全部属性选项为 CSV 文件。
  * @returns {void} 无返回值
@@ -294,10 +303,10 @@ function exportAllSpecs(){
   let lines=['属性维度,选项值,引用次数'];
   SPEC_FIELDS.forEach(function(k){
     let vals=DB.specs[k]||[];
-    if(!vals.length){lines.push(SPEC_LABELS[k]+',(无)');return;}
+    if(!vals.length){lines.push(csvCell(SPEC_LABELS[k])+',"(无)"');return;}
     vals.forEach(function(v){
       let u=countSpecUsage(k,v);
-      lines.push(SPEC_LABELS[k]+','+v+','+u.total);
+      lines.push(csvCell(SPEC_LABELS[k])+','+csvCell(v)+','+u.total);
     });
   });
   let csv=['\uFEFF'+lines.join('\n')];

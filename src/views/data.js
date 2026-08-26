@@ -5,26 +5,26 @@ function renderStorageStatus(sizeStr){
     '<h2>'+icon('database','18')+'数据管理</h2>'+
     '<div class="grid4 data-count-cards">'+
       '<div class="data-count-card">'+
-        '<div class="dcc-icon" style="background:#eff6ff;color:#2563eb">'+icon('users','18')+'</div>'+
+        '<div class="dcc-icon" style="background:var(--pri-l);color:var(--pri)">'+icon('users','18')+'</div>'+
         '<div><div style="font-size:12px;color:var(--gray);margin-bottom:4px">关联单位</div><div style="font-size:22px;font-weight:700">'+DB.units.length+' 条</div></div>'+
       '</div>'+
       '<div class="data-count-card">'+
-        '<div class="dcc-icon" style="background:#f0fdf4;color:#16a34a">'+icon('tag','18')+'</div>'+
+        '<div class="dcc-icon" style="background:var(--green-l);color:var(--green)">'+icon('tag','18')+'</div>'+
         '<div><div style="font-size:12px;color:var(--gray);margin-bottom:4px">价格记录</div><div style="font-size:22px;font-weight:700">'+DB.prices.length+' 条</div></div>'+
       '</div>'+
       '<div class="data-count-card">'+
-        '<div class="dcc-icon" style="background:#fff7ed;color:#c2410c">'+icon('shoppingCart','18')+'</div>'+
+        '<div class="dcc-icon" style="background:var(--amber-l);color:var(--amber)">'+icon('shoppingCart','18')+'</div>'+
         '<div><div style="font-size:12px;color:var(--gray);margin-bottom:4px">采购订单</div><div style="font-size:22px;font-weight:700">'+DB.orders.length+' 条</div></div>'+
       '</div>'+
       '<div class="data-count-card">'+
-        '<div class="dcc-icon" style="background:#fdf4ff;color:#9333ea">'+icon('database','18')+'</div>'+
+        '<div class="dcc-icon" style="background:var(--purple-l);color:var(--purple)">'+icon('database','18')+'</div>'+
         '<div><div style="font-size:12px;color:var(--gray);margin-bottom:4px">数据大小</div><div style="font-size:22px;font-weight:700">'+sizeStr+'</div></div>'+
       '</div>'+
     '</div>'+
     '<div style="border-top:1px solid var(--line);padding-top:20px;">'+
       '<div class="data-section-hd">'+icon('database','16')+' 存储架构</div>'+
         '<div class="grid2" style="margin-bottom:12px">'+
-          '<div style="background:'+(idbStatus==='error'?'#fef2f2':idbStatus==='ok'?'#f0fdf4':'#f8fafc')+';border:1px solid '+(idbStatus==='error'?'#fecaca':idbStatus==='ok'?'#bbf7d0':'var(--line)')+';border-radius:8px;padding:14px">'+
+          '<div style="background:'+(idbStatus==='error'?'var(--red-l)':idbStatus==='ok'?'var(--green-l)':'var(--bg-tint)')+';border:1px solid '+(idbStatus==='error'?'var(--red-line)':idbStatus==='ok'?'var(--green-line)':'var(--line)')+';border-radius:8px;padding:14px">'+
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
               '<div style="font-size:12px;font-weight:600">IndexedDB <span class="tag info" style="font-size:12px;margin-left:4px">数据库</span></div>'+
               '<span class="tag '+(idbStatus==='error'?'err':'ok')+'">'+(idbStatus==='error'?'异常':'正常')+'</span>'+
@@ -32,7 +32,7 @@ function renderStorageStatus(sizeStr){
             '<div style="font-size:14px;color:var(--gray)">数据大小 · '+sizeStr+'</div>'+
             '<div style="font-size:12px;margin-top:4px;color:var(--gray)">容量数百 MB+，所有业务数据的主存储</div>'+
           '</div>'+
-          '<div style="background:'+(fileSync===true?'#f0fdf4':fileSync==='pending'?'#fffbeb':'#f8fafc')+';border:1px solid '+(fileSync===true?'#bbf7d0':fileSync==='pending'?'#fde68a':'var(--line)')+';border-radius:8px;padding:14px">'+
+          '<div style="background:'+(fileSync===true?'var(--green-l)':fileSync==='pending'?'var(--amber-l)':'var(--bg-tint)')+';border:1px solid '+(fileSync===true?'var(--green-line)':fileSync==='pending'?'var(--amber-line)':'var(--line)')+';border-radius:8px;padding:14px">'+
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
               '<div style="font-size:12px;font-weight:600">本地 JSON 文件 <span class="tag info" style="font-size:12px;margin-left:4px">备份</span></div>'+
               '<span class="tag '+(fileSync===true?'ok':fileSync==='pending'?'warn':'gray')+'">'+(fileSync===true?'已同步':fileSync==='pending'?'待授权':'未绑定')+'</span>'+
@@ -41,7 +41,7 @@ function renderStorageStatus(sizeStr){
             '<div style="font-size:12px;margin-top:4px;color:var(--gray)">磁盘文件，清缓存不丢数据</div>'+
           '</div>'+
         '</div>'+
-        '<div id="storageQuota" style="margin-bottom:12px;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gray)">'+
+        '<div id="storageQuota" style="margin-bottom:12px;background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gray)">'+
           icon('clock','12')+' 正在获取存储配额...'+
         '</div>'+
         '<div style="border-top:1px solid var(--line);padding-top:20px;">'+
@@ -86,7 +86,7 @@ function renderFileSyncSection(){
     return '<div style="border-top:1px solid var(--line);padding-top:20px;margin-bottom:20px">'+
       '<div class="card">'+
         '<div class="data-section-hd">'+icon('fileText','16')+' 本地数据存储</div>'+
-        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px">'+
+        '<div style="background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:14px">'+
           '<div style="font-size:14px;color:var(--gray);line-height:1.8">桌面版数据存储于<strong>本机应用数据目录</strong>（IndexedDB 持久化），不受浏览器清缓存影响，<strong>无需绑定本地文件</strong>。</div>'+
           '<div style="font-size:13px;margin-top:10px;color:var(--ink)"><b>数据目录</b><br><code id="dataDirPath" style="word-break:break-all">正在获取...</code></div>'+
           '<div style="font-size:12px;margin-top:6px;color:var(--gray)">数据文件与 DeepSeek API_KEY 均保存在此目录，卸载应用不影响（如需备份请复制该目录）。</div>'+
@@ -98,7 +98,7 @@ function renderFileSyncSection(){
   if(fsaSupported()){
     if(fileSync===true){
       syncContent=
-        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:12px">'+
+        '<div style="background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:14px;margin-bottom:12px">'+
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="tag ok">已同步</span><b>'+escHtml(fileHandle?fileHandle.name:'')+'</b></div>'+
           '<div style="font-size:12px;color:var(--gray)">'+(fileLastSave?'最后同步：'+escHtml(fileLastSave):'')+' · 每次修改自动写入文件，浏览器清缓存不丢数据</div>'+
         '</div>'+
@@ -108,7 +108,7 @@ function renderFileSyncSection(){
         '</div>';
     }else if(fileSync==='pending'){
       syncContent=
-        '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin-bottom:12px">'+
+        '<div style="background:var(--amber-l);border:1px solid var(--amber-line);border-radius:8px;padding:14px;margin-bottom:12px">'+
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="tag warn">需重新授权</span><b>'+escHtml(fileHandle?fileHandle.name:'')+'</b></div>'+
           '<div style="font-size:12px;color:var(--gray)">刷新页面后浏览器需要重新授权才能读写文件，点击下方按钮授权</div>'+
         '</div>'+
@@ -118,7 +118,7 @@ function renderFileSyncSection(){
         '</div>';
     }else{
       syncContent=
-        '<div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px">'+
+        '<div style="background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px">'+
           '<div style="font-size:14px;color:var(--gray);line-height:1.8">绑定一个本地 JSON 文件后，每次修改数据会<strong>自动写入文件</strong>。<br>即使浏览器清空缓存，数据也不会丢失——重新打开页面即可从文件恢复。</div>'+
         '</div>'+
         '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
@@ -139,7 +139,7 @@ function renderFileSyncSection(){
 /** 渲染危险操作区（清空全部数据按钮及警告提示） */
 function renderDangerZone(){
   return '<div style="border-top:1px solid var(--line);padding-top:20px">'+
-      '<div class="card" style="border-color:#fca5a5">'+
+      '<div class="card" style="border-color:var(--red-line)">'+
         '<div class="data-section-hd" style="color:var(--red)">'+icon('alertTriangle','16')+' 危险操作</div>'+
         '<button class="btn danger" onclick="clearAllData()">'+icon('trash')+'清空全部数据</button>'+
         '<div class="note" style="margin-top:8px;margin-bottom:0">清空后无法恢复，请确保已导出备份。</div>'+

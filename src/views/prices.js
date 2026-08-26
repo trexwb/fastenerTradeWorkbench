@@ -4,6 +4,30 @@
    ========================================================= */
 
 /**
+ * 渲染单条报价表格行 HTML（列表页与局部刷新共用，避免两份模板漏改）。
+ * @param {Object} p - 报价记录
+ * @returns {string} <tr> 行 HTML
+ */
+function priceRowHTML(p){
+  return '<tr>'+
+    '<td><input type="checkbox" class="price-check" data-id="'+escAttr(p.id)+'" onchange="updatePriceBatchBtn()"></td>'+
+    '<td><b>'+escHtml(pName(p.unitId))+'</b><br><span class="muted" style="font-size:12px">'+escHtml(pRating(p.unitId))+'</span></td>'+
+    '<td>'+priceBomSku(p)+'</td>'+
+    '<td>'+priceSpec(p)+'</td>'+
+    '<td><div class="spec-line">'+priceAttrCol(p)+'</div></td>'+
+    '<td><b style="color:var(--green)">'+fmt(p.price)+'</b></td>'+
+    '<td>'+escHtml(p.contact||'-')+'</td>'+
+    '<td>'+escHtml(p.validFrom)+'</td>'+
+    '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')">'+icon('trash')+'删除</button></td>'+
+  '</tr>';
+}
+
+/** 报价表空态行 HTML（无数据/无匹配共用） */
+function priceEmptyRowHTML(){
+  return '<tr><td colspan="9"><div class="no-data">'+(hasPriceFilter()?'无匹配结果':'暂无报价记录，点击「新增报价」开始')+'</div></td></tr>';
+}
+
+/**
  * 渲染报价列表视图（含搜索、供应商/属性筛选、排序、分页）。
  * @returns {string} 报价列表视图 HTML
  */
@@ -13,26 +37,14 @@ function viewPrices(){
   if(_pricePage>totalPages)_pricePage=totalPages;
   const pageData=filtered.slice((_pricePage-1)*PAGE_SIZE,_pricePage*PAGE_SIZE);
 
-  const rows=pageData.map(p=>{
-    return '<tr>'+
-      '<td><input type="checkbox" class="price-check" data-id="'+escAttr(p.id)+'" onchange="updatePriceBatchBtn()"></td>'+
-      '<td><b>'+escHtml(pName(p.unitId))+'</b><br><span class="muted" style="font-size:12px">'+escHtml(pRating(p.unitId))+'</span></td>'+
-      '<td>'+priceBomSku(p)+'</td>'+
-      '<td>'+priceSpec(p)+'</td>'+
-      '<td><div class="spec-line">'+priceAttrCol(p)+'</div></td>'+
-      '<td><b style="color:var(--green)">'+fmt(p.price)+'</b></td>'+
-      '<td>'+escHtml(p.contact||'-')+'</td>'+
-      '<td>'+escHtml(p.validFrom)+'</td>'+
-      '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')">'+icon('trash')+'删除</button></td>'+
-    '</tr>';
-  }).join('');
+  const rows=pageData.map(priceRowHTML).join('');
 
   const pg=buildPaging(filtered.length,_pricePage,totalPages,'pricePage',{id:'pricesPaging'});
 
   const specFilt=SPEC_FIELDS.map(k=>'<div id="pf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val=""></div>').join('');
 
   return '<div class="toolbar">'+
-    '<div class="search-box" style="width:160px"><a href="javascript:void(0)" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="SKU..." onkeydown="if(event.key===\'Enter\')doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box" style="width:160px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="SKU..." onkeydown="if(event.key===\'Enter\')doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
     '<button id="priceBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeletePrices()">'+icon('trash')+'批量删除(<span id="priceBatchCount">0</span>)</button>'+
@@ -50,7 +62,7 @@ function viewPrices(){
     '<button class="btn sm ghost filt-clear" onclick="clearPriceFilter()">清除筛选</button>'+
   '</div>'+
   '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllPrices(this)" title="全选"></th><th>供应商</th><th>BOM SKU</th><th>规格</th><th>属性</th><th>单价(元/千支)</th><th>联系人</th><th>有效期起</th><th></th></tr></thead><tbody id="priceBody">'+
-  (rows||'<tr><td colspan="9"><div class="no-data">'+(hasPriceFilter()?'无匹配结果':'暂无报价记录，点击「新增报价」开始')+'</div></td></tr>')+
+  (rows||priceEmptyRowHTML())+
   '</tbody></table></div>'+pg+'</div>';
 }
 
@@ -100,22 +112,10 @@ function refreshPricesTable(){
   if(_pricePage>totalPages)_pricePage=totalPages;
   const pageData=filtered.slice((_pricePage-1)*PAGE_SIZE,_pricePage*PAGE_SIZE);
 
-  const rows=pageData.map(p=>{
-    return '<tr>'+
-      '<td><input type="checkbox" class="price-check" data-id="'+escAttr(p.id)+'" onchange="updatePriceBatchBtn()"></td>'+
-      '<td><b>'+escHtml(pName(p.unitId))+'</b><br><span class="muted" style="font-size:12px">'+escHtml(pRating(p.unitId))+'</span></td>'+
-      '<td>'+priceBomSku(p)+'</td>'+
-      '<td>'+priceSpec(p)+'</td>'+
-      '<td><div class="spec-line">'+priceAttrCol(p)+'</div></td>'+
-      '<td><b style="color:var(--green)">'+fmt(p.price)+'</b></td>'+
-      '<td>'+escHtml(p.contact||'-')+'</td>'+
-      '<td>'+escHtml(p.validFrom)+'</td>'+
-      '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')">'+icon('trash')+'删除</button></td>'+
-    '</tr>';
-  }).join('');
+  const rows=pageData.map(priceRowHTML).join('');
 
   const body=document.getElementById('priceBody');
-  if(body)body.innerHTML=rows||'<tr><td colspan="9"><div class="no-data">'+(hasPriceFilter()?'无匹配结果':'暂无报价记录，点击「新增报价」开始')+'</div></td></tr>';
+  if(body)body.innerHTML=rows||priceEmptyRowHTML();
 
   let pgEl=document.getElementById('pricesPaging');
   if(pgEl)pgEl.innerHTML=buildPaging(filtered.length,_pricePage,totalPages,'pricePage',{id:'pricesPaging',showCount:false});
@@ -170,21 +170,21 @@ function newPrice(){
     setTimeout(function(){
       bindPriceFormCombos(null);
       restorePriceDraft(d);
-      var panel=document.querySelector('.drawer-panel');
+      let panel=document.querySelector('.drawer-panel');
       if(panel)bindDraftSave(panel,collectPriceDraft,DRAFT_TYPES.price);
     },100);
   },function(){
     openDrawer('新增报价',priceFormHTML(),savePriceDrawer,true);
     setTimeout(function(){
       bindPriceFormCombos(null);
-      var panel=document.querySelector('.drawer-panel');
+      let panel=document.querySelector('.drawer-panel');
       if(panel)bindDraftSave(panel,collectPriceDraft,DRAFT_TYPES.price);
     },100);
   },'报价'))return;
   openDrawer('新增报价',priceFormHTML(),savePriceDrawer,true);
   setTimeout(function(){
     bindPriceFormCombos(null);
-    var panel=document.querySelector('.drawer-panel');
+    let panel=document.querySelector('.drawer-panel');
     if(panel)bindDraftSave(panel,collectPriceDraft,DRAFT_TYPES.price);
   },100);
 }
@@ -219,7 +219,7 @@ function editPrice(id){
 function delPrice(id){
   const p=DB.prices.find(x=>x.id===id);
   if(!p)return;
-  confirmModal('确认删除这条报价？'+pName(p.unitId)+' '+specLabel(p),()=>{
+  confirmModal('确认删除这条报价？'+escHtml(pName(p.unitId)+' '+specLabel(p)),()=>{
     DB.prices=DB.prices.filter(x=>x.id!==id);
     saveDB();closeDrawer();render();
     toast('已删除','info');
@@ -231,12 +231,12 @@ function priceFormHTML(p){
   return '<div class="field" style="margin-bottom:12px"><label class="f">BOM引用 <span style="color:var(--accent);font-size:11px">（选择后自动填入下方属性）</span></label><div id="ps_bom_ref" class="combo" data-placeholder="搜索BOM..." data-val="'+escAttr(p?p.bomSku||'':'')+'"></div></div>'+
   '<div class="field" style="margin-bottom:12px"><label class="f">规格</label><input id="ps_spec" tabindex="10" value="'+escAttr(p?p.spec:'')+'" placeholder="选择BOM后自动填入"></div>'+
   '<div class="grid2" style="margin-bottom:16px">'+
-    '<div class="field"><label class="f">供应商 <span style="color:#ef4444">*</span></label><div id="ps_unit" class="combo" data-role="supplier" data-placeholder="搜索供应商..." data-val="'+escAttr(p?p.unitId:'')+'"></div></div>'+
+    '<div class="field"><label class="f">供应商 <span style="color:var(--red)">*</span></label><div id="ps_unit" class="combo" data-role="supplier" data-placeholder="搜索供应商..." data-val="'+escAttr(p?p.unitId:'')+'"></div></div>'+
     '<div class="field"><label class="f">联系人</label><select id="ps_contact" tabindex="11"><option value="">（请先选择供应商）</option></select></div>'+
   '</div>'+
   '<div class="grid2" style="margin-bottom:16px">'+specEls+'</div>'+
   '<div class="grid2">'+
-    '<div class="field"><label class="f">单价(元/千支)<span style="color:#ef4444">*</span></label><input id="ps_price" type="number" step="0.01" tabindex="12" value="'+(p?p.price:'')+'" placeholder="0.00"></div>'+
+    '<div class="field"><label class="f">单价(元/千支)<span style="color:var(--red)">*</span></label><input id="ps_price" type="number" step="0.01" tabindex="12" value="'+(p?p.price:'')+'" placeholder="0.00"></div>'+
     '<div class="field"><label class="f">有效期起</label><input id="ps_valid" type="date" tabindex="13" value="'+(p?p.validFrom:today())+'"></div>'+
   '</div>'+
   '<div class="field"><label class="f">备注</label><input id="ps_remark" tabindex="14" value="'+escAttr(p?p.remark:'')+'" placeholder="如：含税/不含税、起订量等"></div>';
@@ -347,7 +347,7 @@ function batchDeletePrices(){
       });
     });
     if(hitOrders.length>0){
-      useRefs.push(pName(p.unitId)+' 报价 被 订单 '+hitOrders.join('/')+' 使用');
+      useRefs.push(escHtml(pName(p.unitId))+' 报价 被 订单 '+hitOrders.join('/')+' 使用');
     }
   });
   let msg='确认删除选中的 '+ids.length+' 条报价？';

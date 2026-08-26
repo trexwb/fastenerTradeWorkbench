@@ -1,5 +1,21 @@
 // views/ai-chat.js — AI 助手抽屉（DeepSeek 直连：Tauri 桌面版走 Rust 命令，浏览器版前端直连）
 let _aiCurrentSnapshot='';
+/** 将连续的 markdown 表格行渲染为真 <table>（第二行为 |---| 分隔行时识别表头）
+ * @param {string[]} rows - 形如 "|a|b|" 的表格行数组（已 HTML 转义）
+ * @param {Function} inline - 行内标记处理函数（code/strong/em）
+ * @returns {string} 表格 HTML
+ */
+function aiMarkdownTableHTML(rows,inline){
+  const cells=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>inline(c.trim()));
+  const hasSep=rows.length>1&&/^\|[\s:|-]+\|$/.test(rows[1]);
+  let head='',body='';
+  rows.forEach(function(r,ri){
+    if(hasSep&&ri===1)return; // 跳过分隔行
+    if(hasSep&&ri===0){head='<thead><tr>'+cells(r).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead>';return;}
+    body+='<tr>'+cells(r).map(c=>'<td>'+c+'</td>').join('')+'</tr>';
+  });
+  return '<div class="ai-table-wrap"><table class="ai-table">'+head+(body?'<tbody>'+body+'</tbody>':'')+'</table></div>';
+}
 function renderAIMarkdown(text){
   const escaped=escHtml(text||'');
   const inline=value=>value.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
@@ -12,7 +28,11 @@ function renderAIMarkdown(text){
       while(i<lines.length&&(ordered?/^\d+\.\s+/.test(lines[i]):/^[-*]\s+/.test(lines[i]))){items.push('<li>'+inline(lines[i].replace(ordered?/^\d+\.\s+/:/^[-*]\s+/,''))+'</li>');i++;}
       html+=(ordered?'<ol>':'<ul>')+items.join('')+(ordered?'</ol>':'</ul>');continue;
     }
-    if(/^\|.+\|$/.test(line)){html+='<div class="ai-table-line">'+inline(line)+'</div>';i++;continue;}
+    if(/^\|.+\|$/.test(line)){
+      const rows=[];
+      while(i<lines.length&&/^\|.+\|$/.test(lines[i])){rows.push(lines[i].trim());i++;}
+      html+=aiMarkdownTableHTML(rows,inline);continue;
+    }
     html+=line?'<p>'+inline(line)+'</p>':'';i++;
   }
   return html;

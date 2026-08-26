@@ -51,7 +51,8 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel){
   /* 先移除已有的同 ID 弹窗，避免嵌套确认时 getElementById 拿到旧元素 */
   const old=document.getElementById('_mask');
   if(old)old.remove();
-  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7">'+msg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  /* msg 契约为 HTML 字符串：含用户数据的调用方必须自行 escHtml（white-space:pre-line 使纯文本调用的 \n 正确换行） */
+  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+msg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
   document.getElementById('_modalOk').onclick=onOk;
   document.getElementById('_modalCancel').onclick=()=>{if(onCancel)onCancel();closeModal();};
 }
@@ -71,7 +72,7 @@ function safeCloseDrawer(force){
       _drawerDirty=false;
       closeDrawer();
       toast('已放弃修改','info');
-    },'确认关闭','继续编辑',null,'warning'
+    },'确认关闭','继续编辑'
   );
 }
 /**
@@ -88,7 +89,7 @@ function openDrawer(title,html,onOk,wide,noFooter){
   const w=wide?'wide':'';
   const overlay=document.createElement('div');
   overlay.className='drawer-overlay';
-  overlay.onclick=safeCloseDrawer;
+  overlay.onclick=function(){safeCloseDrawer();};
   const panel=document.createElement('div');
   panel.className='drawer-panel '+w;
   panel.innerHTML='<div class="drawer-hd"><span class="drawer-ttl">'+escHtml(title||'')+'</span><span class="drawer-x" onclick="safeCloseDrawer()">×</span></div><div class="drawer-bd">'+html+'</div>'+(noFooter?'':'<div class="drawer-ft"><button type="button" class="btn" onclick="safeCloseDrawer()" tabindex="998">取消</button><button type="button" class="btn primary" onclick="drawerOk()" tabindex="999">保存</button></div>');

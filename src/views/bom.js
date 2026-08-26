@@ -59,7 +59,7 @@ function viewBOM(){
 
   return '<div class="toolbar">'+
     '<div class="search-box'+(bomSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" onclick="onBOMSearch(document.getElementById(\'bomSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<a href="javascript:void(0)" data-search-fn="onBOMSearch" onclick="onBOMSearch(document.getElementById(\'bomSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="bomSearchInput" type="text" tabindex="1" value="'+escAttr(bomSearch||'')+'" placeholder="搜索 SKU 或名称..." onkeydown="if(event.key===\'Enter\')onBOMSearch(this.value)">'+
       '<span class="clear-btn" onclick="onBOMSearch(\'\')">×</span>'+
     '</div>'+
@@ -264,17 +264,17 @@ function openBOMForm(idx){
   const isNew=idx<0;
   if(isNew){
     if(checkDraftRestore(DRAFT_TYPES.bom,function(d){
-      var b={sku:d.sku||'',name:d.name||'',spec:d.spec||'',type:d.type||'',standard:d.standard||'',diameter:d.diameter||'',hardness:d.hardness||'',surface:d.surface||'',material:d.material||''};
+      let b={sku:d.sku||'',name:d.name||'',spec:d.spec||'',type:d.type||'',standard:d.standard||'',diameter:d.diameter||'',hardness:d.hardness||'',surface:d.surface||'',material:d.material||''};
       _openBOMDrawer(b,idx);
       setTimeout(function(){
         restoreBOMDraft(d);
-        var panel=document.querySelector('.drawer-panel');
+        let panel=document.querySelector('.drawer-panel');
         if(panel)bindDraftSave(panel,collectBOMDraft,DRAFT_TYPES.bom);
       },100);
     },function(){
       _openBOMDrawer({sku:'',name:'',spec:'',type:'',standard:'',diameter:'',hardness:'',surface:'',material:''},-1);
       setTimeout(function(){
-        var panel=document.querySelector('.drawer-panel');
+        let panel=document.querySelector('.drawer-panel');
         if(panel)bindDraftSave(panel,collectBOMDraft,DRAFT_TYPES.bom);
       },100);
     },'BOM'))return;
@@ -283,7 +283,7 @@ function openBOMForm(idx){
   _openBOMDrawer(b,idx);
   if(isNew){
     setTimeout(function(){
-      var panel=document.querySelector('.drawer-panel');
+      let panel=document.querySelector('.drawer-panel');
       if(panel)bindDraftSave(panel,collectBOMDraft,DRAFT_TYPES.bom);
     },100);
   }
@@ -297,14 +297,14 @@ function _openBOMDrawer(b,idx){
   const isNew=idx<0;
   const bodyHTML=
     '<div id="bomFormErr" class="form-err-banner" style="display:none;margin-bottom:14px"></div>'+
-    '<div class="field"><label class="f">SKU <span style="color:#ef4444">*</span></label>'+
+    '<div class="field"><label class="f">SKU <span style="color:var(--red)">*</span></label>'+
       '<input id="bom_sku" class="bom-req" tabindex="10" value="'+escAttr(b.sku)+'" placeholder="输入 SKU，如 SCR-M6-316 · SKU 唯一不可重复" oninput="bomValidateField(\'sku\')">'+
       '<div class="field-hint">全系统唯一，建议包含规格或材质信息</div>'+
     '</div>'+
-    '<div class="field"><label class="f">名称 <span style="color:#ef4444">*</span></label>'+
+    '<div class="field"><label class="f">名称 <span style="color:var(--red)">*</span></label>'+
       '<input id="bom_name" class="bom-req" tabindex="11" value="'+escAttr(b.name)+'" placeholder="如 六角螺栓 · 简洁明确的商品名称" oninput="bomValidateField(\'name\')">'+
     '</div>'+
-    '<div class="field"><label class="f">规格 <span style="color:#ef4444">*</span></label>'+
+    '<div class="field"><label class="f">规格 <span style="color:var(--red)">*</span></label>'+
       '<input id="bom_spec" class="bom-req" tabindex="12" value="'+escAttr(b.spec||'')+'" placeholder="如 M6×30mm · 描述尺寸规格" oninput="bomValidateField(\'spec\')">'+
     '</div>'+
     '<div class="bom-specs-section">'+
@@ -511,11 +511,24 @@ function parseBOMBatch(){
 
   if(!parsed.length){toast('解析失败，未识别到有效数据行','error');return;}
 
-  let preview=document.getElementById('batchPreview');
-  let cols_=['SKU','名称','规格','表面处理','标准','直径','硬度','材质'];
-  let keys_=['sku','name','spec','surface','standard','diameter','hardness','material'];
-  let rowsHtml=parsed.map(function(r,i){
-    let tds=keys_.map(function(k){return'<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r[k]||'-')+'</td>';}).join('');
+  renderBOMBatchPreview(parsed);
+  document.getElementById('batchParseBtn').style.display='none';
+  window._batchBOMData=parsed;
+  if(errCount>0)toast('共 '+errCount+' 行解析失败已跳过','warning');
+  else toast('解析完成，共 '+parsed.length+' 条，确认无误后提交','success');
+}
+
+/** 渲染批量导入预览区（解析与删行共用同一模板，避免两份 HTML 漏改）
+ * @param {Array} rows - 解析后的 BOM 行数组
+ * @returns {void}
+ */
+function renderBOMBatchPreview(rows){
+  const preview=document.getElementById('batchPreview');
+  if(!preview)return;
+  const cols_=['SKU','名称','规格','表面处理','标准','直径','硬度','材质'];
+  const keys_=['sku','name','spec','surface','standard','diameter','hardness','material'];
+  const rowsHtml=rows.map(function(r,i){
+    const tds=keys_.map(function(k){return'<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r[k]||'-')+'</td>';}).join('');
     return'<tr><td>'+(i+1)+'</td>'+tds+'<td><button class="btn sm danger" onclick="removeBatchRow('+i+')">'+icon('x','12')+'</button></td></tr>';
   }).join('');
   preview.innerHTML=
@@ -525,13 +538,9 @@ function parseBOMBatch(){
     '</div>'+
     '<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">'+
       '<button class="btn" onclick="closeDrawer()">取消</button>'+
-      '<button class="btn primary" onclick="submitBOMBatch()">'+icon('check','14')+' 批量提交 ('+parsed.length+' 条)</button>'+
+      '<button class="btn primary" onclick="submitBOMBatch()">'+icon('check','14')+' 批量提交 ('+rows.length+' 条)</button>'+
     '</div>';
   preview.style.display='block';
-  document.getElementById('batchParseBtn').style.display='none';
-  window._batchBOMData=parsed;
-  if(errCount>0)toast('共 '+errCount+' 行解析失败已跳过','warning');
-  else toast('解析完成，共 '+parsed.length+' 条，确认无误后提交','success');
 }
 
 /** 从批量导入预览中删除指定行并刷新预览
@@ -542,22 +551,7 @@ function removeBatchRow(idx){
   if(!window._batchBOMData)return;
   window._batchBOMData.splice(idx,1);
   if(!window._batchBOMData.length){closeDrawer();toast('已清空所有数据','info');return;}
-  let preview=document.getElementById('batchPreview');
-  let cols_=['SKU','名称','规格','表面处理','标准','直径','硬度','材质'];
-  let keys_=['sku','name','spec','surface','standard','diameter','hardness','material'];
-  let rowsHtml=window._batchBOMData.map(function(r,i){
-    let tds=keys_.map(function(k){return'<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r[k]||'-')+'</td>';}).join('');
-    return'<tr><td>'+(i+1)+'</td>'+tds+'<td><button class="btn sm danger" onclick="removeBatchRow('+i+')">'+icon('x','12')+'</button></td></tr>';
-  }).join('');
-  preview.innerHTML=
-    '<div style="margin-bottom:8px;font-size:13px;color:var(--gray)">解析完成，预览如下（可删除不需要的行）：</div>'+
-    '<div class="table-wrap" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius)">'+
-      '<table><thead><tr><th style="width:36px">#</th>'+cols_.map(function(c){return'<th style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c+'</th>';}).join('')+'<th style="width:40px"></th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
-    '</div>'+
-    '<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">'+
-      '<button class="btn" onclick="closeDrawer()">取消</button>'+
-      '<button class="btn primary" onclick="submitBOMBatch()">'+icon('check','14')+' 批量提交 ('+window._batchBOMData.length+' 条)</button>'+
-    '</div>';
+  renderBOMBatchPreview(window._batchBOMData);
 }
 
 /** 批量提交解析后的BOM数据（含重复SKU去重）

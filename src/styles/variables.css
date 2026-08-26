@@ -15,6 +15,13 @@
   --side-ft-btn-bg:rgba(255,255,255,.06);--side-ft-btn-border:rgba(255,255,255,.08);
   --side-ft-btn-ink:#c8d3e0;--side-ft-btn-hover:rgba(255,255,255,.1);
   --topbar-bg:#fefdfb;
+  /* 语义别名（旧引用/内联样式用，随主题基础变量自动切换） */
+  --blue:var(--pri);--warn:var(--amber);--text:var(--ink);--fg-soft:var(--gray);--pri-bg:var(--pri-l);
+  /* 状态边框/浅底（替换原硬编码 hex，保证两主题协调） */
+  --bg-soft:#f6f4f1;--bg-tint:#f8fafc;--row-alt:#fbfaf8;--row-hover:#f7f3ef;
+  --green-line:#d4e4c0;--amber-line:#fde2c3;--red-line:#f7c9c4;
+  --purple:#7c3aed;--purple-l:#f5f3ff;--purple-line:#ddd6fe;
+  --tooltip-bg:#1e293b;
   /* z-index 层级（从低到高） */
   --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-toast:2000;
 }
@@ -35,4 +42,11 @@
   --side-ft-btn-bg:rgba(0,0,0,.04);--side-ft-btn-border:var(--side2);
   --side-ft-btn-ink:var(--gray);--side-ft-btn-hover:rgba(0,0,0,.06);
   --topbar-bg:var(--card);
+  /* 语义别名（与 default 主题保持同名，值随本主题基础变量切换） */
+  --blue:var(--pri);--warn:var(--amber);--text:var(--ink);--fg-soft:var(--gray);--pri-bg:var(--pri-l);
+  /* 状态边框/浅底（奶油白主题的协调色） */
+  --bg-soft:#f5f2ec;--bg-tint:#f4f7fb;--row-alt:#faf8f2;--row-hover:#f5f1e9;
+  --green-line:#d4f0e2;--amber-line:#f8e3c8;--red-line:#f8dcd8;
+  --purple:#8b5cf6;--purple-l:#f3f0ff;--purple-line:#ddd6fe;
+  --tooltip-bg:#334155;
 }

@@ -16,8 +16,10 @@ MACOSDIR="$ROOT/src-tauri/target/release/bundle/macos"
 DMGDIR="$ROOT/src-tauri/target/release/bundle/dmg"
 CONF="$ROOT/src-tauri/tauri.conf.json"
 
-# 从 tauri.conf.json 用 grep 提取（不依赖 node，避免子 shell 中 node 缺失）
+# 从 tauri.conf.json 用 grep 提取（不依赖 node，避免子 shell 中 node 缺失）；
+# 若设置了 PRODUCT_NAME 环境变量（CI 打包用 ASCII 名），优先使用该值
 PRODUCT=$(grep -m1 '"productName"' "$CONF" | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+PRODUCT="${PRODUCT_NAME:-$PRODUCT}"
 VERSION=$(grep -m1 '"version"'     "$CONF" | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
 ARCH="aarch64"   # 本机 arm64；若构建 universal 请改此值
 

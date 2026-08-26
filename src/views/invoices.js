@@ -293,7 +293,7 @@ function viewInvoices(type){
     }).join('');
   }).join('');
 
-  let pg='<div id="invPaging">'+(totalPages>1?'<div style="display:flex;align-items:center;gap:6px;padding:10px 0;font-size:14px">'+icon('chevronLeft','14')+' <a href="javascript:void(0)" onclick="invPage('+(_invPage-1)+')" style="color:var(--blue);text-decoration:none'+( _invPage<=1?';visibility:hidden':'')+'">上一页</a><span style="padding:2px 10px;background:#f3f4f6;border-radius:4px">'+_invPage+' / '+totalPages+'</span><a href="javascript:void(0)" onclick="invPage('+(_invPage+1)+')" style="color:var(--blue);text-decoration:none'+( _invPage>=totalPages?';visibility:hidden':'')+'">下一页</a> '+icon('chevronRight','14')+'</div>':'')+'</div>';
+  let pg='<div id="invPaging">'+(totalPages>1?'<div style="display:flex;align-items:center;gap:6px;padding:10px 0;font-size:14px">'+icon('chevronLeft','14')+' <a href="javascript:void(0)" onclick="invPage('+(_invPage-1)+')" style="color:var(--blue);text-decoration:none'+( _invPage<=1?';visibility:hidden':'')+'">上一页</a><span style="padding:2px 10px;background:var(--bg-soft);border-radius:4px">'+_invPage+' / '+totalPages+'</span><a href="javascript:void(0)" onclick="invPage('+(_invPage+1)+')" style="color:var(--blue);text-decoration:none'+( _invPage>=totalPages?';visibility:hidden':'')+'">下一页</a> '+icon('chevronRight','14')+'</div>':'')+'</div>';
 
   let cols=_invTab==='issue'?
     '<th>结算日期</th><th>公司名称</th><th>应收金额</th><th>已收金额</th><th>未收金额</th><th>开票状态</th><th>操作</th>':
@@ -304,7 +304,7 @@ function viewInvoices(type){
 
   return '<div class="toolbar">'+
     '<div class="search-box' + (_invSearch ? ' has-val' : '') + '" style="max-width:220px">'+
-      '<a href="javascript:void(0)" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<a href="javascript:void(0)" data-search-fn="onInvSearch" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="invSearchInput" type="text" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\')onInvSearch(this.value)">'+
       '<span class="clear-btn" onclick="onInvSearch(\'\')">×</span>'+
     '</div>'+

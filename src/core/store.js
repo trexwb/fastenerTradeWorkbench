@@ -569,12 +569,12 @@ async function updateStorageQuota(){
     const usedStr=est.usage<1048576?(est.usage/1024).toFixed(1)+' KB':(est.usage/1048576).toFixed(2)+' MB';
     const quotaStr=est.quota<1073741824?(est.quota/1048576).toFixed(0)+' MB':(est.quota/1073741824).toFixed(1)+' GB';
     const barPct=Math.min(parseFloat(pct),100);
-    const barColor=parseFloat(pct)>80?'#ef4444':parseFloat(pct)>50?'#f59e0b':'#22c55e';
+    const barColor=parseFloat(pct)>80?'var(--red)':parseFloat(pct)>50?'var(--amber)':'var(--green)';
     el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
       '<span>浏览器存储用量</span>'+
       '<span><b>'+usedStr+'</b> / '+quotaStr+' ('+pct+'%)</span>'+
     '</div>'+
-    '<div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">'+
+    '<div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden">'+
       '<div style="height:100%;width:'+barPct+'%;background:'+barColor+';border-radius:3px;transition:width .3s"></div>'+
     '</div>';
   }else{
@@ -595,22 +595,8 @@ async function initApp(){
     const idbData=await idbLoad();
     if(idbData&&idbData.units&&idbData.prices&&idbData.orders&&idbData.specs){
       DB=idbData;
-      // 补齐可能缺失的字段
-      if(!DB.specs)DB.specs=JSON.parse(JSON.stringify(DEFAULT_SPECS));
-        if(!DB.bom)DB.bom=[];
-      if(!DB.settlements)DB.settlements=[];
-      if(!DB.invoices)DB.invoices=[];
-      if(!Array.isArray(DB.aiChats))DB.aiChats=[];
-      if(!DB.seq)DB.seq=100;
-      if(!DB._savedAt)DB._savedAt=Date.now();
-      // 补齐 orderSeq（旧数据或未初始化的情况）
-      if(!DB.orderSeq){
-        const maxSeq=DB.orders.reduce((max,o)=>{
-          const m=o.id.match(/PO\d{8}-(\d+)/);
-          return m?Math.max(max,parseInt(m[1],10)):max;
-        },1);
-        DB.orderSeq=maxSeq+1;
-      }
+      // 补齐可能缺失的字段（与 idbLoad/loadFromFile 复用同一逻辑）
+      ensureDBFields();
       const migrated=migrateItems();
       if(migrated){DB._savedAt=Date.now();await idbSave();}
       // 2. 恢复文件同步（必须在渲染前完成，确保 fileSync 状态正确）

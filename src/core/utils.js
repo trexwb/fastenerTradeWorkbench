@@ -242,7 +242,7 @@ function checkDraftRestore(type,restoreFn,openFn,formLabel){
 function collectBOMDraft(){
   const sku=document.getElementById('bom_sku');
   if(!sku)return null;
-  var d={sku:sku.value.trim(),name:(document.getElementById('bom_name')||{}).value||'',spec:(document.getElementById('bom_spec')||{}).value||''};
+  let d={sku:sku.value.trim(),name:(document.getElementById('bom_name')||{}).value||'',spec:(document.getElementById('bom_spec')||{}).value||''};
   SPEC_FIELDS.forEach(function(k){d[k]=(document.getElementById('bom_'+k)||{}).dataset.val||'';});
   return d;
 }
@@ -254,12 +254,12 @@ function collectBOMDraft(){
  */
 function restoreBOMDraft(d){
   if(!d)return;
-  var skuEl=document.getElementById('bom_sku');if(skuEl)skuEl.value=d.sku||'';
-  var nameEl=document.getElementById('bom_name');if(nameEl)nameEl.value=d.name||'';
-  var specEl=document.getElementById('bom_spec');if(specEl)specEl.value=d.spec||'';
+  let skuEl=document.getElementById('bom_sku');if(skuEl)skuEl.value=d.sku||'';
+  let nameEl=document.getElementById('bom_name');if(nameEl)nameEl.value=d.name||'';
+  let specEl=document.getElementById('bom_spec');if(specEl)specEl.value=d.spec||'';
   SPEC_FIELDS.forEach(function(k){
-    var el=document.getElementById('bom_'+k);
-    if(el&&d[k]){el.dataset.val=d[k];var inp=el.querySelector('input');if(inp){var opt=(DB.specs[k]||[]).find(function(v){return v===d[k];});inp.value=opt||d[k];el.classList.add('has-val');}}
+    let el=document.getElementById('bom_'+k);
+    if(el&&d[k]){el.dataset.val=d[k];let inp=el.querySelector('input');if(inp){let opt=(DB.specs[k]||[]).find(function(v){return v===d[k];});inp.value=opt||d[k];el.classList.add('has-val');}}
   });
 }
 
@@ -269,9 +269,9 @@ function restoreBOMDraft(d){
  * @returns {Object|null} 报价表单数据对象，DOM 不存在时返回 null
  */
 function collectPriceDraft(){
-  var unitEl=document.getElementById('ps_unit');
+  let unitEl=document.getElementById('ps_unit');
   if(!unitEl)return null;
-  var d={unitId:unitEl.dataset.val||'',unitLabel:(unitEl.querySelector('input')||{}).value||'',contact:(document.getElementById('ps_contact')||{}).value||'',spec:(document.getElementById('ps_spec')||{}).value||'',bomSku:(document.getElementById('ps_bom_ref')||{}).dataset.val||'',price:(document.getElementById('ps_price')||{}).value||'',validFrom:(document.getElementById('ps_valid')||{}).value||'',remark:(document.getElementById('ps_remark')||{}).value||''};
+  let d={unitId:unitEl.dataset.val||'',unitLabel:(unitEl.querySelector('input')||{}).value||'',contact:(document.getElementById('ps_contact')||{}).value||'',spec:(document.getElementById('ps_spec')||{}).value||'',bomSku:(document.getElementById('ps_bom_ref')||{}).dataset.val||'',price:(document.getElementById('ps_price')||{}).value||'',validFrom:(document.getElementById('ps_valid')||{}).value||'',remark:(document.getElementById('ps_remark')||{}).value||''};
   SPEC_FIELDS.forEach(function(k){d[k]=(document.getElementById('ps_'+k)||{}).dataset.val||'';});
   return d;
 }
@@ -283,23 +283,23 @@ function collectPriceDraft(){
  */
 function restorePriceDraft(d){
   if(!d)return;
-  var specEl=document.getElementById('ps_spec');if(specEl)specEl.value=d.spec||'';
-  var priceEl=document.getElementById('ps_price');if(priceEl)priceEl.value=d.price||'';
-  var validEl=document.getElementById('ps_valid');if(validEl)validEl.value=d.validFrom||'';
-  var remarkEl=document.getElementById('ps_remark');if(remarkEl)remarkEl.value=d.remark||'';
-  var contactEl=document.getElementById('ps_contact');if(contactEl)contactEl.value=d.contact||'';
+  let specEl=document.getElementById('ps_spec');if(specEl)specEl.value=d.spec||'';
+  let priceEl=document.getElementById('ps_price');if(priceEl)priceEl.value=d.price||'';
+  let validEl=document.getElementById('ps_valid');if(validEl)validEl.value=d.validFrom||'';
+  let remarkEl=document.getElementById('ps_remark');if(remarkEl)remarkEl.value=d.remark||'';
+  let contactEl=document.getElementById('ps_contact');if(contactEl)contactEl.value=d.contact||'';
   // BOM引用 combo
-  var bomRef=document.getElementById('ps_bom_ref');if(bomRef&&d.bomSku){bomRef.dataset.val=d.bomSku;var bInp=bomRef.querySelector('input');if(bInp){var bOpt=(DB.bom||[]).find(function(b){return b.sku===d.bomSku;});bInp.value=bOpt?bOpt.sku+' · '+bOpt.name+' · '+(bOpt.spec||''):d.bomSku;bomRef.classList.add('has-val');}}
+  let bomRef=document.getElementById('ps_bom_ref');if(bomRef&&d.bomSku){bomRef.dataset.val=d.bomSku;let bInp=bomRef.querySelector('input');if(bInp){let bOpt=(DB.bom||[]).find(function(b){return b.sku===d.bomSku;});bInp.value=bOpt?bOpt.sku+' · '+bOpt.name+' · '+(bOpt.spec||''):d.bomSku;bomRef.classList.add('has-val');}}
   // 供应商 combo + 联系人下拉
-  var unitEl=document.getElementById('ps_unit');if(unitEl&&d.unitId){unitEl.dataset.val=d.unitId;var uInp=unitEl.querySelector('input');if(uInp){uInp.value=d.unitLabel||pName(d.unitId);unitEl.classList.add('has-val');}
+  let unitEl=document.getElementById('ps_unit');if(unitEl&&d.unitId){unitEl.dataset.val=d.unitId;let uInp=unitEl.querySelector('input');if(uInp){uInp.value=d.unitLabel||pName(d.unitId);unitEl.classList.add('has-val');}
     // 填充联系人下拉
-    var cEl=document.getElementById('ps_contact');
+    let cEl=document.getElementById('ps_contact');
     if(cEl){cEl.innerHTML=typeof contactOpts==='function'?contactOpts(d.unitId,'供应商'):'<option value="">（请先选择供应商）</option>';if(d.contact)cEl.value=d.contact;}
   }
   // 规格属性 combo
   SPEC_FIELDS.forEach(function(k){
-    var el=document.getElementById('ps_'+k);
-    if(el&&d[k]){el.dataset.val=d[k];var inp=el.querySelector('input');if(inp){var opt=(DB.specs[k]||[]).find(function(v){return v===d[k];});inp.value=opt||d[k];el.classList.add('has-val');}}
+    let el=document.getElementById('ps_'+k);
+    if(el&&d[k]){el.dataset.val=d[k];let inp=el.querySelector('input');if(inp){let opt=(DB.specs[k]||[]).find(function(v){return v===d[k];});inp.value=opt||d[k];el.classList.add('has-val');}}
   });
 }
 
@@ -586,7 +586,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   const listId='cl_'+Math.random().toString(36).slice(2,8);
   el.innerHTML='<div class="combo-wrap" style="position:relative">'+
     '<input role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-autocomplete="list" aria-controls="'+listId+'" placeholder="'+escAttr(placeholder)+'" autocomplete="off" style="width:100%" />'+
-    '<ul role="listbox" id="'+listId+'" class="combo-drop" style="display:none;position:absolute;top:calc(100%+4px);left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.09);z-index:200;max-height:240px;overflow-y:auto;padding:4px 0;list-style:none;margin:0" aria-label="可选项"></ul>'+
+    '<ul role="listbox" id="'+listId+'" class="combo-drop" style="display:none;position:absolute;top:calc(100%+4px);left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.09);z-index:var(--z-combo-over);max-height:240px;overflow-y:auto;padding:4px 0;list-style:none;margin:0" aria-label="可选项"></ul>'+
   '</div>';
   const inp=el.querySelector('input');
   const drop=el.querySelector('.combo-drop');
@@ -618,7 +618,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   function syncActive(){
     drop.querySelectorAll('.combo-item').forEach((item,i)=>{
       item.setAttribute('aria-selected',i===activeIdx?'true':'false');
-      item.style.background=i===activeIdx?'#eff6ff':'';
+      item.style.background=i===activeIdx?'var(--pri-l)':'';
     });
     if(activeIdx>=0){
       const el2=drop.querySelector('[data-idx="'+activeIdx+'"]');

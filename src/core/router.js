@@ -227,14 +227,14 @@ function render(){
         '</div>'+
       '</div>'+
       (function(){
-        var dismissed=fileSync===true?false:(
+        let dismissed=fileSync===true?false:(
           localStorage.getItem('fw_sync_banner_dismissed')==='1'
         );
         if(AI.state.runtime!=='tauri'&&!dismissed&&fileSync!==true){
-          var msg=fileSync==='pending'
-            ?'本地文件同步待授权，<a href="javascript:void(0)" onclick="go(\'data\');var b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">立即重新授权</a>'
-            :'数据未绑定本地文件，<a href="javascript:void(0)" onclick="go(\'data\');var b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">前往绑定</a> 防止浏览器清除数据导致丢失';
-          return '<div id="_syncBanner" class="sync-banner">'+icon('alert','16')+'<span>'+msg+'</span><button class="sb-dismiss" onclick="var b=document.getElementById(\'_syncBanner\');if(b)b.remove();try{localStorage.setItem(\'fw_sync_banner_dismissed\',\'1\');}catch(e){}" title="关闭">×</button></div>';
+          let msg=fileSync==='pending'
+            ?'本地文件同步待授权，<a href="javascript:void(0)" onclick="go(\'data\');let b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">立即重新授权</a>'
+            :'数据未绑定本地文件，<a href="javascript:void(0)" onclick="go(\'data\');let b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">前往绑定</a> 防止浏览器清除数据导致丢失';
+          return '<div id="_syncBanner" class="sync-banner">'+icon('alert','16')+'<span>'+msg+'</span><button class="sb-dismiss" onclick="let b=document.getElementById(\'_syncBanner\');if(b)b.remove();try{localStorage.setItem(\'fw_sync_banner_dismissed\',\'1\');}catch(e){}" title="关闭">×</button></div>';
         }
         return '';
       })()+

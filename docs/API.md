@@ -985,3 +985,37 @@ const SPEC_LABELS = {
 ```javascript
 ['待确认','寻货中','待签约','签约完成','送货中','异常','完成','取消']
 ```
+
+
+---
+
+## 7. Tauri 桌面版命令（Rust IPC）
+
+> 桌面版（`src-tauri/src/lib.rs`）通过 `window.__TAURI__.core.invoke('命令名', args)` 提供 6 个自定义命令。
+> 浏览器版（file:// 直开）不经过这些命令，走 Web API（IndexedDB / fetch 直连 DeepSeek）。
+
+### 7.1 数据存储（应用数据目录）
+
+桌面版主数据存储为应用数据目录下的 `data.json`（macOS WKWebView 的 tauri:// 协议下 IndexedDB 不可靠，故改用本机文件）。
+
+| 命令 | 参数 | 返回 | 说明 |
+|------|------|------|------|
+| `data_dir_get` | — | `string` | 应用数据目录绝对路径（数据管理页展示用） |
+| `data_file_load` | — | `string \| null` | 读取 `data.json`；文件不存在返回 `null`；**严格 UTF-8 校验**，文件损坏时返回错误而非静默替换 |
+| `data_file_save` | `content: string` | — | 写入 `data.json`；**原子写入**（临时文件 + rename，防写一半损坏）；超 128MB 拒绝写入 |
+
+### 7.2 AI（DeepSeek 代理）
+
+API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，仅属主可读写），前端无法读取明文，仅能查询是否已保存。
+
+| 命令 | 参数 | 返回 | 说明 |
+|------|------|------|------|
+| `ai_deepseek_token_has` | — | `boolean` | Token 文件是否存在且非空 |
+| `ai_deepseek_token_write` | `token: string` | — | 保存 Token（空串 = 删除）；原子写入 + 600 权限；超 4000 字符拒绝 |
+| `ai_deepseek_chat` | `messages`、`model`、`stream`、`temperature`、`max_tokens`、`stream_event` | `string` | 代理调用 `https://api.deepseek.com/v1/chat/completions`；流式时按 SSE 逐行解析并经 `stream_event`（默认 `ai:deepseek:chunk`）emit 增量文本，结束返回完整文本供前端兜底 |
+
+**AI 命令约束**：模型白名单 `deepseek-v4-flash` / `deepseek-v4-pro`；消息数 ≤ 20 条、单条 ≤ 30KB；`max_tokens` 上限 4096；请求超时 180s；响应体上限 2MB。Token 缺失、消息超限、非白名单模型、上游 HTTP 非 2xx 均返回错误字符串。
+
+### 7.3 运行形态判定
+
+前端 `src/core/ai.js` / `src/core/store.js` 以 `window.__TAURI__?.core.invoke` 是否存在判定桌面版（`tauri`）或浏览器版（`web`），无单独探测命令。

@@ -275,19 +275,22 @@ document.addEventListener('keydown',function(e){
     return;
   }
 
-  /* 搜索框内 Enter 兜底触发搜索 */
+  /* 搜索框内 Enter 兜底触发搜索：优先读 data-search-fn（显式声明，函数改名不失效），
+     无属性时退回解析 onclick 字符串的旧逻辑（兼容未标注的搜索框） */
   if(key==='Enter'){
     const inp2=document.activeElement;
     if(inp2&&inp2.closest&&inp2.closest('.search-box')){
       const sb=inp2.closest('.search-box');
-      const a=sb.querySelector('a[onclick]');
+      const a=sb.querySelector('a[data-search-fn],a[onclick]');
       if(a){
         e.preventDefault();
-        const onclick=a.getAttribute('onclick');
-        const m=onclick.match(/on[A-Z][a-zA-Z]+\(['"`]([^'"`]+)['"`]/);
-        if(m){
-          const fn=m[1];
-          if(typeof window[fn]==='function')window[fn](inp2.value||'');
+        const fnName=a.getAttribute('data-search-fn');
+        if(fnName){
+          if(typeof window[fnName]==='function')window[fnName](inp2.value||'');
+        }else{
+          const onclick=a.getAttribute('onclick')||'';
+          const m=onclick.match(/^(on[A-Za-z]+|do[A-Za-z]+)\s*\(/);
+          if(m&&typeof window[m[1]]==='function')window[m[1]](inp2.value||'');
         }
         return;
       }

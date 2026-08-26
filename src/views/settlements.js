@@ -253,7 +253,7 @@ function viewSettlements(type){
 
   return '<div class="toolbar">'+
     '<div class="search-box' + (_settleSearch ? ' has-val' : '') + '" style="max-width:220px">'+
-      '<a href="javascript:void(0)" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<a href="javascript:void(0)" data-search-fn="onSettleSearch" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\')onSettleSearch(this.value)">'+
       '<span class="clear-btn" onclick="onSettleSearch(\'\')">×</span>'+
     '</div>'+
@@ -458,7 +458,7 @@ function openSettleDetail(unitId, tabType){
   }
 
   let isReceipt=tabType==='receipt';
-  let body='<div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px">'+
+  let body='<div style="background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px">'+
     '<div style="font-size:16px;font-weight:700;margin-bottom:8px">'+escHtml(unitName)+'</div>'+
     '<div style="display:flex;gap:32px;font-size:14px">'+
       '<div><span class="muted">'+(isReceipt?'应收总额':'应付总额')+'</span> <b>'+fmt(total)+'</b></div>'+
@@ -499,7 +499,7 @@ function delSettlement(id){
   let invRefs=(DB.invoices||[]).filter(function(inv){return inv.settleId===id;});
   let warnMsg='';
   if(invRefs.length>0){
-    warnMsg='⚠ 该结算记录已生成 '+invRefs.length+' 条发票记录（发票号 '+invRefs.map(function(inv){return inv.invoiceNo||inv.id;}).join('、')+'），删除后发票数据会失配，是否仍继续？\n\n';
+    warnMsg='⚠ 该结算记录已生成 '+invRefs.length+' 条发票记录（发票号 '+invRefs.map(function(inv){return escHtml(inv.invoiceNo||inv.id);}).join('、')+'），删除后发票数据会失配，是否仍继续？\n\n';
   }
   confirmModal(warnMsg+'确认删除该结算记录？',function(){
     DB.settlements=(DB.settlements||[]).filter(function(s){return s.id!==id;});
@@ -580,12 +580,12 @@ function openNewSettlement(presetUnitId,type){
       '</select>'+
     '</div>'+
     '<div class="field" style="margin-bottom:10px">'+
-      '<label class="f">'+(tabType==='receipt'?'采购商':'供应商')+' <span style="color:#ef4444">*</span></label>'+
+      '<label class="f">'+(tabType==='receipt'?'采购商':'供应商')+' <span style="color:var(--red)">*</span></label>'+
       '<div id="st_unit" class="combo" data-placeholder="搜索选择单位..." data-val="'+escAttr(presetUnitId||'')+'"></div>'+
     '</div>'+
     '<div class="grid2" style="gap:12px">'+
-      '<div class="field" style="margin:0"><label class="f">结算日期 <span style="color:#ef4444">*</span></label><input id="st_date" type="date" tabindex="11" value="'+today()+'"></div>'+
-      '<div class="field" style="margin:0"><label class="f">结算金额(元) <span style="color:#ef4444">*</span></label><input id="st_amount" type="number" step="0.01" tabindex="12" placeholder="0.00"></div>'+
+      '<div class="field" style="margin:0"><label class="f">结算日期 <span style="color:var(--red)">*</span></label><input id="st_date" type="date" tabindex="11" value="'+today()+'"></div>'+
+      '<div class="field" style="margin:0"><label class="f">结算金额(元) <span style="color:var(--red)">*</span></label><input id="st_amount" type="number" step="0.01" tabindex="12" placeholder="0.00"></div>'+
     '</div>'+
     '<div class="grid2" style="gap:12px;margin-top:14px">'+
       '<div class="field" style="margin:0"><label class="f">'+((tabType==='receipt'?'付款人':'收款人'))+'</label><input id="st_person" tabindex="13" placeholder="'+((tabType==='receipt'?'付款人姓名':'收款人姓名'))+'"></div>'+
@@ -593,7 +593,7 @@ function openNewSettlement(presetUnitId,type){
     '</div>'+
     '<div id="st_orderSection" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">'+
       '<label class="f">关联结算订单（可多选）</label>'+
-      '<div id="st_orderList" style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:#fff">'+
+      '<div id="st_orderList" style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--card)">'+
         (orderOptsHTML||'<div class="muted" style="padding:10px 0">请先选择单位，然后勾选订单</div>')+
       '</div>'+
       '<div style="margin-top:6px;font-size:12px;color:var(--gray)">勾选订单后将自动汇总未结金额填充到结算金额</div>'+

@@ -6,11 +6,11 @@
 /* =========================================================
    SheetJS 动态加载（延迟到首次调用，确保纯 file:// 可用）
    ========================================================= */
-// 注意：不声明 let/var XLSX，因为脚本内部已用 var XLSX 声明了全局变量。
+// 注意：不声明 let/let XLSX，因为脚本内部已用 let XLSX 声明了全局变量。
 // 若重复声明会触发 "Identifier 'XLSX' has already been declared" 错误。
 // 直接使用 window.XLSX 判断和引用。
 
-var _xlsxLoading = null; // 防止并发重复加载
+let _xlsxLoading = null; // 防止并发重复加载
 
 // xlsx-js-style 是 SheetJS 0.18.5 的「支持样式写入」fork，仍暴露全局 window.XLSX
 // （带 style_version 标记）。原 xlsx@0.18.5 社区版 write 端忽略单元格样式，
@@ -18,12 +18,12 @@ var _xlsxLoading = null; // 防止并发重复加载
 // 本地化后离线可用，CDN 仅作兜底（网络可用且本地加载失败时）。
 // cpexcel.js 提供完整代码页支持（多语言编码），xlsx.min.js 检测到全局 cptable 后自动启用。
 // Vite public/vendor 目录（构建后 dist/vendor/，base: './' 下相对路径可用）
-var _VENDOR = 'vendor/';
-var _CDN = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/';
-var _CPEXCEL_LOCAL = _VENDOR + 'cpexcel.js';
-var _CPEXCEL_CDN  = _CDN + 'cpexcel.js';
-var _XLSX_LOCAL   = _VENDOR + 'xlsx.min.js';
-var _XLSX_CDN     = _CDN + 'xlsx.min.js';
+let _VENDOR = 'vendor/';
+let _CDN = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/';
+let _CPEXCEL_LOCAL = _VENDOR + 'cpexcel.js';
+let _CPEXCEL_CDN  = _CDN + 'cpexcel.js';
+let _XLSX_LOCAL   = _VENDOR + 'xlsx.min.js';
+let _XLSX_CDN     = _CDN + 'xlsx.min.js';
 
 /**
  * 动态加载 SheetJS 脚本，返回 Promise。
@@ -47,7 +47,7 @@ function loadXLSX() {
      */
     function loadScript(src) {
       return new Promise(function (res, rej) {
-        var s = document.createElement('script');
+        let s = document.createElement('script');
         s.src = src;
         s.onload = function () { res(); };
         s.onerror = function () { rej(new Error('加载失败: ' + src)); };
@@ -110,19 +110,19 @@ function ev(v) { return v == null ? '' : String(v); }
  */
 function downloadWorkbook(wb, fname) {
   return new Promise(async function (resolve, reject) {
-    var u8 = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    let u8 = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     
     // 优先使用 File System Access API（Chrome 86+，file:// 也支持）
     if (typeof window.showSaveFilePicker === 'function') {
       try {
-        var handle = await window.showSaveFilePicker({
+        let handle = await window.showSaveFilePicker({
           suggestedName: fname + '.xlsx',
           types: [{
             description: 'Excel 文件',
             accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
           }]
         });
-        var writable = await handle.createWritable();
+        let writable = await handle.createWritable();
         await writable.write(u8);
         await writable.close();
         toast('已保存到：' + handle.name, 'success');
@@ -137,9 +137,9 @@ function downloadWorkbook(wb, fname) {
     }
     
     // 回退：传统 <a download> 方式（http(s):// 有效，file:// 可能失败）
-    var blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
+    let blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
     a.href = url;
     a.download = fname + '.xlsx';
     a.style.display = 'none';
@@ -162,7 +162,7 @@ function downloadWorkbook(wb, fname) {
  * @returns {Promise<void>} 导出完成后 resolve，失败 toast 提示
  */
 async function exportOrder(orderId) {
-  var o = DB.orders.find(function (x) { return x.id === orderId; });
+  let o = DB.orders.find(function (x) { return x.id === orderId; });
   if (!o) { toast('未找到订单', 'error'); return; }
   try {
     await loadXLSX();
@@ -185,13 +185,13 @@ async function exportOrder(orderId) {
 /* =========================================================
    Excel 导出全局样式常量（所有状态共享，保持视觉统一）
    ========================================================= */
-var _BD = { top: 'thin', left: 'thin', right: 'thin', bottom: 'thin' }; // 四边细线边框
-var _FONT = '微软雅黑'; // 统一中文字体，Excel/WPS 默认渲染更美观
+let _BD = { top: 'thin', left: 'thin', right: 'thin', bottom: 'thin' }; // 四边细线边框
+let _FONT = '微软雅黑'; // 统一中文字体，Excel/WPS 默认渲染更美观
 
 /* =========================================================
    共享样式表（六个导出函数公共部分，独有样式留在各函数内定义）
    ========================================================= */
-var _SS_COMMON = {
+let _SS_COMMON = {
   pageTitle: { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 18 }, fill: { fgColor: '1F4E79' }, align: 'center', vertical: 'center', border: _BD },
   subtitle:  { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 12 }, fill: { fgColor: '2E75B6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
   th:        { t: 's', font: { name: _FONT, bold: true, color: 'FFFFFF', sz: 11 }, fill: { fgColor: '4472C4' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
@@ -221,37 +221,37 @@ var _SS_COMMON = {
  * @param {Object} ws - SheetJS 工作表对象
  * @param {number} totalCols - 列数
  */
-var _MIN_COL_W = 8;
-var _MAX_COL_W = 45;
-var _COL_PAD = 3;      // 普通列留白
-var _COL_PAD_NUM = 4;  // 数字列留白（给千分位/小数位）
-var _COL_PAD_HDR = 2;  // 表头换行额外留白
+let _MIN_COL_W = 8;
+let _MAX_COL_W = 45;
+let _COL_PAD = 3;      // 普通列留白
+let _COL_PAD_NUM = 4;  // 数字列留白（给千分位/小数位）
+let _COL_PAD_HDR = 2;  // 表头换行额外留白
 
 function _autoFitCols(ws, totalCols) {
-  var widths = new Array(totalCols).fill(0);
-  var colHasNum = new Array(totalCols).fill(false);
-  var colHasHdrWrap = new Array(totalCols).fill(false);
+  let widths = new Array(totalCols).fill(0);
+  let colHasNum = new Array(totalCols).fill(false);
+  let colHasHdrWrap = new Array(totalCols).fill(false);
 
   // 收集合并单元格左上角：整行标题/分组不应撑大单列宽度，跳过其列宽计算
-  var merged = {};
+  let merged = {};
   (ws['!merges'] || []).forEach(function (m) { merged[m.s.r + ',' + m.s.c] = true; });
 
-  var range = window.XLSX.utils.decode_range(ws['!ref']);
-  for (var R = range.s.r; R <= range.e.r; R++) {
-    for (var C = range.s.c; C <= range.e.c; C++) {
+  let range = window.XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
       if (merged[R + ',' + C]) continue;
-      var cell = ws[window.XLSX.utils.encode_cell({ r: R, c: C })];
+      let cell = ws[window.XLSX.utils.encode_cell({ r: R, c: C })];
       if (!cell || cell.v == null || cell.v === '') continue;
 
-      var text = String(cell.v);
+      let text = String(cell.v);
       if (text.indexOf('\n') >= 0) colHasHdrWrap[C] = true;
       if (/^-?\d+(\.\d+)?$/.test(text.trim())) colHasNum[C] = true;
 
-      var maxLen = 0;
+      let maxLen = 0;
       text.split('\n').forEach(function (ln) {
-        var len = 0;
-        for (var k = 0; k < ln.length; k++) {
-          var code = ln.charCodeAt(k);
+        let len = 0;
+        for (let k = 0; k < ln.length; k++) {
+          let code = ln.charCodeAt(k);
           // 中文/全角字符权重略大于 2，补偿 Excel 对 CJK 字形实际宽度
           if (code > 0x2E7F || (code >= 0x3000 && code <= 0x303F) || (code >= 0xFF00 && code <= 0xFFEF)) {
             len += 2.1;
@@ -268,9 +268,9 @@ function _autoFitCols(ws, totalCols) {
   }
 
   ws['!cols'] = widths.map(function (w, idx) {
-    var pad = colHasNum[idx] ? _COL_PAD_NUM : _COL_PAD;
+    let pad = colHasNum[idx] ? _COL_PAD_NUM : _COL_PAD;
     if (colHasHdrWrap[idx]) pad += _COL_PAD_HDR;
-    var target = w + pad;
+    let target = w + pad;
     // 在最小/最大范围内约束，并对小列稍放宽（序号类最低 10）
     if (target < 10 && colHasNum[idx]) target = 10;
     return { wch: Math.min(Math.max(target, _MIN_COL_W), _MAX_COL_W) };
@@ -292,7 +292,7 @@ function _autoFitCols(ws, totalCols) {
  */
 function _normColor(v) {
   if (v == null) return null;
-  var s = String(v).replace(/^#/, '');
+  let s = String(v).replace(/^#/, '');
   if (s.length === 6) s = 'FF' + s;
   return s.toUpperCase();
 }
@@ -303,25 +303,25 @@ function _normColor(v) {
  */
 function _toStyleObj(style) {
   if (!style) return null;
-  var s = {};
+  let s = {};
   if (style.border) {
-    var bd = {};
+    let bd = {};
     ['top', 'bottom', 'left', 'right'].forEach(function (side) {
       if (style.border[side]) bd[side] = { style: String(style.border[side]) };
     });
     if (Object.keys(bd).length) s.border = bd;
   }
   if (style.font) {
-    var f = {};
+    let f = {};
     ['name', 'sz', 'bold', 'italic', 'underline'].forEach(function (k) {
       if (style.font[k] != null) f[k] = style.font[k];
     });
-    var fc = _normColor(style.font.color);
+    let fc = _normColor(style.font.color);
     if (fc) f.color = { rgb: fc };
     if (Object.keys(f).length) s.font = f;
   }
   if (style.fill && style.fill.fgColor) {
-    var fg = _normColor(style.fill.fgColor);
+    let fg = _normColor(style.fill.fgColor);
     if (fg) s.fill = { patternType: 'solid', fgColor: { rgb: fg } };
   }
   if (style.align || style.wrapText || style.vertical) {
@@ -341,9 +341,9 @@ function _toStyleObj(style) {
  * @returns {void}
  */
 function _wc(ws, addr, style, value) {
-  var cell = { v: value };
+  let cell = { v: value };
   if (style && style.t) cell.t = style.t;
-  var so = _toStyleObj(style);
+  let so = _toStyleObj(style);
   if (so) cell.s = so;
   ws[addr] = cell;
 }
@@ -358,15 +358,15 @@ function _wc(ws, addr, style, value) {
  * @param {Object} ws - SheetJS 工作表对象
  */
 function _fillMergeBorders(ws) {
-  var bd = { border: {
+  let bd = { border: {
     top: { style: 'thin' }, bottom: { style: 'thin' },
     left: { style: 'thin' }, right: { style: 'thin' }
   } };
   (ws['!merges'] || []).forEach(function (m) {
-    for (var R = m.s.r; R <= m.e.r; R++) {
-      for (var C = m.s.c; C <= m.e.c; C++) {
-        var addr = window.XLSX.utils.encode_cell({ r: R, c: C });
-        var cell = ws[addr];
+    for (let R = m.s.r; R <= m.e.r; R++) {
+      for (let C = m.s.c; C <= m.e.c; C++) {
+        let addr = window.XLSX.utils.encode_cell({ r: R, c: C });
+        let cell = ws[addr];
         if (!cell) {
           ws[addr] = { t: 's', v: '', s: bd };
         } else if (!cell.s || !cell.s.border) {
@@ -411,13 +411,13 @@ function _fillMergeBorders(ws) {
  * @returns {Promise<void>} 下载触发后 resolve
  */
 async function _exportOrderPendingConfirm(o) {
-  var wb = {};
-  var ws = {};
+  let wb = {};
+  let ws = {};
   wb.SheetNames = ['产品确认单'];
   wb.Sheets     = { '产品确认单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = Object.assign({}, _SS_COMMON, {
+  let SS = Object.assign({}, _SS_COMMON, {
 thChk:      { t: 's', font: { name: _FONT, bold: true, color: '7F6000', sz: 11 }, fill: { fgColor: 'FFD966' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
 evenChk:{ t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFF9E6' }, align: 'center', vertical: 'center', wrapText: true, border: _BD },
 oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, align: 'center', vertical: 'center', wrapText: true, border: _BD }
@@ -437,9 +437,9 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   function wc(addr, style, value) { _wc(ws, addr, style, value); }
 
   /* ============ 数据准备 ============ */
-  var TOTAL_COLS  = 16; // A~P
-  var TOTAL_LETTER = 'P';
-  var deliveryStr  = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
+  let TOTAL_COLS  = 16; // A~P
+  let TOTAL_LETTER = 'P';
+  let deliveryStr  = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
 
   /* ===================== 第1段：头部信息 ===================== */
 
@@ -450,7 +450,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
 
   // 第2行：副标题（单号 + 采购商 + 项目）
   ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: TOTAL_COLS - 1 } });
-  var subtitleText = ev(o.id) + '  |  ' + ev(pName(o.buyerId)) +
+  let subtitleText = ev(o.id) + '  |  ' + ev(pName(o.buyerId)) +
     (o.project ? '  |  项目：' + ev(o.project) : '');
   wc('A2', SS.subtitle, subtitleText);
   ws['!rows'].push({ hpt: 28 });
@@ -461,7 +461,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   ws['!rows'].push({ hpt: 26 });
 
   // 第4行：基本信息值（7个字段，两两配对）
-  var infoFields = [
+  let infoFields = [
     { label: '单号',     val: ev(o.id),                        cs: 0,  ce: 1  },
     { label: '采购商',   val: ev(pName(o.buyerId)),            cs: 2,  ce: 3  },
     { label: '对接人',   val: ev(o.buyerContact || '-'),       cs: 4,  ce: 5  },
@@ -477,7 +477,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   ws['!rows'].push({ hpt: 24 });
 
   // 备注行（如有）
-  var dataStartRow = 5; // 产品明细起始行（1基）
+  let dataStartRow = 5; // 产品明细起始行（1基）
   if (o.remark) {
     ws['!merges'].push({ s: { r: 4, c: 0 }, e: { r: 4, c: 1 } });
     wc('A5', SS.th, '备注');
@@ -488,7 +488,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   }
 
   /* ===================== 第2段：产品明细表 ===================== */
-  var tableStartRow = dataStartRow;
+  let tableStartRow = dataStartRow;
 
   // 分组标题行（跨全部列）
   ws['!merges'].push({ s: { r: tableStartRow - 1, c: 0 }, e: { r: tableStartRow - 1, c: TOTAL_COLS - 1 } });
@@ -497,8 +497,8 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   ws['!rows'].push({ hpt: 36 });
 
   // 表头行（16列）
-  var hdrRow = tableStartRow + 1;
-  var headers = [
+  let hdrRow = tableStartRow + 1;
+  let headers = [
     '确认\n(□)',          // A — 黄色底醒目标记
     '序号',               // B
     'SKU',                // C
@@ -517,20 +517,20 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
     '备注',               // P
   ];
   headers.forEach(function (h, i) {
-    var style = i === 0 ? SS.thChk : SS.th;
+    let style = i === 0 ? SS.thChk : SS.th;
     wc(window.XLSX.utils.encode_cell({ r: hdrRow - 1, c: i }), style, h);
   });
   ws['!rows'].push({ hpt: 40 }); // 双行高容纳换行表头
 
   // 数据行
-  var grandTotal = 0;
+  let grandTotal = 0;
   o.items.forEach(function (it, i) {
-    var ri       = i + 1;
-    var qty      = parseFloat(it.qty) || 0;
-    var price    = parseFloat(it.salePrice) || 0;
-    var lineTotal = qty * price;
+    let ri       = i + 1;
+    let qty      = parseFloat(it.qty) || 0;
+    let price    = parseFloat(it.salePrice) || 0;
+    let lineTotal = qty * price;
     grandTotal += lineTotal;
-    var rowIdx = hdrRow + i + 1;
+    let rowIdx = hdrRow + i + 1;
 
     wc(window.XLSX.utils.encode_cell({ r: rowIdx - 1, c: 0  }), chkStyle(ri), '□');                            // A：确认
     wc(window.XLSX.utils.encode_cell({ r: rowIdx - 1, c: 1  }), dataStyle(ri, false), i + 1);                  // B：序号
@@ -553,14 +553,14 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   });
 
   /* ===================== 第3段：汇总 ===================== */
-  var sumRow = hdrRow + o.items.length + 1; // 空一行后汇总
+  let sumRow = hdrRow + o.items.length + 1; // 空一行后汇总
 
   // 汇总分组标题（跨全部列）
   ws['!merges'].push({ s: { r: sumRow - 1, c: 0 }, e: { r: sumRow - 1, c: TOTAL_COLS - 1 } });
   wc('A' + sumRow, SS.subtitle, '汇总');
   ws['!rows'].push({ hpt: 26 });
 
-  var sumDataRow = sumRow + 1;
+  let sumDataRow = sumRow + 1;
 
   // 产品项数（左半，A~G=标签，H~I=数值）
   ws['!merges'].push({ s: { r: sumDataRow - 1, c: 0 }, e: { r: sumDataRow - 1, c: 6 } });
@@ -576,7 +576,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   ws['!rows'].push({ hpt: 32 });
 
   /* ===================== 页脚 ===================== */
-  var footerRow = sumDataRow + 2;
+  let footerRow = sumDataRow + 2;
   // 汇总与页脚之间的空行：必须写入行高记录，否则 !rows 数组比实际行少一行，
   // 导致页脚行高被写进空行、页脚行自身无行高（文字被裁）。
   ws['!rows'].push({ hpt: 8 });
@@ -595,7 +595,7 @@ oddChk: { t: 's', font: { name: _FONT, sz: 16 }, fill: { fgColor: 'FFFDF2' }, al
   _fillMergeBorders(ws);
 
   /* ===================== 下载 ===================== */
-  var fname = '采购订单_' + o.id + '_' + o.status;
+  let fname = '采购订单_' + o.id + '_' + o.status;
   await downloadWorkbook(wb, fname);
   toast('导出成功：' + fname + '.xlsx', 'success');
 }
@@ -651,7 +651,7 @@ async function _exportOrderSourcing(o) {
   wb.Sheets = { '寻源进度单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = Object.assign({}, _SS_COMMON, {
+  let SS = Object.assign({}, _SS_COMMON, {
 evenNeg:   { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
 oddNeg:    { t: 'n', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFFFFF' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
 evenNegS:  { t: 's', font: { name: _FONT, sz: 11, color: '9C0006' }, fill: { fgColor: 'F2F7FB' }, align: 'right', vertical: 'center', wrapText: true, border: _BD },
@@ -963,7 +963,7 @@ async function _exportOrderQuoting(o) {
   wb.Sheets = { '报价中报价单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = Object.assign({}, _SS_COMMON, {
+  let SS = Object.assign({}, _SS_COMMON, {
 warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
 okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
 remainEven:{ t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '7F6000' }, fill: { fgColor: 'FFE699' }, align: 'right', vertical: 'center', border: _BD },
@@ -1121,7 +1121,7 @@ async function _exportOrderSignedComplete(o) {
   wb.Sheets = { '签约完成结算单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = Object.assign({}, _SS_COMMON, {
+  let SS = Object.assign({}, _SS_COMMON, {
 warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
 okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
 negEven:   { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, align: 'right', vertical: 'center', border: _BD },
@@ -1142,7 +1142,7 @@ posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' },
   function put(r, c, style, value) { wc(window.XLSX.utils.encode_cell({ r, c }), style, value); }
   function merge(r, c1, c2) { ws['!merges'].push({ s: { r, c: c1 }, e: { r, c: c2 } }); }
   function vmerge(r1, c1, r2, c2) { ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } }); }
-  function r2(v) { var n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
+  function r2(v) { let n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
 
   ws['!merges'] = [];
   ws['!rows'] = [];
@@ -1410,7 +1410,7 @@ async function _exportOrderDelivering(o) {
   wb.Sheets = { '送货结算单': ws };
 
   /* ============ 局部样式定义 ============ */
-  var SS = Object.assign({}, _SS_COMMON, {
+  let SS = Object.assign({}, _SS_COMMON, {
 warnLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '9C0006' }, fill: { fgColor: 'FFC7CE' }, vertical: 'center', wrapText: true, border: _BD },
 okLbl:     { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
 shipLbl:   { t: 's', font: { name: _FONT, bold: true, sz: 11, color: '006100' }, fill: { fgColor: 'C6EFCE' }, vertical: 'center', wrapText: true, border: _BD },
@@ -1433,7 +1433,7 @@ posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' },
   function put(r, c, style, value) { wc(window.XLSX.utils.encode_cell({ r, c }), style, value); }
   function merge(r, c1, c2) { ws['!merges'].push({ s: { r, c: c1 }, e: { r, c: c2 } }); }
   function vmerge(r1, c1, r2, c2) { ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } }); }
-  function r2(v) { var n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
+  function r2(v) { let n = v || 0; return Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100 * (n < 0 ? -1 : 1); }
 
   ws['!merges'] = [];
   ws['!rows'] = [];
@@ -1782,16 +1782,16 @@ posOdd:    { t: 'n', font: { name: _FONT, bold: true, sz: 11, color: '006100' },
    结构：头部信息 → 产品明细（意向价/报价）→ 供应商分配 → 汇总
    ========================================================= */
 async function _exportOrderGeneral(o) {
-  var wb = {};
-  var ws = {};
+  let wb = {};
+  let ws = {};
   wb.SheetNames = ['采购订单'];
   wb.Sheets = { '采购订单': ws };
 
-  var TOTAL_COLS = 15; // A~O
-  var TOTAL_LETTER = 'O';
-  var deliveryStr = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
+  let TOTAL_COLS = 15; // A~O
+  let TOTAL_LETTER = 'O';
+  let deliveryStr = typeof o.delivery === 'object' ? (o.delivery.time || '') : (o.delivery || '');
 
-  var SS = Object.assign({}, _SS_COMMON);
+  let SS = Object.assign({}, _SS_COMMON);
 
   function dataStyle(ri, isNum) { return isNum ? (ri % 2 === 0 ? SS.evenN : SS.oddN) : (ri % 2 === 0 ? SS.even : SS.odd); }
   function sumStyle(ri) { return ri % 2 === 0 ? SS.evenSum : SS.oddSum; }
@@ -1801,7 +1801,7 @@ async function _exportOrderGeneral(o) {
 
   ws['!merges'] = [];
   ws['!rows'] = [];
-  var row = 0; // 0 基当前行号
+  let row = 0; // 0 基当前行号
   function pushRow(hpt) { ws['!rows'].push(hpt ? { hpt: hpt } : {}); row++; }
 
   /* 大标题 */
@@ -1820,7 +1820,7 @@ async function _exportOrderGeneral(o) {
   pushRow(26);
 
   /* 基本信息（7 字段两两配对） */
-  var infoFields = [
+  let infoFields = [
     { label: '单号',     val: ev(o.id),                  cs: 0,  ce: 1  },
     { label: '采购商',   val: ev(pName(o.buyerId)),      cs: 2,  ce: 3  },
     { label: '对接人',   val: ev(o.buyerContact || '-'), cs: 4,  ce: 5  },
@@ -1853,18 +1853,18 @@ async function _exportOrderGeneral(o) {
   pushRow(36);
 
   /* 产品明细表头 */
-  var pHeaders = ['序号', 'SKU', '品名', '规格', '类型', '标准', '直径', '材质', '硬度', '表面处理', '数量(千支)', '意向价(元/千支)', '报价(元/千支)', '小计(元)', '备注'];
+  let pHeaders = ['序号', 'SKU', '品名', '规格', '类型', '标准', '直径', '材质', '硬度', '表面处理', '数量(千支)', '意向价(元/千支)', '报价(元/千支)', '小计(元)', '备注'];
   pHeaders.forEach(function (h, c) { put(row, c, SS.th, h); });
   pushRow(40);
 
   /* 产品明细数据 */
-  var grandSale = 0, grandQuote = 0;
+  let grandSale = 0, grandQuote = 0;
   o.items.forEach(function (it, i) {
-    var ri = i + 1;
-    var qty = parseFloat(it.qty) || 0;
-    var sale = parseFloat(it.salePrice) || 0;
-    var quote = parseFloat(itemQuotePrice(it)) || 0;
-    var lineQuote = qty * quote;
+    let ri = i + 1;
+    let qty = parseFloat(it.qty) || 0;
+    let sale = parseFloat(it.salePrice) || 0;
+    let quote = parseFloat(itemQuotePrice(it)) || 0;
+    let lineQuote = qty * quote;
     grandSale += qty * sale;
     grandQuote += lineQuote;
     put(row, 0,  dataStyle(ri, false), i + 1);
@@ -1886,7 +1886,7 @@ async function _exportOrderGeneral(o) {
   });
 
   /* 供应商分配明细 */
-  var allocRows = [];
+  let allocRows = [];
   o.items.forEach(function (it) { (it.options || []).forEach(function (opt) { allocRows.push({ it: it, opt: opt }); }); });
   if (allocRows.length) {
     pushRow(8);
@@ -1894,14 +1894,14 @@ async function _exportOrderGeneral(o) {
     put(row, 0, SS.subtitle, '供应商分配明细（共 ' + allocRows.length + ' 条）');
     pushRow(36);
 
-    var aHeaders = ['产品', '供应商', '联系人', '分配(千支)', '是否寄出', '寄出数量', '寄出日期', '是否收到', '收到数量', '收货日期'];
+    let aHeaders = ['产品', '供应商', '联系人', '分配(千支)', '是否寄出', '寄出数量', '寄出日期', '是否收到', '收到数量', '收货日期'];
     aHeaders.forEach(function (h, c) { put(row, c, SS.th, h); });
     pushRow(40);
 
     allocRows.forEach(function (r, i) {
-      var opt = r.opt, ri = i + 1;
-      var hasShp = !!(opt.shipped && parseFloat(opt.shippedQty) > 0);
-      var hasRcv = !!(opt.received && parseFloat(opt.receivedQty) > 0);
+      let opt = r.opt, ri = i + 1;
+      let hasShp = !!(opt.shipped && parseFloat(opt.shippedQty) > 0);
+      let hasRcv = !!(opt.received && parseFloat(opt.receivedQty) > 0);
       put(row, 0, dataStyle(ri, false), ev((r.it.sku || r.it.name || '') + (r.it.spec ? ' ' + r.it.spec : '')));
       put(row, 1, dataStyle(ri, false), ev(pName(opt.supplierId)));
       put(row, 2, dataStyle(ri, false), ev(opt.contact || '-'));
@@ -1940,7 +1940,7 @@ async function _exportOrderGeneral(o) {
   /* 补全合并单元格边框 */
   _fillMergeBorders(ws);
 
-  var fname = '采购订单_' + o.id + '_' + o.status;
+  let fname = '采购订单_' + o.id + '_' + o.status;
   await downloadWorkbook(wb, fname);
   toast('导出成功：' + fname + '.xlsx', 'success');
 }

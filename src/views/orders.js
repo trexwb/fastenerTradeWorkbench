@@ -36,7 +36,7 @@ function viewOrders(){
   const pg=buildPaging(all.length,_orderPage,totalPages,'orderPage',{id:'orderPaging'});
   return '<div class="toolbar">'+
     '<div class="search-box'+(orderSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<a href="javascript:void(0)" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="orderSearchInput" type="text" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\')onOrderSearch(this.value)">'+
       '<span class="clear-btn" onclick="onOrderSearch(\'\')">×</span>'+
     '</div>'+
@@ -101,7 +101,7 @@ function viewOrderDetail(){
     const opts=itemOpts(it);
     const supplierHTML=(opts.length?opts.map(o=>{
       const lineProfit=(itemQuotePrice(it)-(o.price||0))*(o.allocQty||0);
-      return '<div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px dashed #e5e7eb">'+
+      return '<div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px dashed var(--line)">'+
         contactTooltip(o.supplierId)+
         ' · 采购价: '+fmt(o.price)+' · 分配: <b>'+fmtN(o.allocQty)+'千支</b>'+
         ' · 利润: <span class="'+(lineProfit>=0?'profit-pos':'profit-neg')+'">'+fmt(lineProfit)+'</span>'+
@@ -163,14 +163,14 @@ function viewOrderDetail(){
     (o.remark?'<div style="margin-bottom:16px"><label class="f">订单备注</label><div>'+escHtml(o.remark)+'</div></div>':'')+
     (o.status==='签约完成'?'<div id="inspection-notice-'+o.id+'"></div>':'')+
     (o.status==='送货中'?(o.delivery?
-      '<div style="margin-bottom:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px">'+
+      '<div style="margin-bottom:16px;background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:16px">'+
         '<div style="font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('package','16')+' 送货信息 <span class="tag info">送货中</span><span class="muted" style="margin-left:auto;font-size:12px">'+escHtml(o.delivery.time||'-')+'</span></div>'+
         '<div id="delivery-readonly-'+o.id+'">'+
           '<div class="grid3" style="gap:16px">'+
             '<div><label class="muted" style="font-size:12px">送货地址</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.address||'-')+'</div></div>'+
             '<div><label class="muted" style="font-size:12px">快递单号</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.tracking||'-')+'</div></div>'+
           '</div>'+
-          '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #bbf7d0;display:flex;gap:8px">'+
+          '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px">'+
             '<button class="btn" onclick="enterEditDelivery(\''+o.id+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
           '</div>'+
         '</div>'+
@@ -186,7 +186,7 @@ function viewOrderDetail(){
           '</div>'+
         '</div>'+
       '</div>':
-      '<div style="margin-bottom:16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px">'+
+      '<div style="margin-bottom:16px;background:var(--pri-l);border:1px solid var(--pri-p);border-radius:8px;padding:16px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center">'+
           '<div><b>'+icon('package','16')+' 送货信息</b><span class="muted" style="margin-left:8px;font-size:13px">验货已完成，请填写快递发货信息</span></div>'+
         '</div>'+
@@ -210,7 +210,7 @@ function viewOrderDetail(){
     '<div class="table-wrap"><table><thead><tr><th>SKU</th><th>规格</th><th>属性</th><th>数量(千支)</th><th>意向价</th><th>报价</th><th>供应商（多供应商分配）</th><th>寻源状态</th><th>行利润</th><th>用途</th></tr></thead><tbody>'+
     (itemRows||'<tr><td colspan="8"><div class="no-data">暂无产品</div></td></tr>')+
     '</tbody></table></div>'+
-    '<div style="margin-top:18px;display:flex;gap:36px;flex-wrap:wrap;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:18px" id="detail-stats">'+
+    '<div style="margin-top:18px;display:flex;gap:36px;flex-wrap:wrap;background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:18px" id="detail-stats">'+
       '<div><span class="muted" style="font-size:14px">意向金额</span><b id="st_intent" style="display:block;font-size:22px;margin-top:4px">'+fmt(orderIntent(o))+'</b></div>'+
       '<div><span class="muted" style="font-size:14px">报价总额</span><b id="st_sales" style="display:block;font-size:22px;margin-top:4px">'+fmt(orderSales(o))+'</b></div>'+
       '<div><span class="muted" style="font-size:14px">采购总成本</span><b id="st_cost" style="display:block;font-size:22px;margin-top:4px">'+fmt(orderCost(o))+'</b></div>'+
@@ -610,12 +610,12 @@ function viewOrderEdit(){
   '<div class="card">'+
     '<h2>'+icon('doc','18')+(_fMode==='edit'?'编辑订单':'新建订单')+'</h2>'+
     '<div class="grid2">'+
-      '<div class="field"><label class="f">采购商 <span style="color:#ef4444">*</span></label><div id="tf_buyer" class="combo" data-val="'+escAttr(buyerId)+'"></div></div>'+
+      '<div class="field"><label class="f">采购商 <span style="color:var(--red)">*</span></label><div id="tf_buyer" class="combo" data-val="'+escAttr(buyerId)+'"></div></div>'+
       '<div class="field"><label class="f">对接联系人</label><select id="tf_contact" tabindex="3"><option value="">（请先选择采购商）</option></select></div>'+
     '</div>'+
     '<div class="grid2">'+
       '<div class="field"><label class="f">项目背景</label><input id="tf_project" tabindex="4" value="'+escAttr(o?o.project:(d?d.project:''))+'" placeholder="项目描述或用途"></div>'+
-      '<div class="field"><label class="f">期望交货期 <span style="color:#ef4444">*</span></label><input id="tf_delivery" type="date" tabindex="5" min="'+today()+'" value="'+escAttr(o?fmtDelivery(o.delivery):(d&&d.delivery?d.delivery:today()))+'"></div>'+
+      '<div class="field"><label class="f">期望交货期 <span style="color:var(--red)">*</span></label><input id="tf_delivery" type="date" tabindex="5" min="'+today()+'" value="'+escAttr(o?fmtDelivery(o.delivery):(d&&d.delivery?d.delivery:today()))+'"></div>'+
     '</div>'+
     '<div class="grid2">'+
       '<div class="field"><label class="f">订单状态</label><select id="tf_status" tabindex="6">'+ORDER_STATUSES.filter(s=>s!=='未成交'||(o&&o.status==='未成交')).map(s=>'<option value="'+s+'" '+((o?o.status:(d?d.status:'待确认'))===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div>'+
@@ -688,7 +688,7 @@ function openItemModal(idx){
     '<div class="field" style="margin:0"><label class="f">表面处理</label><div id="m_surface" class="combo" data-placeholder="选择表面处理..." data-val="'+escAttr(it.surface||'')+'"></div></div>'+
   '</div>'+
   '<div class="grid2" style="gap:12px;margin-top:12px">'+
-    '<div class="field" style="margin:0"><label class="f">数量(千支)<span style="color:#ef4444">*</span></label><input id="m_qty" type="number" tabindex="12" value="'+escAttr(it.qty||'')+'" placeholder="如：5000"></div>'+
+    '<div class="field" style="margin:0"><label class="f">数量(千支)<span style="color:var(--red)">*</span></label><input id="m_qty" type="number" tabindex="12" value="'+escAttr(it.qty||'')+'" placeholder="如：5000"></div>'+
     '<div class="field" style="margin:0"><label class="f">意向价格(元/千支)</label><input id="m_salePrice" type="number" tabindex="13" step="0.01" value="'+escAttr(it.salePrice||'')+'" placeholder="初期采购意向，可留空"></div>'+
   '</div>'+
   '<div class="field" style="margin-top:12px"><label class="f">报价(元/千支)</label><input id="m_quotePrice" type="number" tabindex="14" step="0.01" value="'+escAttr(it.quotePrice||'')+'" placeholder="供应商报价后，报给采购商的最终价格"></div>'+
@@ -761,7 +761,7 @@ function buildSourceDrawerBody(idx){
       '<span class="sc-del" onclick="removeOption('+idx+',\''+o.id+'\')">×</span>'+
     '</div>';
   }).join('');
-  return '<div style="margin-bottom:16px;padding:14px;background:#f8fafc;border-radius:8px;border:1px solid var(--line)">'+
+  return '<div style="margin-bottom:16px;padding:14px;background:var(--bg-tint);border-radius:8px;border:1px solid var(--line)">'+
     '<div style="font-size:15px;font-weight:700;margin-bottom:8px">'+escHtml(it.sku||it.name||'')+' <span style="font-size:13px;color:var(--accent);font-weight:400">'+escHtml(it.spec||'')+'</span></div>'+
     '<div class="spec-line" style="margin-bottom:6px">'+specTags(it)+'</div>'+
     '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:14px;align-items:center">'+
@@ -863,17 +863,17 @@ function filterPriceMatch(idx,q){
 function buildManualSupplierModalBody(idx){
   const it=_fItems[idx];
   const remain=it.qty-itemAllocSum(it);
-  return '<div style="margin-bottom:16px;padding:14px;background:#fef9f1;border-radius:8px;border:1px solid #fde2c3;font-size:14px">'+
+  return '<div style="margin-bottom:16px;padding:14px;background:var(--amber-l);border-radius:8px;border:1px solid var(--amber-line);font-size:14px">'+
     '<div style="font-weight:700;margin-bottom:6px">'+escHtml(it.sku||it.name||'')+' <span style="color:var(--accent);font-weight:400;font-size:13px">'+escHtml(it.spec||'')+'</span></div>'+
     '<div class="spec-line" style="margin-bottom:6px">'+specTags(it)+'</div>'+
-    '<div class="field"><label class="f">供应商名称 <span style="color:#ef4444">*</span></label><div id="ms_name" class="combo" data-placeholder="搜索已有供应商或输入新名称..." data-val=""></div></div>'+
+    '<div class="field"><label class="f">供应商名称 <span style="color:var(--red)">*</span></label><div id="ms_name" class="combo" data-placeholder="搜索已有供应商或输入新名称..." data-val=""></div></div>'+
     '<div class="grid2">'+
       '<div class="field"><label class="f">联系人</label><input id="ms_contact" tabindex="40" placeholder="联系人姓名"></div>'+
       '<div class="field"><label class="f">联系电话</label><input id="ms_phone" tabindex="41" placeholder="联系电话"></div>'+
     '</div>'+
     '<div class="grid3">'+
-      '<div class="field"><label class="f">采购单价(元/千支)<span style="color:#ef4444">*</span></label><input id="ms_price" type="number" step="0.01" tabindex="42" placeholder="0.00"></div>'+
-      '<div class="field"><label class="f">分配数量(千支)<span style="color:#ef4444">*</span></label><input id="ms_qty" type="number" value="'+remain+'" min="1" max="'+remain+'" placeholder="本次分配数量"></div>'+
+      '<div class="field"><label class="f">采购单价(元/千支)<span style="color:var(--red)">*</span></label><input id="ms_price" type="number" step="0.01" tabindex="42" placeholder="0.00"></div>'+
+      '<div class="field"><label class="f">分配数量(千支)<span style="color:var(--red)">*</span></label><input id="ms_qty" type="number" value="'+remain+'" min="1" max="'+remain+'" placeholder="本次分配数量"></div>'+
       '<div class="field"><label class="f">库存/交期备注</label><input id="ms_stock" tabindex="44" placeholder="如：现货 / 7天交"></div>'+
     '</div>'+
     '<div class="alert" id="msErr"></div>'+
@@ -927,7 +927,7 @@ function updateDetailRow(idx){
   if(cells.length<9)return;
   const supplierHTML=(opts.length?opts.map(o2=>{
     const lineProfit=(itemQuotePrice(it)-(o2.price||0))*(o2.allocQty||0);
-    return '<div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px dashed #e5e7eb">'+
+    return '<div style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px dashed var(--line)">'+
       contactTooltip(o2.supplierId)+
       ' · 采购价: '+fmt(o2.price)+' · 分配: <b>'+fmtN(o2.allocQty)+'千支</b>'+
       ' · 利润: <span class="'+(lineProfit>=0?'profit-pos':'profit-neg')+'">'+fmt(lineProfit)+'</span>'+
@@ -1704,18 +1704,18 @@ function renderInspectionSection(o){
   const received=rows.filter(o=>o.received).length;
   const allDone=received>=total;
   if(allDone){
-    return '<div style="margin:16px 0;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px">'+
+    return '<div style="margin:16px 0;background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:16px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center">'+
         '<div><b>'+icon('check','16')+' 验货完成</b><span class="muted" style="margin-left:8px;font-size:13px">全部 '+total+' 条供应商记录均已确认收货</span></div>'+
         '<span class="muted" style="font-size:12px">可在顶部工具栏点击「进入送货」</span>'+
       '</div>'+
     '</div>';
   }else{
-    return '<div style="margin:16px 0;background:#fff8e6;border:1px solid #ffeaa7;border-radius:8px;padding:16px">'+
+    return '<div style="margin:16px 0;background:var(--amber-l);border:1px solid var(--amber-line);border-radius:8px;padding:16px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center">'+
         '<div><b>'+icon('package','16')+' 验货进度</b><span class="muted" style="margin-left:8px;font-size:13px">已收到 '+received+' / '+total+' 条供应商记录，还差 '+(total-received)+' 条</span></div>'+
       '</div>'+
-      '<div style="margin-top:8px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+Math.round(received/total*100)+'%;background:#22c55e;border-radius:3px"></div></div>'+
+      '<div style="margin-top:8px;height:6px;background:var(--line);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+Math.round(received/total*100)+'%;background:var(--green);border-radius:3px"></div></div>'+
     '</div>';
   }
 }
