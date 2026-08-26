@@ -266,6 +266,8 @@ const AI=(function(){
     const key=(localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
     const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
     if(!key&&!localBase)throw new Error('请先在 AI 设置中填写 API_KEY（本地 Ollama 可留空）');
+    // 本地端点无 Key 时用占位 token：Ollama 等 OpenAI 兼容层要求 Authorization 头非空（空值会 401）
+    const authKey=key||(localBase?'ollama':'');
     state.webBuf='';
     state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
     const reqBody={
@@ -289,7 +291,7 @@ const AI=(function(){
     try{
       res=await fetch(apiChatUrl(),{
         method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'text/event-stream'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
       body:JSON.stringify(reqBody),
         signal:signal
       });

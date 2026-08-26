@@ -231,7 +231,8 @@ async fn ai_deepseek_chat(
         .map(|b| is_local_endpoint(b))
         .unwrap_or(false);
     let token = if local_base {
-        String::new()
+        // 本地端点（Ollama 等）允许无 Key：用占位 token（其 OpenAI 兼容层要求 Authorization 头非空）
+        "ollama".to_string()
     } else {
         let p = token_path(&app)?;
         if !p.exists() {
@@ -297,7 +298,7 @@ async fn ai_deepseek_chat(
     let resp = req
         .send()
         .await
-        .map_err(|e| format!("无法连接 DeepSeek 服务: {e}"))?;
+        .map_err(|e| format!("无法连接模型服务: {e}"))?;
 
     let status = resp.status();
     if !status.is_success() {
