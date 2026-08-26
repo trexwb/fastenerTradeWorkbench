@@ -8,6 +8,8 @@ let _invSearch='';
 let _invUnitFilter=''; // 单位筛选
 let _invPage=1;
 let _invStatusFilter=''; // 开票/收票状态筛选
+/** 发票编辑保存防重锁 */
+let _invEditSaving=false;
 
 const INV_ISSUE_STATUS=['未开票','已开票'];
 const INV_RECEIVE_STATUS=['未收票','已收票'];
@@ -488,6 +490,10 @@ function openInvEdit(invId){
     );
 
   openDrawer('编辑发票 · '+escHtml(inv.id),body,function(){
+    // 防重锁：防止重复点击导致重复保存
+    if(_invEditSaving){toast('正在保存中，请稍候...','info');return;}
+    _invEditSaving=true;
+    setTimeout(function(){_invEditSaving=false;},500);
     inv.settleNote=document.getElementById('invEdit_remark').value.trim();
     inv.invoiceNumber=document.getElementById('invEdit_number').value.trim();
     if(isIssue){

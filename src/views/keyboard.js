@@ -29,6 +29,7 @@ function getShortcutsHTML(){
     '</div>'+
     '<div class="sc-group">'+
       '<div class="sc-ghd">⚡ 全局操作（任何页面可用）</div>'+
+      '<div class="sc-row"><span class="sc-keys"><kbd>⌘</kbd> + <kbd>K</kbd></span><span class="sc-desc">全局搜索（订单/客户/报价，可直接问 AI）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌘</kbd> + <kbd>S</kbd></span><span class="sc-desc">保存当前抽屉/弹窗中的表单</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>Esc</kbd></span><span class="sc-desc">关闭抽屉/弹窗/快捷键说明 / 返回列表</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>/</kbd></span><span class="sc-desc">聚焦当前页面搜索框</span></div>'+
@@ -125,6 +126,11 @@ document.addEventListener('keydown',function(e){
      第一优先级：Esc — 关闭弹窗/抽屉，返回订单列表
      ===================================================== */
   if(key==='Escape'){
+    // 全局搜索面板优先关闭
+    if(document.getElementById('cmdPanel')&&typeof closeSearchPanel==='function'){
+      closeSearchPanel();
+      return;
+    }
     // 优先关闭抽屉
     if(document.querySelector('.drawer-wrap')){
       if(typeof safeCloseDrawer==='function'){
@@ -148,7 +154,16 @@ document.addEventListener('keydown',function(e){
   }
 
   /* =====================================================
-     第二优先级：⌘+S 保存（输入框内也触发）
+     第二优先级：⌘+K 全局搜索（输入框内也触发）
+     ===================================================== */
+  if(meta && !alt && !shift && !ctrl && (key==='k'||key==='K')){
+    e.preventDefault();
+    if(typeof openSearchPanel==='function')openSearchPanel();
+    return;
+  }
+
+  /* =====================================================
+     第三优先级：⌘+S 保存（输入框内也触发）
      ===================================================== */
   if(meta && !alt && !shift && !ctrl && key==='s'){
     e.preventDefault();

@@ -5,22 +5,142 @@
 
 ---
 
-## v1.0.6 · 📝 待发布
+## v1.0.9 · 📝 待发布
 
-> **状态**: 📝 待发布（内容已实现，版本号未递增）
+> **状态**: 📝 待发布（构建验证后改为 ✅ 已发布）
+> **发布日期**: 2026-08-26
+> **上一版本**: v1.0.7
+> **版本范围**: 全局 AI 搜索 + 多模型接入 + 工具撤销回滚 + 本地模型认证适配 + AI 体验修复
+
+---
+
+## 变更
+
+### 1. 全局 AI 搜索（⌘K 命令面板）
+
+- ⌘K / topbar 搜索按钮唤起命令面板，六源搜索（订单 / 客户 / 报价 / BOM / 结算 / 发票），直达详情或对应视图
+- 键盘导航：↑↓ 循环选择、Enter 打开、Tab 问 AI、Esc 关闭；`?`/`？` 前缀强制问 AI；空态一键问 AI
+- 选中条目可作为上下文注入 AI 快照（askAIOnItem）
+- 输入防抖 150ms + 结果 40 条上限 + 关键字高亮（原文定位，实体不错位）；样式与全站表单统一
+
+**变更文件**：`src/views/search-panel.js`（新增）、`src/views/keyboard.js`（⌘K + Esc 优先级 + 快捷键说明）、`src/core/router.js`（topbar 按钮）、`src/App.vue`（SCRIPTS 注册）、`src/styles/components.css`（.cmd-* 样式）
+
+### 2. 多模型接入（OpenAI 兼容格式）
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 模型端点 | 硬编码 DeepSeek（api.deepseek.com/v1） | **设置中可配置 Base URL + 模型名**，任意 OpenAI 兼容端点（含 Base URL 格式校验） |
+| 预置模型 | deepseek-v4-flash / pro | + gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + 自定义模型名 |
+| 端点预设 | — | 一键按钮：DeepSeek / OpenAI / 通义千问 / 本地 Ollama / 本地 oMLX |
+| 本地 Ollama | 不支持 | 支持（http://127.0.0.1:11434/v1，API_KEY 可留空） |
+| 本地 oMLX | 不支持 | 支持（http://127.0.0.1:8000/v1，API_KEY 需与 oMLX 设置一致） |
+| 端点显示 | 固定"DeepSeek" | providerLabel 按域名自动识别（DeepSeek/OpenAI/通义/智谱/本地模型） |
+
+**变更文件**：`src/core/ai.js`（PRESET_MODELS / DEFAULT_BASE_URL / setProvider / apiChatUrl / webChat 动态端点 / probeProxy 本地免 Key）、`src-tauri/src/lib.rs`（base_url 参数 + URL 组装 + 模型校验放宽）、`src/views/ai-chat.js`（设置弹窗 + 端点预设 + 回显）
+
+### 3. 工具执行撤销 / 回滚
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 工具改动 | 确认弹窗 + diff 预览，执行后不可撤销 | **持久化批次撤销**：按 aiOps 审计反向回滚（创建→删除、修改→还原旧值、删除→恢复），刷新不失效、不误伤手动改动 |
+| 撤销入口 | — | 消息下方「撤销本轮改动」按钮（支持一轮多批次，逗号分隔批量撤销）；数据管理-操作历史可追溯 |
+
+**变更文件**：`src/core/ai.js`（lastBatchIds / undoLastBatch）、`src/views/ai-chat.js`（undoAIBatch + 撤销条）、aiOps 审计（undoBatch 持久化回滚）
+
+### 4. 本地模型认证适配（Ollama / oMLX）
+
+- **Ollama**：本地端点无 Key 时发送占位 `Bearer ollama`（其 OpenAI 兼容层要求 Authorization 头非空，空值 401 "API key required"）
+- **oMLX**：**已保存的真实 Key 优先**（oMLX 校验 Key 与自身配置逐字一致，占位会被拒 "Invalid API key"）；修复此前"本地端点一律用占位导致 401"
+- 错误显示增强：连接失败显示 URL + 原因；HTTP 错误附服务端原始响应；未知错误 JSON 兜底——不再出现"请求失败：undefined"
+
+**变更文件**：`src/core/ai.js`（authKey 优先级 / fetch 网络错误包装 / SSE 兼容非 data: 行 / HTTP 原始响应）、`src-tauri/src/lib.rs`（Token 优先级修正：真实 Key > 本地占位 > 报错 / 文案通用化）、`src/views/ai-chat.js`（错误兜底 / oMLX 预设与提示）
+
+### 5. AI 体验修复与打磨
+
+- 欢迎区（"开始一段新对话"）发送消息后残留 → **发送时自动移除**
+- 全局搜索审查修复（9 项）：全角问号触发、高亮实体错位、↑↓ 循环、订单金额搜索、遍历提前终止、多批次撤销、Base URL 格式校验、错误兜底显示
+- 发送确认弹窗只弹一次（localStorage 记忆，延续 v1.0.7）
+
+**变更文件**：`src/views/ai-chat.js`、`src/views/search-panel.js`、`src/core/ai.js`
+
+---
+
+## 版本号
+
+v1.0.7 → v1.0.9（`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js` 四处同步）
+
+## 📝 规划中 · AI 能力升级（待排期）
+
+> **状态**: ✅ 三项已全部落地（v1.0.9，2026-08-26）；本分节保留作为计划历史
+> **计划来源**: 2026-08-26 AI 升级路线评审
+
+### 1. 全局 AI 搜索（⌘K 命令面板）
+
+- 快捷键 ⌘K 唤起命令面板，搜索订单 / 客户 / 报价等业务数据
+- 搜索结果可直接进入 AI 问答（选中条目作为上下文提问）
+
+### 2. 多模型接入（OpenAI 兼容格式）
+
+- 现状：模型与端点硬编码 DeepSeek（ALLOWED_MODELS / WEB_API_URL）
+- 目标：支持任意 OpenAI 兼容端点（其他云模型 / 本地 Ollama），设置中可配置 Base URL + 模型列表
+
+### 3. 工具执行撤销 / 回滚
+
+- 现状：工具改动有确认弹窗 + diff 预览，但执行后不可撤销
+- 目标：工具执行后提供一键还原（快照式撤销，含批量操作）
+
+---
+
+## v1.0.7 · ✅ 已发布
+
+> **状态**: ✅ 已发布
+> **发布日期**: 2026-08-26
+> **上一版本**: v1.0.6
+> **版本范围**: AI 助手常用提问区优化（空间压缩 + 对话后隐藏）
+
+---
+
+## 变更
+
+### 常用提问区优化（AI 助手面板）
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 布局 | 2 行 × 4 列网格（约占面板 15% 高度） | **单行横向滚动 chips**（约 30px，可左右滑动） |
+| 显示条件 | 始终显示 | **仅冷启动（无对话历史）显示**；一旦有对话记录即隐藏 |
+| 清空对话后 | 不恢复 | 恢复显示（clearAIHistory / 删除最后一条消息均触发） |
+
+**变更文件**：`src/views/ai-chat.js`（openAIAssistant 条件渲染 + clearAIHistory/deleteAIMessage 恢复逻辑）、`src/styles/components.css`（ai-actions 单行滚动布局）
+
+### AI 发送确认提示只弹一次（不递增版本号）
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 发送确认弹窗 | 每次发送 AI 消息都弹出「确认发送数据」 | **仅首次发送弹出**，确认后记住（localStorage），后续发送直接进行，不再重复提醒 |
+
+**变更文件**：`src/views/ai-chat.js`（requestAISend）
+
+---
+
+## v1.0.6 · ✅ 已发布
+
+> **状态**: ✅ 已发布
 > **发布日期**: 2026-08-26
 > **上一版本**: v1.0.5
-> **版本范围**: 回收站自动清理 + 功能层工具确认策略 + AI 操作统计报表
+> **版本范围**: 回收站自动清理 + 功能层确认策略 + 统计报表 + AI 工具链路修复 + 系统帮助知识库 + 操作协助
 
 ---
 
 ## 一、版本概览
 
-v1.0.5 全面审查修复后的三项增量优化，聚焦数据安全、操作可追溯与可视化：
+v1.0.5 后的批量增量（含三项规划优化 + 六项问题修复 + 两项能力扩展），聚焦数据安全、协议可靠性、AI 可用性与系统帮助体系：
 
 - **回收站自动清理**：90 天保留期 + 超期自动清理（数据安全，防无限膨胀）
 - **功能层工具确认策略**：三分流确认策略完善，导出操作纳入审计（可追溯）
 - **AI 操作统计报表**：操作历史新增全量统计面板（可视化运营）
+- **AI 工具链路修复**：HTTP 400 协议错误（tool_calls 透传）、设置弹窗无反应、确认弹窗渲染、执行后不刷新
+- **AI 可用性增强**：API_KEY 编辑态回显与格式校验、上下文自动压缩、敏感字段策略简化
+- **系统操作协助**：打开业务表单工具 + 浓缩操作指引 + 完整帮助知识库（query_help）
 
 ---
 
@@ -82,6 +202,31 @@ aiWriteLoop 三分流确认策略完善（功能层工具自动执行，导出�
 | `docs/API.md` | 自动清理与确认策略说明 |
 
 ---
+
+### 2.4 AI 工具链路修复
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| HTTP 400「Messages with role 'tool' must be...」 | chat() 序列化丢弃 assistant 的 `tool_calls` 与 Rust 端 ChatMessage 无对应字段、role 白名单不含 tool | 前端 webChat/tauri 分支透传 tool_calls/tool_call_id；Rust ChatMessage 扩展字段 + 白名单加 tool + tool 消息上限 200KB；aiWriteLoop 归一化 tool_calls id（缺失时 uid 生成） |
+| 点击「设置」无反应 | ai.js 导出列表漏 getDeepseekToken（上一轮脚本中断遗留） | 补导出 + openAISettings try/catch 防御 |
+| 确认弹窗 contacts 显示 [object Object] | fmtOpsVal 对对象数组用 join() 隐式转字符串 | 递归格式化（数组逐项/对象过滤空字段） |
+| 执行后弹窗不关、列表不刷新 | confirmOpsModal 未 closeModal；sendAIMessage 未 render | 执行按钮先关弹窗；有成功操作时 render() 刷新当前视图 |
+
+### 2.5 AI 可用性增强
+
+- **API_KEY 编辑态回显**：新增 Rust 命令 `ai_deepseek_token_get`，设置弹窗回显真实 Key（编辑态可见，非编辑态不展示）；前后端 `sk-` 格式校验双保险
+- **上下文自动压缩**：历史携带量 6→20 条；总字符超 20000 触发一次 AI 摘要压缩（[system + 摘要 + 当前问题]），失败降级不阻塞
+- **敏感字段策略简化**：AI 直接提取对话中的电话/税号/银行/地址等（用户提供即授权），确认弹窗移除敏感字段输入区；schema 6 字段普通化
+
+### 2.6 系统操作协助与帮助知识库
+
+- **4 个打开表单工具**：open_unit_form / open_order_form / open_price_form / open_bom_form（AI 手把手引导录入）；功能层工具 4→8 个
+- **浓缩操作指引注入 prompt**：九大模块操作要点（A-I）
+- **完整帮助知识库**：`src/core/help-knowledge.js` 12 主题（概览/各模块/数据管理/AI 助手/常见问题），`query_help` 工具按关键词打分检索（标题3/关键词2/正文1），按需返回不占常规 token
+
+### 2.7 版本日志规范（本次起生效）
+
+**每次优化/修复：版本号 v1.0.x+1 递增（package.json / tauri.conf.json / AGENTS.md 三处同步）+ 写入 docs/version 日志分节**。v1.0.6 为规范起点，下一次 = v1.0.7。
 
 ### 后续规划（未来升级迭代方向）
 

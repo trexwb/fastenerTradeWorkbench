@@ -21,7 +21,7 @@
 2. `src-tauri/tauri.conf.json` 的 version 字段（Tauri 桌面版）
 3. `AGENTS.md` 中的「当前基准版本」
 
-当前基准版本：**v1.0.5**。
+当前基准版本：**v1.0.9**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -42,7 +42,7 @@
 
 本项目所有文件操作默认以以下路径为根目录，**不得偏离**：
 ```
-/Users/wbtrex/AI助手/html/FastenerTradeWorkbench/
+/Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/
 ```
 
 ### 3. 编辑策略
@@ -55,14 +55,14 @@
 
 ### 4. 架构约定
 
-- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,keyboard,ai-chat} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor` 原样复制到 dist/
+- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,keyboard,ai-chat} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor` 原样复制到 dist/
 - **存储体系**：IndexedDB（主存储，`DB` 对象） + localStorage（表单草稿，`DRAFT_PREFIX='wb_fastener_draft_'`） + 本地 JSON 文件（File System Access API 备份）
 - **状态管理**：全局变量控制视图（`view`、`curOrder`、`curOrderView`、`_fMode`、`_fOrderId`、`_fItems`）
 - **渲染函数**：`render()` 统一调度，`orders` 分支路由：`curOrder ? viewOrderEdit() : curOrderView ? viewOrderDetail() : viewOrders()`
 - **基础框架**：Vue3 + Vite 为既定开发基础栈；禁止在此之外额外引入 React/jQuery/lodash 等运行时依赖
 - **业务层零算法改动**：`src/core/` 与 `src/views/` 下的业务逻辑 JS 以「间接 eval 全局执行」方式加载，保持原 window.* 全局语义，不轻易将全局函数改写为 ES module import/export
 
-### 4. 文件结构
+### 5. 文件结构
 
 ```
 FastenerTradeWorkbench/
@@ -80,7 +80,9 @@ FastenerTradeWorkbench/
 │   │   ├── ui.js           ← combo / modal / drawer / toast / confirmModal 等 UI 组件
 │   │   ├── store.js        ← DB 数据模型 + IndexedDB 存储层 + 文件同步 + APP_VERSION（构建注入）
 │   │   ├── exporter.js     ← Excel 导出（xlsx-js-style 本地 vendor → CDN 兜底）
-│   │   ├── ai.js           ← AI 可选增强（仅本机 127.0.0.1:7842）
+│   │   ├── ai.js           ← AI 可选增强（Tauri 走 Rust 命令；浏览器版前端直连 DeepSeek API，支持流式与 tool_calls）
+│   │   ├── help-knowledge.js ← 系统使用知识库（HELP_KNOWLEDGE 数组，供 query_help 工具按需检索）
+│   │   ├── ai-tools.js     ← AI Function Calling 工具协议（AIT：schema 定义 + 校验/预览/执行/审计适配层，写入工具均生成提案需用户逐条确认）
 │   │   ├── router.js       ← view 路由 + AppState + render 入口
 │   │   └── app.js           ← bootApp() 启动入口（theme + 全局 handler + initApp）
 │   ├── views/              ← 视图层（原 src/js/views/*.js，业务零改动 → window.* 全局）
@@ -100,17 +102,16 @@ FastenerTradeWorkbench/
 │       └── vendor/          ← 第三方库（xlsx-js-style 本地化，离线可用）
 │           ├── cpexcel.js   ← 代码页表（多语言编码支持）
 │           └── xlsx.min.js  ← SheetJS 0.18.5 样式版 fork（主库）
-├── srcCopy/                ← 迁移前原始静态源码备份（src/css + src/js + src/images）
 ├── vite.config.js          ← Vite 配置：base:'./' + iife + moduleScript降级 + 版本号define
 ├── package.json            ← 版本号单一来源（vue ^3.5 / vite ^8 + @vitejs/plugin-vue ^6）
-├── docs/                    ← 项目文档
+├── README.md               ← 项目说明（浏览器版使用指引，版本信息以 package.json 为准）
+├── docs/                    ← 项目文档（API.md / COVERAGE.md / 操作手册.md / flows 各模块流程 / version 发布记录 / screenshots 截图与历史单文件版）
 ├── scripts/                 ← 构建 / 版本脚本（bump-version / check-version / copy-frontend / serve / make-dmg）
 ├── src-tauri/               ← Tauri 桌面封装（Rust 源码 + tauri.conf.json，frontendDist=../dist）
-├── dist/                    ← Vite 构建产物（双击 dist/index.html 可运行）
-└── 紧固件贸易工作台.html    ← 历史单文件版（参考备份）
+└── dist/                    ← Vite 构建产物（双击 dist/index.html 可运行；结构：index.html + assets/js|css + vendor + images）
 ```
 
-### 5. 关键函数清单（修改前必须确认）
+### 6. 关键函数清单（修改前必须确认）
 
 | 函数 | 所在文件 | 用途 |
 |------|---------|------|
@@ -160,7 +161,7 @@ FastenerTradeWorkbench/
 - **产品变更自动保存**：编辑模式下产品明细的添加/修改/删除/寻货分配均自动写 DB，无需手动「保存订单」
 - **「保存订单」按钮**：仅用于保存表单字段（采购方、对接人、项目、交期等元信息）
 
-### 8. 数据流
+### 9. 数据流
 
 ```
 用户操作 → 修改 _fItems → refreshProductList() → saveOrderDraftFromItems() → persistOrderItems() → DB.orders 落盘
@@ -178,24 +179,28 @@ addMatchSupplier/manualSupplier/removeOption → _fItems 更新 → persistOrder
 sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/removeOption → persistSourcingFromDetail() → DB.orders
 ```
 
-### AI 可选增强模块
+### 10. AI 可选增强模块
 
-- AI 前端文件仅通过原生 `<script defer>` 加载；代理未运行时必须降级且不得影响 `file://` 核心功能。
-- 浏览器形态仅可调用本机 `tools/ai-proxy.js`（`127.0.0.1:7842`）；API Key 仅可由 `DEEPSEEK_API_KEY` 环境变量进入代理进程内存，禁止写入业务数据、localStorage、IndexedDB 或项目文件。
-- 所有 AI 请求必须先展示脱敏快照并经用户确认；默认排除电话、地址、税号、银行账户和完整联系人信息。
-- 新增 AI 逻辑只读访问 `DB`；金额、利润、余额、逾期和排行由本地代码计算，模型不得替代确定性计算。
+- **双通道架构**：Tauri 桌面版走 Rust 命令（`src-tauri/src/lib.rs`：`ai_deepseek_token_write/has/get` 管理 token、`ai_deepseek_chat` 流式对话，事件名 `ai:deepseek:chunk`，token 存应用数据目录 `deepseek_token` 文件）；浏览器版（含 file://）前端直连 `https://api.deepseek.com/v1/chat/completions`（CORS 已实测放行），API Key 由用户主动输入并存 localStorage（键 `wb_fastener_ai_key`）。已废弃旧的 `tools/ai-proxy.js`（127.0.0.1:7842）代理方案。
+- **模型白名单**：仅允许 `deepseek-v4-flash`（默认）/ `deepseek-v4-pro`，前端（`ALLOWED_MODELS`）与 Rust（`ALLOWED_MODELS`）双侧校验。
+- **脱敏快照**：所有 AI 请求的上下文以脱敏快照（snapshot）注入 system prompt，金额、利润、余额、排名一律以本地快照为准，模型不得替代确定性计算，禁止编造单位/订单 ID。
+- **Function Calling（`src/core/ai-tools.js`，AIT 对象）**：写入类工具（create_unit/update_unit/create_price/update_price/flow_order_status 等）只生成**提案**，前端要求用户逐条确认后才执行，写入记 `aiOps` 可回滚；查询类工具（query_*）读取脱敏数据；功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer/open_unit_form/open_order_form/open_price_form/open_bom_form）触发 UI 动作。
+- **帮助知识库（`src/core/help-knowledge.js`）**：`HELP_KNOWLEDGE` 数组覆盖各模块操作说明，供 `query_help` 工具检索。
+- AI 代理未运行/无 Key 时必须优雅降级，不得影响 `file://` 核心功能。
 
-### 9. 用户偏好
+### 11. 用户偏好
 
 - 用户指令风格：直接给动作词（"修复"、"优化"、"审查"），期望 Agent 直接执行而非仅建议
 - 偏好针对性局部修复，拒绝重构
 - 涉及文件改动时默认直接动手，无需先征求确认
+- **修复完成后不要主动执行 git commit**，由用户自行验证后再提交
+- 版本号以用户手动操作为准（曾手动回退过版本号），Agent 递增版本号时以 package.json 当前值为基准
 
-### 10. 前端编码规范
+### 12. 前端编码规范
 
 > 以下规范适用于本项目所有代码编写，所有 Agent 在新增或修改代码时必须遵守。
 
-#### 10.1 命名规范
+#### 12.1 命名规范
 
 | 类别 | 规则 | 示例 |
 |------|------|------|
@@ -207,7 +212,7 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 | 函数命名 | 动词开头 | `getUserInfo()`、`renderOrderRow()` |
 | 私有变量 | 下划线前缀 | `_fItems`、`_orderPage`、`_iconCache` |
 
-#### 10.2 HTML 规范
+#### 12.2 HTML 规范
 
 - **语义化标签**：使用 `<header>`/`<main>`/`<section>`/`<aside>`/`<nav>`/`<footer>`，避免全 `<div>`
 - **类名短横线**：`class="user-card"`，禁止下划线或驼峰类名
@@ -216,7 +221,7 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 - **图片**：必须加 `alt` 属性，懒加载使用 `loading="lazy"`
 - **表单**：`label` 与 `input` 关联（`for`/`id`），输入框需 `placeholder`
 
-#### 10.3 CSS 规范
+#### 12.3 CSS 规范
 
 - **CSS 变量优先**：所有颜色、间距、圆角、阴影、z-index 必须使用 `src/styles/variables.css` 中定义的变量，禁止硬编码
 - **z-index 统一管理**：使用 `--z-*` 变量（`--z-combo`/`--z-topbar`/`--z-sidebar`/`--z-overlay`/`--z-dropdown`/`--z-mask`/`--z-drawer`/`--z-toast`），禁止散落数字
@@ -227,7 +232,7 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 - **单位**：优先 `rem`/`vh`/`%`，固定像素场景（border-width、box-shadow）可用 `px`
 - **重复规则**：禁止同一选择器定义两次，发现重复必须合并
 
-#### 10.4 JavaScript 规范
+#### 12.4 JavaScript 规范
 
 - **禁止 `var`**：一律使用 `const`（默认）或 `let`（需重新赋值时）
 - **魔法数字**：禁止在代码中直接写无含义数字，必须抽为命名常量
@@ -247,7 +252,7 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 - **函数提取**：重复出现的代码逻辑（>10 行重复）必须提取为公共函数
 - **单行函数**：禁止将多逻辑函数压缩为单行，影响可读性
 
-#### 10.5 性能规范
+#### 12.5 性能规范
 
 - **防抖/节流**：高频事件（输入、滚动、resize）必须防抖或节流
 - **搜索**：回车触发，禁止 `oninput` 实时搜索（避免中文输入法冲突）
@@ -256,14 +261,14 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 - **动画**：使用 CSS `transform`/`opacity`，避免触发 reflow
 - **无障碍**：支持 `@media (prefers-reduced-motion: reduce)`
 
-#### 10.6 安全规范
+#### 12.6 安全规范
 
 - **XSS 防护**：所有用户输入输出必须经过 `escHtml()`/`escAttr()` 转义
-- **localStorage**：仅存储非敏感数据（表单草稿），禁止存储密钥/Token
+- **localStorage**：仅存储非敏感数据（表单草稿），禁止存储密钥/Token。**唯一例外**：浏览器版 AI 功能的 DeepSeek API Key（键 `wb_fastener_ai_key`），由用户在 AI 设置中主动输入保存（见 §10）
 - **无外部 API**：本项目不调用外部接口，所有数据本地存储（IndexedDB）
 - **无 `eval()`/`innerHTML` 用户数据**：禁止 `eval()`，`innerHTML` 赋值内容必须经过转义
 
-#### 10.7 Git 提交规范
+#### 12.7 Git 提交规范
 
 提交格式：`type(scope): content`
 

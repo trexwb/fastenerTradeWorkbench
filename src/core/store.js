@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.5';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.9';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -917,12 +917,15 @@ function undoAiOp(aiOpId){
   saveDB();
 }
 
-/** 整批回滚（同 batchId 的未回滚操作，逆序撤销以保证依赖正确） */
+/** 整批回滚（同 batchId 的未回滚操作，逆序撤销以保证依赖正确）
+ *  返回已撤销条数（供 UI 提示） */
 function undoBatch(batchId){
   const ops=DB.aiOps.filter(o=>o.batchId===batchId&&!o.undone);
+  let undone=0;
   for(let i=ops.length-1;i>=0;i--){
-    try{undoAiOp(ops[i].id);}catch(e){console.warn('批次回滚部分失败：',ops[i].id,e.message);}
+    try{undoAiOp(ops[i].id);undone++;}catch(e){console.warn('批次回滚部分失败：',ops[i].id,e.message);}
   }
+  return undone;
 }
 
 /**

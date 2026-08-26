@@ -221,6 +221,7 @@ function render(){
           (fileSync===true&&AI.state.runtime!=='tauri'?'<span class="tag ok" title="本地文件已同步">'+icon('fileText','12')+' 已同步</span>':
            fileSync==='pending'&&AI.state.runtime!=='tauri'?'<span class="tag warn" title="点击数据管理重新授权" style="cursor:pointer" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</span>':'')+
           '<span class="tag info">'+fmtN(DB.orders.length)+' 订单</span>'+
+          '<button class="shortcut-btn" onclick="openSearchPanel()" title="全局搜索 (⌘K)">'+icon('search','16')+'</button>'+
           '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接">'+icon('zap','16')+'</button>'+
           '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)">'+icon('keyboard','14')+'</button>'+
           '<button class="theme-tgl" onclick="switchTheme()" id="themeBtn" title="切换主题">'+icon('palette','16')+'</button>'+

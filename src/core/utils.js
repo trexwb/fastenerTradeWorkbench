@@ -1,5 +1,52 @@
 // utils.js — 图标 + 草稿 + 工具函数 + Toast + Combo
 /* =========================================================
+   防抖 / 节流
+   ========================================================= */
+/**
+ * 防抖：停止连续调用 delay 毫秒后仅执行最后一次。
+ * @param {Function} fn - 目标函数
+ * @param {number} [delay=150] - 延迟毫秒数
+ * @returns {Function} 防抖包装函数（带 .cancel()）
+ */
+function debounce(fn,delay){
+  delay=delay||150;
+  let t=null;
+  function wrapped(){
+    const ctx=this,args=arguments;
+    if(t)clearTimeout(t);
+    t=setTimeout(function(){t=null;fn.apply(ctx,args);},delay);
+  }
+  wrapped.cancel=function(){if(t)clearTimeout(t);t=null;};
+  return wrapped;
+}
+/**
+ * 节流：每 delay 毫秒内至多触发一次（首次立即执行，间隔后补充执行尾次）。
+ * @param {Function} fn - 目标函数
+ * @param {number} [delay=150] - 间隔毫秒数
+ * @returns {Function} 节流包装函数（带 .cancel()）
+ */
+function throttle(fn,delay){
+  delay=delay||150;
+  let last=0,t=null;
+  function wrapped(){
+    const ctx=this,args=arguments;
+    const now=Date.now();
+    if(now-last>=delay){
+      last=now;if(t){clearTimeout(t);t=null;}
+      fn.apply(ctx,args);
+      return;
+    }
+    if(t)return;
+    const remain=delay-(now-last);
+    t=setTimeout(function(){
+      last=Date.now();t=null;
+      fn.apply(ctx,args);
+    },remain);
+  }
+  wrapped.cancel=function(){if(t)clearTimeout(t);t=null;};
+  return wrapped;
+}
+/* =========================================================
    SVG 图标
    ========================================================= */
 const SVG={
@@ -625,8 +672,10 @@ function combo(el,options,onSelect,placeholder,allowCreate){
       if(el2)el2.scrollIntoView({block:'nearest'});
     }
   }
+  // 输入防抖（100ms）避免每敲一个字符就重建整个下拉列表
+  const showDebounced=debounce(function(v){show(v);},100);
   inp.addEventListener('focus',()=>show(inp.value));
-  inp.addEventListener('input',()=>{if(_selecting)return;show(inp.value);});
+  inp.addEventListener('input',()=>{if(_selecting)return;showDebounced(inp.value);});
   inp.addEventListener('keydown',e=>{
     const q2=(inp.value||'').toLowerCase().trim();
     const hits=comboFilter(inp,options);

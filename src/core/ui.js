@@ -22,6 +22,9 @@ const DRAWER_CLOSE_DELAY=320;
  */
 function modal(title,body,okText,onOk,wide){
   const w=wide?'wide':'';
+  /* 先移除已存在的旧弹窗，避免重复打开时 getElementById 命中旧元素 */
+  const oldMask=document.getElementById('_mask');
+  if(oldMask)oldMask.remove();
   const m=document.createElement('div');
   m.className='mask';m.id='_mask';
   m.onclick=function(e){if(e.target===m)closeModal();};
@@ -45,14 +48,17 @@ function closeModal(){const m=document.getElementById('_mask');if(m)m.remove();}
  * @param {string} [okText='确认操作'] - 确认按钮文字
  * @param {string} [cancelText='取消'] - 取消按钮文字
  * @param {Function} [onCancel] - 点击取消按钮回调
+ * @param {boolean} [html=false] - 是否以 HTML 渲染 msg（默认纯文本转义）；仅可信内容可传 true
  * @returns {void} 无返回值
  */
-function confirmModal(msg,onOk,okText,cancelText,onCancel){
+function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
   /* 先移除已有的同 ID 弹窗，避免嵌套确认时 getElementById 拿到旧元素 */
   const old=document.getElementById('_mask');
   if(old)old.remove();
-  /* msg 契约为 HTML 字符串：含用户数据的调用方必须自行 escHtml（white-space:pre-line 使纯文本调用的 \n 正确换行） */
-  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+msg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  /* msg 默认按纯文本转义渲染（white-space:pre-line 保证纯文本调用里的 \n 正确换行）；
+     仅调用方显式传入 html=true 且内容已自行 escHtml 或为可信静态模板时，才按 HTML 渲染 */
+  const safeMsg=html?String(msg):escHtml(String(msg));
+  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
   document.getElementById('_modalOk').onclick=onOk;
   document.getElementById('_modalCancel').onclick=()=>{if(onCancel)onCancel();closeModal();};
 }
@@ -87,6 +93,9 @@ function safeCloseDrawer(force){
 function openDrawer(title,html,onOk,wide,noFooter){
   _drawerOnOk=onOk||null;
   const w=wide?'wide':'';
+  /* 先移除旧的抽屉实例，避免多次打开时抽屉叠加/状态错乱 */
+  const oldWrap=document.querySelector('.drawer-wrap');
+  if(oldWrap)oldWrap.remove();
   const overlay=document.createElement('div');
   overlay.className='drawer-overlay';
   overlay.onclick=function(){safeCloseDrawer();};

@@ -35,6 +35,7 @@ const SCRIPTS = [
   'views/settlements.js',
   'views/invoices.js',
   'views/data.js',
+  'views/search-panel.js',
   'views/keyboard.js',
   'views/ai-chat.js',
   'core/router.js',

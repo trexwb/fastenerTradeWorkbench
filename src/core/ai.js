@@ -5,15 +5,21 @@ const AI=(function(){
   const HISTORY_CONTEXT_CHARS=20000; // 上下文总字符阈值，超过触发一次压缩
   const HEALTH_INTERVAL_MS=30000;
   const DEFAULT_MODEL='deepseek-v4-flash';
-  const ALLOWED_MODELS=new Set(['deepseek-v4-flash','deepseek-v4-pro']);
+  // 预置推荐模型（不强制限制，设置中可自定义任意 OpenAI 兼容模型名）
+  const PRESET_MODELS=['deepseek-v4-flash','deepseek-v4-pro','gpt-4o-mini','gpt-4o','qwen-plus','glm-4-flash','llama3','qwen2.5'];
+  const ALLOWED_MODELS=new Set(PRESET_MODELS);
+  const DEFAULT_BASE_URL='https://api.deepseek.com/v1';   // OpenAI 兼容端点，可在设置中修改（如 Ollama http://127.0.0.1:11434/v1）
   const STREAM_EVENT='ai:deepseek:chunk';
   const WEB_KEY_STORAGE='wb_fastener_ai_key';   // 浏览器形态：API_KEY 存 localStorage
-  const WEB_API_URL='https://api.deepseek.com/v1/chat/completions';
+  const WEB_API_URL=DEFAULT_BASE_URL+'/chat/completions';   // 默认端点（可配置）
+  const WEB_BASE_STORAGE='wb_fastener_ai_base';   // Base URL 存 localStorage
+  const WEB_MODEL_STORAGE='wb_fastener_ai_model'; // 模型名存 localStorage
   const state={
     runtime:'web',           // 'tauri' | 'web'
     proxyOnline:false,       // 运行通道可达（tauri：Rust 命令；web：已保存 Key）
     hasKey:false,            // 是否已保存 DeepSeek API_KEY
     model:DEFAULT_MODEL,
+    baseUrl:DEFAULT_BASE_URL,
     chatting:false,
     abortController:null,
     healthTimer:0,
@@ -28,6 +34,13 @@ const AI=(function(){
     tauriToolAcc:[],
     removeStreamListener:null
   };
+  // 恢复多模型配置（浏览器与 Tauri 均用 localStorage；Tauri 版 API_KEY 仍在应用数据目录）
+  try{
+    const _b=localStorage.getItem(WEB_BASE_STORAGE);
+    if(_b&&String(_b).trim())state.baseUrl=String(_b).trim().replace(/\/+$/,'');
+    const _m=localStorage.getItem(WEB_MODEL_STORAGE);
+    if(_m&&String(_m).trim())state.model=String(_m).trim();
+  }catch(e){}
   const _T=window.__TAURI__;
   /** 是否处于 Tauri 桌面运行时 */
   state.runtime=!!(_T&&_T.core&&typeof _T.core.invoke==='function'
@@ -88,10 +101,10 @@ const AI=(function(){
     if(entity)blocks.push('【命中单位】\n'+entity.name+' | 角色：'+(entity.roles||[]).join('/')+' | 评级：'+(entity.rating||'未评级'));
     return blocks.filter(Boolean).join('\n\n');
   }
-  function buildPreview(message){
+  function buildPreview(message,extra){
     const overview=extractOverview();const status=Object.keys(overview.byStatus).map(key=>key+' '+overview.byStatus[key]+'笔').join(' / ');
     const base='【经营概况】\n订单：'+(DB.orders||[]).length+'笔（'+status+'）\n销售额：'+money(overview.sales)+' | 采购成本：'+money(overview.cost)+' | 利润：'+money(overview.profit)+'（毛利率 '+overview.margin+'%）\n应收未收：'+money(overview.receivables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.receivables.length+'家） | 应付未付：'+money(overview.payables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.payables.length+'家）\n客户/供应商：'+(DB.units||[]).filter(item=>(item.roles||[]).includes('采购商')).length+'/'+(DB.units||[]).filter(item=>(item.roles||[]).includes('供应商')).length;
-    return [base,extractPageContext(),extractByKeywords(message,overview)].filter(Boolean).join('\n\n');
+    return [base,extractPageContext(),extractByKeywords(message,overview),extra].filter(Boolean).join('\n\n');
   }
   function buildSystemPrompt(snapshot){
     return '你是紧固件贸易工作台的助手，既是数据助理也是系统操作顾问。可调用写入工具起草对单位/报价/订单等数据的修改，可调用查询工具（query_*）读取脱敏数据，可调用功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer/open_unit_form/open_order_form/open_price_form/open_bom_form）触发视图导航、Excel 导出、打开抽屉、打开业务表单等 UI 动作，也可基于脱敏快照做只读分析与建议。\n\n'+
@@ -142,25 +155,51 @@ const AI=(function(){
     }
   }
   function persistMessage(role,content,snapshot){const message={id:uid('AI'),role,content,context:view,timestamp:Date.now(),snapshot:snapshot||''};DB.aiChats=DB.aiChats||[];DB.aiChats.push(message);DB.aiChats=DB.aiChats.slice(-HISTORY_LIMIT);saveDB();return message;}
-  function setModel(m){if(ALLOWED_MODELS.has(m))state.model=m;else state.model=DEFAULT_MODEL;}
+  function setModel(m){if(m&&String(m).trim())state.model=String(m).trim();else state.model=DEFAULT_MODEL;}
+  /** 多模型接入：设置 Base URL 与模型名（OpenAI 兼容；本地 Ollama 可留空 API_KEY） */
+  function setProvider(baseUrl,model){
+    const b=baseUrl&&String(baseUrl).trim()?String(baseUrl).trim().replace(/\/+$/,''):'';
+    if(b&&!/^https?:\/\//.test(b))throw new Error('Base URL 需以 http:// 或 https:// 开头');
+    if(b){state.baseUrl=b;try{localStorage.setItem(WEB_BASE_STORAGE,b);}catch(e){}}
+    else{state.baseUrl=DEFAULT_BASE_URL;try{localStorage.removeItem(WEB_BASE_STORAGE);}catch(e){}}
+    const m=model&&String(model).trim()?String(model).trim():'';
+    if(m){state.model=m;try{localStorage.setItem(WEB_MODEL_STORAGE,m);}catch(e){}}
+    else{state.model=DEFAULT_MODEL;try{localStorage.removeItem(WEB_MODEL_STORAGE);}catch(e){}}
+    if(typeof refreshAIStatus==='function')refreshAIStatus();
+  }
+  function apiChatUrl(){const b=(state.baseUrl||DEFAULT_BASE_URL).replace(/\/+$/,'');return b.endsWith('/chat/completions')?b:b+'/chat/completions';}
   function webHasKey(){return !!((localStorage.getItem(WEB_KEY_STORAGE)||'').trim());}
 
   /** 健康检查：tauri 检查 Rust 通道与 Token 文件；web 检查本地保存的 Key */
   async function probeProxy(){
     if(state.runtime==='tauri'){
+      // 本地端点（Ollama 等）免 Token；其余端点检查 Token 文件
+      const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
       try{
         const has=await tauriInvoke('ai_deepseek_token_has');
         state.proxyOnline=true;
-        state.hasKey=!!has;
-      }catch(e){state.proxyOnline=false;state.hasKey=false;}
+        state.hasKey=localBase||!!has;
+      }catch(e){state.proxyOnline=localBase;state.hasKey=localBase;}
     }else{
-      state.hasKey=webHasKey();
+      // 本地端点（Ollama 等）无需 API_KEY 也可用
+      state.hasKey=webHasKey()||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
       state.proxyOnline=state.hasKey;
     }
     if(typeof refreshAIStatus==='function')refreshAIStatus();return {runtime:state.runtime,online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
   }
   function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
-  function runtimeLabel(){return state.runtime==='tauri'?'桌面版（AI 直连 DeepSeek）':'浏览器（AI 直连 DeepSeek）';}
+  /** 端点显示名（按 baseUrl 域名识别，本地端点单列） */
+  function providerLabel(){
+    const b=state.baseUrl||DEFAULT_BASE_URL;
+    if(/^https?:\/\/(127\.0\.0\.1|localhost)/.test(b))return '本地模型';
+    const m=b.match(/^https?:\/\/([^\/]+)/);const host=m?m[1]:'';
+    if(/deepseek/.test(host))return 'DeepSeek';
+    if(/openai\.com/.test(host))return 'OpenAI';
+    if(/dashscope|aliyuncs/.test(host))return '通义千问';
+    if(/bigmodel|zhipuai/.test(host))return '智谱';
+    return host||'自定义';
+  }
+  function runtimeLabel(){const p=providerLabel();return state.runtime==='tauri'?('桌面版（AI · '+p+'）'):('浏览器（AI · '+p+'）');}
 
   /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk；
    *  Rust 侧（lib.rs）已把 tool_calls delta 按 OpenAI 结构透传（{"text":"","toolCalls":[...]}），
@@ -225,7 +264,10 @@ const AI=(function(){
    */
   async function webChat(messages,onChunk,signal,options){
     const key=(localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
-    if(!key)throw new Error('请先在 AI 设置中填写 DeepSeek API_KEY');
+    const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
+    if(!key&&!localBase)throw new Error('请先在 AI 设置中填写 API_KEY（本地 Ollama 可留空）');
+    // 本地端点无 Key 时用占位 token：Ollama 等 OpenAI 兼容层要求 Authorization 头非空（空值会 401）
+    const authKey=key||(localBase?'ollama':'');
     state.webBuf='';
     state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
     const reqBody={
@@ -245,16 +287,22 @@ const AI=(function(){
       reqBody.tools=options.tools;
       // tool_choice 默认 auto：让模型自主决定是否调用工具，避免强制调用导致纯分析场景失败
     }
-    const res=await fetch(WEB_API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'text/event-stream'},
+    let res;
+    try{
+      res=await fetch(apiChatUrl(),{
+        method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
       body:JSON.stringify(reqBody),
-      signal:signal
-    });
+        signal:signal
+      });
+    }catch(err){
+      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(err&&err.message?err.message:JSON.stringify(err)));
+    }
     if(!res.ok){
       let detail='';
       try{const j=await res.json();detail=(j&&j.error&&j.error.message)?j.error.message:'';}catch(_){}
-      throw new Error('DeepSeek 返回错误 (HTTP '+res.status+')'+(detail?'：'+detail:''));
+      if(!detail){try{detail=(await res.text()).slice(0,200);}catch(_){detail='';}}
+      throw new Error(providerLabel()+' 返回错误 (HTTP '+res.status+(detail?')：'+detail:')'));
     }
     if(!res.body||!res.body.getReader)throw new Error('当前浏览器不支持流式响应');
     const reader=res.body.getReader();const decoder=new TextDecoder();let buffer='';
@@ -265,7 +313,17 @@ const AI=(function(){
       let idx;
       while((idx=buffer.indexOf('\n'))>=0){
         const line=buffer.slice(0,idx).trim();buffer=buffer.slice(idx+1);
-        if(!line.startsWith('data:'))continue;
+        if(!line.startsWith('data:')){
+          if(!state.webBuf){
+            try{
+              const j=JSON.parse(line);
+              const ch=j.choices&&j.choices[0];
+              const text=ch&&(ch.message?ch.message.content:(ch.delta?ch.delta.content:null));
+              if(typeof text==='string'&&text){state.webBuf+=text;if(onChunk)try{onChunk(text);}catch(_){}}
+            }catch(_){}
+          }
+          continue;
+        }
         const raw=line.slice(5).trim();
         if(!raw||raw==='[DONE]')continue;
         try{
@@ -294,7 +352,7 @@ const AI=(function(){
    *  向后兼容：调用方原期望纯文本字符串的代码，改为 res.content 读取即可
    */
   async function chat(messages,onChunk,options){
-    if(!ALLOWED_MODELS.has(state.model))state.model=DEFAULT_MODEL;
+    if(!state.model)state.model=DEFAULT_MODEL;
     state.chatting=true;
     state.abortController=null;
     try{
@@ -312,6 +370,7 @@ const AI=(function(){
               return out;
             }),
             model:state.model,
+            baseUrl:state.baseUrl,
             stream:true,
             temperature:0.3,
             max_tokens:1200,
@@ -379,6 +438,8 @@ const AI=(function(){
   async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
     const messages=[...initialMessages];
     let lastToolResults=[];
+    let lastBatchIds=[];    // 本轮所有写入批次 ID（供对话内一键撤销整轮，复用持久化 undoBatch）
+    let lastBatchId=null;     // 兼容字段：最后一个批次 ID
     const MAX_ROUNDS=8;  // 阶段3：查询+写入多轮，增加到 8 轮
     for(let round=0;round<MAX_ROUNDS;round++){
       // 上下文压缩：首轮前检查总长度，超阈值时先让模型压缩历史为摘要
@@ -400,7 +461,7 @@ const AI=(function(){
       const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
-        return {content:res.content,lastToolResults};
+        return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};
       }
       // P0 修复：归一化 tool_calls —— 流式累积可能缺失 id，而 OpenAI 协议要求
       // assistant.tool_calls 的 id 与 tool 响应的 tool_call_id 非空且精确匹配，
@@ -445,10 +506,12 @@ const AI=(function(){
           writeResults=writeOps.map(tc=>({toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户取消了本次操作'})}));
           messages.push({role:'user',content:'用户取消了操作提案，请不要再次起草相同操作。'});
         }else{
-          // 批量执行（写入 DB + aiOps）
+          // 批量执行（写入 DB + aiOps）；记 batchId 供对话内一键撤销（复用持久化 undoBatch）
           const batchId=uid('AOB');
           const execRes=AIT.executeOps(confirmed.approvedOps,{aiChatId:aiChatId,batchId:batchId,operator:'ai'});
           lastToolResults=execRes.results;
+          lastBatchIds.push(batchId);
+          lastBatchId=batchId;
           // 回填：approvedOps 的执行结果 + 未勾选的「用户未选」
           writeResults=writeOps.map(tc=>{
             const approvedIdx=confirmed.approvedOps.findIndex(o=>o.__toolCallId===tc.id);
@@ -466,17 +529,23 @@ const AI=(function(){
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }
-    return {content:'',lastToolResults};
+    return {content:'',lastToolResults,lastBatchIds,lastBatchId};
+  }
+  /** 撤销指定批次的 AI 工具改动（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
+   *  返回已撤销条数（供 UI 提示）；batchId 无效或已撤销返回 0 */
+  function undoLastBatch(batchId){
+    if(!batchId||typeof undoBatch!=='function')return 0;
+    return undoBatch(batchId);
   }
   function abort(){if(state.abortController)state.abortController.abort();}
 
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除） */
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除）
-   *  非空 Key 必须为 sk- 开头（DeepSeek 官方格式），防占位文本/拼写污染 */
+   *  多模型接入：放开 sk- 前缀校验，自定义端点 Key 非空即可；仅限长度防滥用 */
   async function setDeepseekToken(raw){
     const token=String(raw||'').trim();
-    if(token&&!/^sk-/.test(token)){
-      throw new Error('API_KEY 格式不正确：应为 sk- 开头（可在 api.deepseek.com 获取）');
+    if(token&&token.length>4000){
+      throw new Error('API_KEY 过长，无法保存');
     }
     if(state.runtime==='tauri'){
       await tauriInvoke('ai_deepseek_token_write',{token:token});
@@ -484,7 +553,7 @@ const AI=(function(){
       if(token)localStorage.setItem(WEB_KEY_STORAGE,token);
       else localStorage.removeItem(WEB_KEY_STORAGE);
     }
-    state.hasKey=!!token;
+    state.hasKey=!!token||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
   /** 读取已保存的 Key 明文（仅设置弹窗编辑态回显用；非编辑状态不展示） */
@@ -503,8 +572,9 @@ const AI=(function(){
   }
 
   return {
-    state,runtimeLabel,QUICK_ACTIONS,ALLOWED_MODELS,DEFAULT_MODEL,
+    state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
-    chat,aiWriteLoop,abort,setModel,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft
+    chat,aiWriteLoop,abort,setModel,setProvider,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft,
+    undoLastBatch
   };
 })();

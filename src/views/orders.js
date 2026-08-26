@@ -291,7 +291,9 @@ function nextStepConfirmSign(id){
   confirmModal(
     '确认合同已与采购商签署完成？<br><span class="muted" style="font-size:12px">完成后将进入「签约完成」状态，可开始收货管理；合同如需修改可直接编辑订单，进入送货后锁定只读。</span>',
     function(){changeOrderStatus(id,'签约完成');},
-    '确认签约'
+    '确认签约',
+    null,null,
+    true
   );
 }
 /** 「报价中 → 未成交」：报价后客户未确认，确认弹窗后切换；可一键恢复为报价中 */
@@ -299,7 +301,9 @@ function markOrderNoDeal(id){
   confirmModal(
     '确认标记为「未成交」？<br><span class="muted" style="font-size:12px">未成交代表报价后客户未确认，订单不参与应收/利润/待办统计；可随时一键恢复为「报价中」继续跟进。</span>',
     function(){changeOrderStatus(id,'未成交');},
-    '标记未成交'
+    '标记未成交',
+    null,null,
+    true
   );
 }
 /** 「未成交 → 报价中」：一键恢复继续跟进 */
@@ -327,7 +331,8 @@ function nextStepEnterDelivery(id){
       '收货尚未完成（已收到 '+received+' / '+total+' 条）：<br><ul style="margin:8px 0 0 16px;color:var(--warn)">'+list+'</ul>'+
       '<div class="muted" style="margin-top:8px;font-size:12px">确认进入「送货中」后，仍可在收货管理中继续补录未收记录。</div>',
       function(){changeOrderStatus(id,'送货中');},
-      '仍然进入送货','返回补齐收货'
+      '仍然进入送货','返回补齐收货',
+      null,true
     );
     return;
   }
@@ -350,7 +355,9 @@ function cancelOrderConfirm(id){
   confirmModal(
     '确认取消此订单？<br><span class="muted" style="font-size:12px">取消后订单将进入「取消」状态，不可再恢复正常流程。</span>',
     function(){changeOrderStatus(id,'取消');},
-    '确认取消'
+    '确认取消',
+    null,null,
+    true
   );
 }
 /** 保存送货信息并更新订单状态为"送货中" */
@@ -470,7 +477,9 @@ function copyOrder(id){
       if(typeof updateHash==='function')updateHash();
       render();
     },
-    '确认复制'
+    '确认复制',
+    null,null,
+    true
   );
 }
 /** 从订单详情页进入指定产品行的寻货流程 */
@@ -505,7 +514,8 @@ function persistOrderItems(){
 function bindOrderDraftSave(){
   const card=document.querySelector('#app .card');
   if(!card)return;
-  const handler=()=>{const d=collectOrderDraft();if(d)saveDraft(DRAFT_TYPES.order,d);};
+  // 草稿保存 300ms 防抖，避免输入过程中频繁写入 localStorage
+  const handler=debounce(()=>{const d=collectOrderDraft();if(d)saveDraft(DRAFT_TYPES.order,d);},300);
   document.querySelectorAll('#app input,#app select,#app textarea').forEach(el=>{
     if(el.id&&el.id.startsWith('tf_')){el.addEventListener('input',handler);el.addEventListener('change',handler);}
   });
@@ -641,6 +651,14 @@ function viewOrderEdit(){
 window._fEditIdx=-1;
 /** 订单保存中锁，防止重复点击导致多次提交（防重） */
 let _orderSaving=false;
+/** 产品新增/编辑弹窗保存锁（防重） */
+let _itemSaving=false;
+/** 手动录入供应商提交锁（防重） */
+let _manualSupSaving=false;
+/** 批量粘贴订单数据提交锁（防重） */
+let _batchOrderSaving=false;
+/** 批量导入供应商报价提交锁（防重） */
+let _supplierQuoteSaving=false;
 /**
  * 打开新增产品弹窗
  * @param {void}
@@ -715,6 +733,9 @@ function openItemModal(idx){
 }
 /** 保存产品弹窗数据到临时产品列表 */
 function saveItemModal(){
+  if(_itemSaving){toast('正在保存中，请稍候...','info');return;}
+  _itemSaving=true;
+  setTimeout(function(){_itemSaving=false;},500);
   const d={
     sku:document.getElementById('m_sku').value.trim(),
     type:getComboVal('m_type'),
@@ -845,8 +866,8 @@ function submitPriceMatch(idx){
     addMatchSupplier(idx,e.priceId,e.qty);
   });
 }
-/** 按关键词过滤价格库匹配列表（保留已勾选状态） */
-function filterPriceMatch(idx,q){
+/** 按关键词过滤价格库匹配列表（保留已勾选状态）——核心逻辑 */
+function filterPriceMatchNow(idx,q){
   const list=document.getElementById('pmList');
   if(!list)return;
   // 保留勾选状态，避免每字重绘丢失用户选择
@@ -859,6 +880,8 @@ function filterPriceMatch(idx,q){
     if(cb)cb.checked=true;
   });
 }
+/** 价格库匹配搜索防抖入口（对输入做 150ms 防抖，勾选状态保留由 filterPriceMatchNow 内部处理） */
+const filterPriceMatch=debounce(filterPriceMatchNow,150);
 /** 构建手动录入供应商弹窗的 HTML 内容 */
 function buildManualSupplierModalBody(idx){
   const it=_fItems[idx];
@@ -995,6 +1018,9 @@ function addMatchSupplier(idx,priceId,q){
 }
 /** 提交手动录入的供应商数据（自动创建关联单位、同步价格库） */
 function manualSupplier(idx){
+  if(_manualSupSaving){toast('正在保存中，请稍候...','info');return;}
+  _manualSupSaving=true;
+  setTimeout(function(){_manualSupSaving=false;},500);
   const it=_fItems[idx];
   const nameVal=document.getElementById('ms_name').dataset.val;
   const nameInput=document.getElementById('ms_name').querySelector('input').value.trim();
@@ -1317,6 +1343,9 @@ function removeOrderBatchRow(idx){
 }
 /** 提交批量解析数据到产品列表（含未匹配 SKU 一键加入 BOM） */
 function submitOrderBatch(){
+  if(_batchOrderSaving){toast('正在保存中，请稍候...','info');return;}
+  _batchOrderSaving=true;
+  setTimeout(function(){_batchOrderSaving=false;},500);
   let data=window._batchOrderData;
   if(!data||!data.length){toast('没有可提交的数据','warning');return;}
   let succ=0;
@@ -1500,6 +1529,9 @@ function findQuoteItemIndex(items,r){
 }
 /** 提交报价数据，按匹配结果生成寻货结果（写入订单产品选项） */
 function submitSupplierQuote(){
+  if(_supplierQuoteSaving){toast('正在保存中，请稍候...','info');return;}
+  _supplierQuoteSaving=true;
+  setTimeout(function(){_supplierQuoteSaving=false;},500);
   const data=window._quoteImportData;
   if(!data||!data.length){toast('没有可提交的数据','warning');return;}
   const o=DB.orders.find(x=>x.id===curOrderView);
@@ -1614,6 +1646,8 @@ function receiveManageSection(o,locked){
     '<div class="muted" style="font-size:12px;margin-top:8px">寄出数量可按实际多填（如考虑包装损耗），数量与日期修改后即时保存。</div>'+
   '</div>';
 }
+/** 收货字段高频修改后的整页渲染防抖（150ms） */
+const _receiveRenderDebounced=debounce(render,150);
 /** 即时保存收货字段：切换「是/否」时自动填充数量，修改寄出数量时同步收到数量 */
 function updateReceiveField(optId,field,value){
   const o=DB.orders.find(x=>x.id===curOrderView);
@@ -1663,10 +1697,11 @@ function updateReceiveField(optId,field,value){
     opt[field]=value||'';
   }
   o.updatedAt=now();
-  saveDB();
+  // 高频字段修改：索引库写入走全局防抖，整页渲染节流，避免连续操作卡顿
+  saveDBDebounced();
   // 重新渲染整个页面，使验货提示区、收货管理表格、订单状态流程联动
   if(o.status==='签约完成'||o.status==='送货中'||o.status==='完成'){
-    render();
+    _receiveRenderDebounced();
   }
 }
 /* ---- 采购订单批量删除 ---- */

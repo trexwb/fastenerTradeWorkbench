@@ -2,6 +2,12 @@
 /* =========================================================
    报价管理
    ========================================================= */
+/** 报价表单保存防重锁 */
+let _priceFormSaving=false;
+/** 报价批量导入提交防重锁 */
+let _priceBatchSaving=false;
+/** 报价筛选刷新防抖（150ms） */
+const _priceFilterDebounced=debounce(refreshPricesTable,150);
 
 /**
  * 渲染单条报价表格行 HTML（列表页与局部刷新共用，避免两份模板漏改）。
@@ -138,11 +144,13 @@ function doPriceSearch(){
   refreshPricesTable();
 }
 
-/** 触发属性筛选后重置页码并刷新报价表格 */
-function filterPrices(){
+/** 触发属性筛选后重置页码并刷新报价表格——核心逻辑 */
+function _priceFilterNow(){
   _pricePage=1;
   refreshPricesTable();
 }
+/** 报价筛选防抖入口（对 combo 高频回调做 150ms 防抖） */
+const filterPrices=debounce(_priceFilterNow,150);
 
 /** 清空所有报价筛选条件（SKU/供应商/属性）并刷新 */
 function clearPriceFilter(){
@@ -223,7 +231,7 @@ function delPrice(id){
     softDelete('price',id,{operator:'user'});
     closeDrawer();render();
     toast('已删除','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 /** 构建报价新建/编辑表单HTML（BOM引用、供应商、属性、单价） */
 function priceFormHTML(p){
@@ -269,6 +277,9 @@ function bindPriceFormCombos(p){
 }
 /** 校验并保存报价表单（含重复检查，新建/编辑复用） */
 function savePriceDrawer(){
+  if(_priceFormSaving){toast('正在保存中，请稍候...','info');return;}
+  _priceFormSaving=true;
+  setTimeout(function(){_priceFormSaving=false;},500);
   const partyEl=document.getElementById('ps_unit');
   const input=partyEl.querySelector('input');if(input&&input.value.trim()==='')partyEl.dataset.val='';
   const unitId=partyEl.dataset.val;
@@ -358,7 +369,7 @@ function batchDeletePrices(){
     const idSet=new Set(ids);
     const bid=uid('AOB');ids.forEach(function(id){try{softDelete('price',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+ids.length+' 条','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 
 /* ---- 新增报价下拉 ---- */
@@ -526,6 +537,9 @@ function removePriceBatchRow(idx){
 }
 /** 提交批量导入报价（含重复检查） */
 function submitPriceBatch(){
+  if(_priceBatchSaving){toast('正在保存中，请稍候...','info');return;}
+  _priceBatchSaving=true;
+  setTimeout(function(){_priceBatchSaving=false;},500);
   const rows=window._batchPriceData||[];
   if(!rows.length){toast('没有可提交的数据','warning');return;}
   let added=0,dup=0,bad=0;

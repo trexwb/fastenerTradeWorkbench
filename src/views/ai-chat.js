@@ -51,25 +51,46 @@ function openAIAssistant(){
   if(document.querySelector('.drawer-wrap'))closeDrawer();
   const actions=AI.QUICK_ACTIONS.map(action=>'<button type="button" class="ai-action" onclick="runAIQuickAction(\''+action.id+'\')">'+escHtml(action.label)+'</button>').join('');
   const history=(DB.aiChats||[]).map(aiMessageHTML).join('')||aiWelcomeHTML();
+  // 已有对话历史时不再显示「常用提问」快捷区（冷启动引导只在无对话时出现）
+  const hasChat=!!(DB.aiChats&&DB.aiChats.length);
+  const quickSection=hasChat?'':'<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section>';
   const body='<section class="ai-chat" aria-label="AI 助手">'+
-    '<header class="ai-chat-head"><div><span class="ai-eyebrow">DEEPSEEK · '+escHtml(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
-    '<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section><div id="aiMessages" class="ai-messages">'+history+'</div>'+
+    '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
+    quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">⌘ / Ctrl + Enter 发送 · Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
 }
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
-function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?'打开 AI 助手（'+(AI.state.runtime==='tauri'?'桌面直连':'浏览器直连')+'）':'请先在 AI 设置中填写 DeepSeek API_KEY';}}
+function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
 function handleAIInputKey(event){if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();requestAISend();}}
 function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';input.focus();return;}input.value=action.prompt;requestAISend();}
+// 全局搜索面板注入的附加上下文（一次有效）
+let _aiExtraContext='';
+function openAIWithMessage(text,extraContext){
+  openAIAssistant();
+  _aiExtraContext=extraContext||'';
+  setTimeout(function(){
+    const input=document.getElementById('aiInput');
+    if(input){input.value=text||'';requestAISend();}
+  },60);
+}
 function requestAISend(){
   const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
-  if(!AI.state.hasKey){toast('请先在 AI 设置中填写 DeepSeek API_KEY','warning');return;}
-  _aiCurrentSnapshot=AI.buildPreview(message);
+  if(!AI.state.hasKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
+  const extra=_aiExtraContext;_aiExtraContext='';
+  _aiCurrentSnapshot=AI.buildPreview(message,extra);
+  // 数据快照确认弹窗：首次发送提示一次，确认后记住（localStorage），后续发送不再重复弹
+  let confirmed=false;
+  try{confirmed=localStorage.getItem('wb_fastener_ai_confirm')==='1';}catch(e){}
+  if(confirmed){sendAIMessage(message,_aiCurrentSnapshot);return;}
   const body='<p class="note">以下是本次将发送给 AI 的脱敏数据快照，不含联系人电话、地址、税号或银行账户。</p><pre class="ai-preview">'+escHtml(_aiCurrentSnapshot)+'</pre>';
-  modal('确认发送数据',body,'确认发送',()=>{closeModal();sendAIMessage(message,_aiCurrentSnapshot);},true);
+  modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}sendAIMessage(message,_aiCurrentSnapshot);},true);
 }
 async function sendAIMessage(message,snapshot){
   const input=document.getElementById('aiInput');const messages=document.getElementById('aiMessages');const history=AI.getHistory();if(!messages)return;if(input)input.value='';
+  // 发送时移除欢迎区（欢迎区仅在打开面板且无对话时渲染；发送后必须清除，否则与消息并存）
+  const _welcome=document.querySelector('#aiMessages .ai-empty');
+  if(_welcome)_welcome.remove();
   const userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
   const pending={role:'assistant',content:'',pending:true,snapshot};messages.insertAdjacentHTML('beforeend',aiMessageHTML(pending));const pendingEl=messages.lastElementChild;const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
   aiScrollBottom();
@@ -85,18 +106,45 @@ async function sendAIMessage(message,snapshot){
     pending.content=res.content||'(操作已处理)';
     pending.pending=false;
     const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
-    pendingEl.outerHTML=aiMessageHTML(assistantMessage);
-    // 工具执行结果汇总提示 + 刷新当前视图（让录入结果立即可见）
+    // 工具执行成功时在消息下方附「撤销本批」条（复用持久化 undoBatch，刷新不失效，不误伤手动改动）
+    let undoBar='';
     if(res.lastToolResults&&res.lastToolResults.length){
       const okN=res.lastToolResults.filter(r=>r.ok).length;
       const failN=res.lastToolResults.length-okN;
       const tip='已执行 '+okN+' 条操作'+(failN?'，'+failN+' 条失败':'');
       toast(tip,failN?'warning':'success');
+      const batchIds=(res.lastBatchIds&&res.lastBatchIds.length)?res.lastBatchIds:(res.lastBatchId?[res.lastBatchId]:[]);
+      if(okN>0&&batchIds.length){
+        const bidStr=escAttr(batchIds.join(','));
+        undoBar='<div class="ai-undo-bar" data-batch="'+bidStr+'"><span class="ai-undo-info">'+icon('check','13')+' 已执行 '+okN+' 条</span><button type="button" class="ai-undo-btn" onclick="undoAIBatch(\''+bidStr+'\',this)">'+icon('cornerUpLeft','13')+' 撤销本轮改动</button><span class="ai-undo-hint">可在数据管理-操作历史查看</span></div>';
+      }
       if(typeof render==='function'&&okN>0)render();
     }
-  }catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+    pendingEl.outerHTML=aiMessageHTML(assistantMessage)+undoBar;
+  }catch(error){const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');pending.content=error&&error.name==='AbortError'?'已停止生成。':'请求失败：'+errMsg;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
+/** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
+ *  @param {string} batchId - aiOps 批次 ID
+ *  @param {Element} btnEl - 触发按钮（撤销后置灰） */
+function undoAIBatch(batchStr,btnEl){
+  const batchIds=batchStr?String(batchStr).split(',').filter(Boolean):[];
+  if(!batchIds.length){toast('无可撤销的批次','info');return;}
+  const ops=(DB.aiOps||[]).filter(o=>batchIds.includes(o.batchId)&&!o.undone);
+  if(!ops.length){toast('该轮已无可撤销的操作','info');if(btnEl){btnEl.disabled=true;btnEl.classList.add('done');btnEl.innerHTML=icon('check','13')+' 已撤销';}return;}
+  confirmModal('确认撤销本轮 '+ops.length+' 条 AI 操作？将按操作类型反向还原（创建→删除、修改→还原旧值、删除→恢复），不会影响你之后的手动改动。',()=>{
+    try{
+      let n=0;
+      batchIds.forEach(function(b){n+=AI.undoLastBatch(b);});
+      toast(n?('已撤销 '+n+' 条操作'):'该轮已无可撤销操作',n?'success':'info');
+      if(btnEl){btnEl.disabled=true;btnEl.classList.add('done');btnEl.innerHTML=icon('check','13')+' 已撤销';}
+      const bar=btnEl?btnEl.closest('.ai-undo-bar'):null;
+      if(bar){const info=bar.querySelector('.ai-undo-info');if(info)info.innerHTML=icon('cornerUpLeft','13')+' 本轮已撤销';}
+      if(typeof render==='function')render();
+    }catch(e){toast('撤销失败：'+(e&&e.message?e.message:e),'error');}
+    closeModal();
+  },'撤销本轮');
+}
 
 /* ===== AI 操作提案确认弹窗（写入流程核心交互） ===== */
 /** AI 操作确认弹窗：渲染 tool_calls 列表，用户勾选后执行
@@ -252,38 +300,59 @@ function fmtOpsVal(v){
 async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';
   const bodyBuilder=async function(){
-    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版（file://）</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
-    // 防御：旧版本（无 getDeepseekToken）降级为空串，避免设置弹窗打不开
+    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
     let savedKey='';
-    try{
-      if(typeof AI.getDeepseekToken==='function')savedKey=await AI.getDeepseekToken();
-    }catch(e){savedKey='';}
-    // 编辑态回显真实 Key（用户明确允许编辑时可见）；非编辑状态不展示
-    const placeholder=savedKey?'sk-… 已保存 Key，输入新值可覆盖；留空保存则删除':'sk-… 从 api.deepseek.com 获取';
-    const tokenInput='<div class="field"><label class="f" for="aiDeepseekToken">DeepSeek API_KEY <span style="color:var(--warn)">*</span></label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(placeholder)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 API_KEY（仅在编辑弹窗中可见）':'尚未设置 API_KEY')+' · '+(isTauri?'由 Tauri 桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，用于直连调用 DeepSeek API，不会发送给任何第三方。</div></div>';
+    try{if(typeof AI.getDeepseekToken==='function')savedKey=await AI.getDeepseekToken();}catch(e){savedKey='';}
+    const savedBase=AI.state.baseUrl||AI.DEFAULT_BASE_URL;
+    const savedModel=AI.state.model||AI.DEFAULT_MODEL;
+    // 端点预设：点选自动填入 Base URL 与模型（不立即保存）
+    const presets=[
+      {label:'DeepSeek',base:'https://api.deepseek.com/v1',model:'deepseek-v4-flash'},
+      {label:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
+      {label:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},
+      {label:'本地 Ollama',base:'http://127.0.0.1:11434/v1',model:'qwen2.5'},
+      {label:'本地 oMLX',base:'http://127.0.0.1:8000/v1',model:'qwen2.5'}
+    ];
+    window._providerPresets=presets;
+    const presetBtns=presets.map(function(p,i){return '<button type="button" class="btn sm" onclick="applyProviderPreset('+i+')">'+escHtml(p.label)+'</button>';}).join('');
+    const keyPh=savedKey?'已保存 Key，输入新值覆盖；留空保存则删除':'粘贴 API_KEY（本地 Ollama 可留空）';
     return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
       '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
-      tokenInput+
-      '<div class="field"><label class="f" for="aiModel">模型</label><select id="aiModel">'+
-      Array.from(AI.ALLOWED_MODELS).map(m=>'<option value="'+escAttr(m)+'">'+escHtml(m)+'</option>').join('')+
-      '</select></div>'+
+      '<div class="field"><label class="f">端点预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点选预设自动填入下方 Base URL 与模型；也可手动自定义任意 OpenAI 兼容端点。</div></div>'+
+      '<div class="field"><label class="f" for="aiBaseUrl">Base URL（OpenAI 兼容端点）</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'"><div class="note">需以 /v1 结尾；本地 Ollama 填 http://127.0.0.1:11434/v1（Key 可留空）；本地 oMLX 填 http://127.0.0.1:8000/v1，API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。</div></div>'+
+      '<div class="field"><label class="f" for="aiModel">模型</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"><div class="note">OpenAI 兼容模型名；自定义端点可填该端点支持的任意模型。</div></div>'+
+      '<div class="field"><label class="f" for="aiDeepseekToken">API_KEY</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 API_KEY（仅在编辑弹窗中可见）':'尚未设置 API_KEY')+' · '+(isTauri?'由桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，不会发送给任何第三方；本地模型可留空。</div></div>'+
       '<button class="btn danger" type="button" onclick="clearAIHistory()">清空本机对话历史</button>';
   };
   let body='';
   try{body=await bodyBuilder();}
   catch(e){toast('打开 AI 设置失败：'+(e&&e.message?e.message:e),'error');return;}
   modal('AI 设置',body,'保存设置',async ()=>{
-    const modelEl=document.getElementById('aiModel');if(modelEl)AI.setModel(modelEl.value);
+    const baseEl=document.getElementById('aiBaseUrl');const modelEl=document.getElementById('aiModel');
+    if(baseEl&&modelEl){try{AI.setProvider(baseEl.value,modelEl.value);}catch(e){toast('保存端点失败：'+(e&&e.message?e.message:e),'error');}}
     const tokenEl=document.getElementById('aiDeepseekToken');
+    const tokenVal=tokenEl?(tokenEl.value||'').trim():'';
     try{
       await AI.setDeepseekToken(tokenEl?tokenEl.value:'');
-      toast('DeepSeek API_KEY 已保存','success');
+      // 本地端点未填 Key 时按服务规则提示（Ollama 可免；oMLX 必须与 oMLX 设置中的 Key 一致）
+      const baseVal=baseEl?(baseEl.value||'').trim():'';
+      if(!tokenVal&&/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseVal)){
+        toast('本地端点未填 API_KEY：Ollama 可直接使用；若为 oMLX，需在 oMLX「设置 → API Key」配置后，在应用内填写相同值','info');
+      }else{
+        toast('AI 设置已保存','success');
+      }
     }catch(e){toast('保存 API_KEY 失败：'+(e&&e.message?e.message:e),'error');}
     closeModal();
   });
-  const model=document.getElementById('aiModel');if(model)model.value=AI.state.model||AI.DEFAULT_MODEL;
 }
-function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];saveDB();closeModal();const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
+/** 应用端点预设到 Base URL / 模型输入框（仅回填，不立即保存） */
+function applyProviderPreset(i){
+  const p=window._providerPresets&&window._providerPresets[i];
+  if(!p)return;
+  const b=document.getElementById('aiBaseUrl');const m=document.getElementById('aiModel');
+  if(b)b.value=p.base;if(m)m.value=p.model;
+}
+function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];saveDB();closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
 function deleteAIMessage(id){
   const message=(DB.aiChats||[]).find(item=>item.id===id);if(!message)return;
-  confirmModal('确认删除这条 '+(message.role==='user'?'提问':'回复')+' 记录？此操作不可恢复。',()=>{DB.aiChats=DB.aiChats.filter(item=>item.id!==id);saveDB();closeModal();const item=document.querySelector('[data-ai-id="'+id+'"]');if(item)item.remove();const box=document.getElementById('aiMessages');if(box&&!box.children.length)box.innerHTML=aiWelcomeHTML();toast('对话记录已删除','success');},'删除记录');}
+  confirmModal('确认删除这条 '+(message.role==='user'?'提问':'回复')+' 记录？此操作不可恢复。',()=>{DB.aiChats=DB.aiChats.filter(item=>item.id!==id);saveDB();closeModal();const item=document.querySelector('[data-ai-id="'+id+'"]');if(item)item.remove();const box=document.getElementById('aiMessages');if(box&&!box.children.length){box.innerHTML=aiWelcomeHTML();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';}toast('对话记录已删除','success');},'删除记录');}

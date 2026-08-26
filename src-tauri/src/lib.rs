@@ -11,7 +11,6 @@ use tokio::io::AsyncBufReadExt;
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 const DEEPSEEK_TOKEN_FILENAME: &str = "deepseek_token";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
-const ALLOWED_MODELS: [&str; 2] = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const MAX_MESSAGES: usize = 20;
 const MAX_MESSAGE_BYTES: usize = 30_000;
 const MAX_TOOL_MESSAGE_BYTES: usize = 200_000; // tool 消息（查询结果 JSON）上限
@@ -31,7 +30,15 @@ fn token_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn valid_model(model: &str) -> bool {
-    ALLOWED_MODELS.iter().any(|m| *m == model)
+    // 多模型接入：允许任意 OpenAI 兼容模型名（仅限制非空与长度）
+    !model.trim().is_empty() && model.len() <= 100
+}
+
+/// 判断是否为本地端点（Ollama 等，免 API_KEY）
+fn is_local_endpoint(base_url: &str) -> bool {
+    let b = base_url.trim().to_lowercase();
+    b.starts_with("http://127.0.0.1") || b.starts_with("http://localhost")
+        || b.starts_with("https://127.0.0.1") || b.starts_with("https://localhost")
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,9 +78,6 @@ fn ai_deepseek_token_write(app: tauri::AppHandle, token: String) -> Result<(), S
     }
     if token.len() > 4000 {
         return Err("Token 过长，无法保存".into());
-    }
-    if !token.starts_with("sk-") {
-        return Err("API_KEY 格式不正确：应为 sk- 开头".into());
     }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
@@ -219,18 +223,31 @@ async fn ai_deepseek_chat(
     max_tokens: Option<u32>,
     stream_event: Option<String>,
     tools: Option<serde_json::Value>,
+    base_url: Option<String>,
 ) -> Result<String, String> {
-    let token = {
+    // 本地端点（Ollama 等）免 Token；其余端点从 Token 文件读取
+    let local_base = base_url
+        .as_ref()
+        .map(|b| is_local_endpoint(b))
+        .unwrap_or(false);
+    // Token 优先级：用户已保存的真实 Key > 本地端点占位（Ollama 兼容）> 报错
+    // （oMLX 等本地服务会校验 Key 与自身配置一致，必须优先用真实 Key，不能一进本地就用占位）
+    let saved_token = {
         let p = token_path(&app)?;
-        if !p.exists() {
-            return Err("未设置 DeepSeek Token，请先在 AI 设置中填写".into());
+        if p.exists() {
+            let t = fs::read_to_string(&p).map_err(|e| format!("读取 Token 失败: {e}"))?;
+            t.trim().to_string()
+        } else {
+            String::new()
         }
-        let t = fs::read_to_string(&p).map_err(|e| format!("读取 Token 失败: {e}"))?;
-        let t = t.trim().to_string();
-        if t.is_empty() {
-            return Err("未设置 DeepSeek Token，请先在 AI 设置中填写".into());
-        }
-        t
+    };
+    let token = if !saved_token.is_empty() {
+        saved_token
+    } else if local_base {
+        // 本地端点无 Key：占位 token（Ollama 的 OpenAI 兼容层要求 Authorization 头非空）
+        "ollama".to_string()
+    } else {
+        return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
     };
 
     if !valid_messages(&messages) {
@@ -263,17 +280,29 @@ async fn ai_deepseek_chat(
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
 
-    let req = client
-        .post(DEEPSEEK_BASE_URL)
+    // 多模型接入：优先使用前端传入的 Base URL（OpenAI 兼容端点，如 Ollama http://127.0.0.1:11434/v1）
+    let req_url = match base_url {
+        Some(b) if !b.trim().is_empty() => {
+            let b = b.trim().trim_end_matches('/').to_string();
+            if b.ends_with("/chat/completions") { b } else { format!("{b}/chat/completions") }
+        }
+        _ => DEEPSEEK_BASE_URL.to_string(),
+    };
+
+    let mut req = client
+        .post(req_url)
         .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", if stream { "text/event-stream" } else { "application/json" })
-        .body(payload);
+        .header("Accept", if stream { "text/event-stream" } else { "application/json" });
+    // 本地端点免 Token；其余端点带 Authorization
+    if !token.is_empty() {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let req = req.body(payload);
 
     let resp = req
         .send()
         .await
-        .map_err(|e| format!("无法连接 DeepSeek 服务: {e}"))?;
+        .map_err(|e| format!("无法连接模型服务: {e}"))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -282,7 +311,7 @@ async fn ai_deepseek_chat(
         let text = String::from_utf8_lossy(&raw).into_owned();
         let snippet: String = text.chars().take(500).collect();
         return Err(format!(
-            "DeepSeek 返回错误 (HTTP {code})：{}",
+            "模型服务返回错误 (HTTP {code})：{}",
             if snippet.is_empty() { "无返回内容".into() } else { snippet }
         ));
     }
