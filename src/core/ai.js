@@ -23,6 +23,8 @@ const AI=(function(){
     webBuf:'',
     // web 模式 tool_calls 增量累积槽（按 index 累积，流结束解析为最终数组）
     webToolAcc:[],
+    // tauri 模式 tool_calls 增量累积槽（事件监听累积，invoke 返回后解析）
+    tauriToolAcc:[],
     removeStreamListener:null
   };
   const _T=window.__TAURI__;
@@ -125,22 +127,60 @@ const AI=(function(){
   function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
   function runtimeLabel(){return state.runtime==='tauri'?'桌面版（AI 直连 DeepSeek）':'浏览器（AI 直连 DeepSeek）';}
 
-  /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk */
+  /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk；
+   *  Rust 侧（lib.rs）已把 tool_calls delta 按 OpenAI 结构透传（{"text":"","toolCalls":[...]}），
+   *  此处同步累积进 tauriToolAcc，invoke 返回后解析为最终数组
+   */
   function _ensureStreamListener(onChunk){
     _cleanupStreamListener();
     state.chunkBuf='';
+    state.tauriToolAcc=[];  // tool_calls 累积槽：按 index 累积（与 webToolAcc 同构）
     state.removeStreamListener=tauriListen(STREAM_EVENT,function(ev){
       const payload=ev&&ev.payload;
-      const text=payload&&payload.text;
+      if(!payload)return;
+      const text=payload.text;
       if(typeof text==='string'&&text){
         state.chunkBuf+=text;
         if(onChunk)try{onChunk(text);}catch(_){}
+      }
+      // 工具调用增量：Rust 透传的 tool_calls delta（text 恒为空串，单独处理）
+      if(Array.isArray(payload.toolCalls)){
+        payload.toolCalls.forEach(function(tc){_accumToolDelta(state.tauriToolAcc,tc);});
       }
     });
   }
   function _cleanupStreamListener(){
     if(state.removeStreamListener){try{state.removeStreamListener();}catch(_){}}
     state.removeStreamListener=null;
+  }
+
+  /** 工具调用增量累积：把单条 tool_calls delta 合并进累积槽（按 index，OpenAI 流式分段结构） */
+  function _accumToolDelta(acc,tc){
+    const i=tc.index||0;
+    const slot=acc[i]||(acc[i]={index:i,id:'',name:'',argsStr:''});
+    if(tc.id)slot.id=tc.id;
+    if(tc.function){
+      if(tc.function.name)slot.name=tc.function.name;
+      if(tc.function.arguments)slot.argsStr+=tc.function.arguments;
+    }
+  }
+  /** 累积槽 → 最终 toolCalls 数组（argsStr 容错解析：修复尾随逗号后仍失败则置空对象） */
+  function _finalizeToolCalls(acc){
+    const toolCalls=[];
+    for(let i=0;i<acc.length;i++){
+      const slot=acc[i];
+      if(!slot||!slot.name)continue;
+      let args=null;
+      if(slot.argsStr){
+        try{args=JSON.parse(slot.argsStr);}
+        catch(e){
+          try{args=JSON.parse(slot.argsStr.replace(/,\s*([}\]])/g,'$1'));}
+          catch(e2){args=null;}
+        }
+      }
+      toolCalls.push({id:slot.id,name:slot.name,args:args||{}});
+    }
+    return toolCalls;
   }
 
   /** 浏览器形态：前端直连 DeepSeek（CORS 已实测放行，含 file:// 的 null origin），SSE 流式解析
@@ -203,36 +243,13 @@ const AI=(function(){
           }
           // 2) tool_calls delta：按 index 累积，不显示
           if(Array.isArray(delta.tool_calls)){
-            delta.tool_calls.forEach(function(tc){
-              const i=tc.index||0;
-              const slot=state.webToolAcc[i]||(state.webToolAcc[i]={index:i,id:'',name:'',argsStr:''});
-              if(tc.id)slot.id=tc.id;
-              if(tc.function){
-                if(tc.function.name)slot.name=tc.function.name;
-                if(tc.function.arguments)slot.argsStr+=tc.function.arguments;
-              }
-            });
+            delta.tool_calls.forEach(function(tc){_accumToolDelta(state.webToolAcc,tc);});
           }
         }catch(_){}
       }
     }
     // 流结束：tool_calls 累积槽 → 解析为最终数组（argsStr 容错解析）
-    const toolCalls=[];
-    for(let i=0;i<state.webToolAcc.length;i++){
-      const slot=state.webToolAcc[i];
-      if(!slot||!slot.name)continue;
-      let args=null;
-      if(slot.argsStr){
-        try{args=JSON.parse(slot.argsStr);}
-        catch(e){
-          // 容错：尝试修复尾随逗号
-          try{args=JSON.parse(slot.argsStr.replace(/,\s*([}\]])/g,'$1'));}
-          catch(e2){args=null;}
-        }
-      }
-      toolCalls.push({id:slot.id,name:slot.name,args:args||{}});
-    }
-    return {content:state.webBuf,toolCalls:toolCalls};
+    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc)};
   }
 
   /** 单次对话入口（兼容只读与带工具两种模式）
@@ -248,8 +265,9 @@ const AI=(function(){
       if(state.runtime==='tauri'){
         _ensureStreamListener(onChunk);
         try{
-          // tauri 模式：透传 tools 参数给 Rust 侧 ai_deepseek_chat（Rust 端若未支持 tool_calls 解析，
-          // 则返回纯文本，toolCalls 为空数组，写入流程在桌面版降级为只读模式，由浏览器版主力承载）
+          // tauri 模式：透传 tools 参数给 Rust 侧 ai_deepseek_chat；Rust 流式转发 tool_calls delta
+          // （lib.rs 已 emit {"text":"","toolCalls":tcs}），此处由监听累积、invoke 返回后解析，
+          // 桌面版与浏览器版行为一致（写入流程均可用）
           const reqArgs={
             messages:messages.map(function(m){
               const out={role:m.role,content:String(m.content||'')};
@@ -271,8 +289,8 @@ const AI=(function(){
             onChunk(full.slice(state.chunkBuf.length));
             state.chunkBuf=full;
           }
-          // tauri 模式本轮不解析 tool_calls（待 Rust 侧增强），返回空 toolCalls 数组
-          return {content:state.chunkBuf,toolCalls:[]};
+          // tauri 模式：由监听累积的 tool_calls delta 解析为最终数组（与浏览器版同构）
+          return {content:state.chunkBuf,toolCalls:_finalizeToolCalls(state.tauriToolAcc)};
         }finally{_cleanupStreamListener();}
       }
       // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
@@ -298,7 +316,7 @@ const AI=(function(){
     if(e.name==='AbortError')return e; // 中止错误由调用方专门处理，保持原语义
     const msg=String(e.message||e);
     // 网络错误（fetch 抛 TypeError，多半是断网/DNS/CORS）
-    if(e.name==='TypeError'||/Failed to fetch|NetworkError|network|loadfailed/i.test(msg)){
+    if(e.name==='TypeError'||/Failed to fetch|\bNetworkError\b|loadfailed/i.test(msg)){
       return new Error('网络连接失败，请检查网络后重试');
     }
     // Tauri 命令调用异常
@@ -333,9 +351,11 @@ const AI=(function(){
       }
       // 阶段3：分流 —— query/flow 类自动执行（不经弹窗），write/delete 类走确认弹窗
       // 阶段4：flow 类（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）自动执行
-      const flowOps=res.toolCalls.filter(tc=>AIT.FLOW_TOOL_NAMES&&AIT.FLOW_TOOL_NAMES.has(tc.name));
+      // P0 修复：flowSet 防护 AIT 未加载或 FLOW_TOOL_NAMES 为 undefined 的场景
+      const flowSet=(typeof AIT!=='undefined'&&AIT.FLOW_TOOL_NAMES)?AIT.FLOW_TOOL_NAMES:null;
+      const flowOps=res.toolCalls.filter(tc=>flowSet&&flowSet.has(tc.name));
       const queryOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')===0);
-      const writeOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')!==0&&!AIT.FLOW_TOOL_NAMES.has(tc.name));
+      const writeOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name)));
 
       // 1) 查询类立即执行（无副作用，结果直接回填给模型）
       const queryResults=queryOps.map(tc=>{

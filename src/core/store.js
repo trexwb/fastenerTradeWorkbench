@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.4';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.5';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -881,6 +881,12 @@ function undoBatch(batchId){
     try{undoAiOp(ops[i].id);}catch(e){console.warn('批次回滚部分失败：',ops[i].id,e.message);}
   }
 }
+
+/**
+ * 阶段4：AI 操控相关关键函数名清单（供 data.js 自检引用，避免硬编码）
+ * 新增/重命名函数时只需更新此处，自检逻辑自动同步
+ */
+const _AI_OPS_FNS=['recordAiOp','undoAiOp','undoBatch','softDelete','softDeleteSpecOption','restoreFromTrash','purgeTrash','clearTrash'];
 
 
 

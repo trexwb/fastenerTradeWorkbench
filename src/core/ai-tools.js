@@ -617,11 +617,11 @@ const AIT=(function(){
       type:'function',
       function:{
         name:'navigate_view',
-        description:'视图导航：跳转到指定页面（dashboard/units/specs/bom/prices/orders/settlements/invoices/data）。viewName=orders 且提供 orderId 时导航到订单详情。此工具立即执行，不需确认。',
+        description:'视图导航：跳转到指定页面。支持 dashboard/units/specs/bom/prices/orders/settlements/invoices/data，以及结算/发票的细分视图 settle-receipt（收款记录）/settle-payment（付款记录）/inv-issue（开票记录）/inv-receive（收票记录）。viewName=orders 且提供 orderId 时导航到订单详情。此工具立即执行，不需确认。',
         parameters:{
           type:'object',
           properties:{
-            viewName:{type:'string',enum:['dashboard','units','specs','bom','prices','orders','settlements','invoices','data'],description:'目标视图名（必填）'},
+            viewName:{type:'string',enum:['dashboard','units','specs','bom','prices','orders','settlements','invoices','data','settle-receipt','settle-payment','inv-issue','inv-receive'],description:'目标视图名（必填）'},
             orderId:{type:'string',description:'订单 ID（可选，仅 viewName=orders 时生效，导航到订单详情）'}
           },
           required:['viewName']
@@ -1048,7 +1048,7 @@ const AIT=(function(){
     },
     // ===== 阶段4：功能层工具校验（轻量校验，仅确认目标存在） =====
     navigate_view(args){
-      const VIEWS=['dashboard','units','specs','bom','prices','orders','settlements','invoices','data'];
+      const VIEWS=['dashboard','units','specs','bom','prices','orders','settlements','invoices','data','settle-receipt','settle-payment','inv-issue','inv-receive'];
       if(!VIEWS.includes(args.viewName))return {ok:false,error:'viewName 取值非法：'+args.viewName};
       if(args.orderId&&args.viewName!=='orders')return {ok:false,error:'orderId 仅在 viewName=orders 时生效'};
       if(args.orderId){
@@ -1360,11 +1360,31 @@ const AIT=(function(){
   }
 
   /** 批量执行入口（逐条校验+执行，单条失败不中断其他）
-   *  阶段4：批量入口跳过 _checkDirty，因为批量内前序 op 修改后续 op 涉及数据是预期顺序执行
-   *  批量入口的并发安全由 validateOp 重新校验保障（执行前再读一次最新数据）
+   *  P1 修复：批量入口开始时做一次"弹窗→执行"期间的并发脏读检测
+   *  - 任何一条 op 的 __beforeFingerprint 与当前 before 不一致 → 整批拒绝执行
+   *  - 通过检测后，批量内顺序执行不再做 _checkDirty（前序 op 修改后续 op 数据是预期顺序）
    */
   function executeOps(ops,ctx){
     const batchId=(ctx&&ctx.batchId)||uid('AOB');
+    // P1 修复：批量入口并发脏读检测 —— 弹窗确认时的 before 与执行时的 before 对比
+    // 任一条不一致说明弹窗期间数据被外部并发修改，整批拒绝执行
+    for(let i=0;i<ops.length;i++){
+      const op=ops[i];
+      if(op.__beforeFingerprint){
+        const dirty=_checkDirty(op);
+        if(!dirty.ok){
+          // 整批拒绝：所有 op 标记为失败
+          const results=ops.map((_,idx)=>({
+            index:idx,
+            ok:false,
+            error:dirty.error,
+            summary:'批量脏读检测失败'
+          }));
+          return {batchId,results};
+        }
+      }
+    }
+    // 脏读检测通过，批量内顺序执行（前序 op 修改后续 op 数据是预期，不再检测）
     const results=[];
     for(let i=0;i<ops.length;i++){
       const op=ops[i];
@@ -1396,6 +1416,12 @@ const AIT=(function(){
         const viewName=args.viewName;
         const orderId=args.orderId;
         if(typeof go!=='function')return JSON.stringify({ok:false,error:'go() 未加载'});
+        // P1 修复：navigate_view 副作用防护 —— 离开订单编辑模式时先关闭弹窗/抽屉并提示
+        if(viewName!=='orders'&&typeof curOrder!=='undefined'&&curOrder){
+          if(typeof closeModal==='function')closeModal();
+          if(typeof closeDrawer==='function')closeDrawer();
+          if(typeof toast==='function')toast('已离开订单编辑模式','info');
+        }
         if(orderId&&viewName==='orders'){
           if(typeof goOrderView==='function')goOrderView(orderId);
           else return JSON.stringify({ok:false,error:'goOrderView() 未加载'});
@@ -1406,21 +1432,28 @@ const AIT=(function(){
       }
       if(name==='export_order_excel'){
         if(typeof exportOrder!=='function')return JSON.stringify({ok:false,error:'exportOrder() 未加载'});
-        // 异步导出，不阻塞对话流；用 Promise.then 容错，错误通过 toast 反馈
+        // P1 修复：异步导出，回填内容明确告知模型「触发成功，结果以浏览器下载为准」
+        // 避免模型基于「已导出」做后续推理时混淆「触发」与「完成」
         const orderId=args.orderId;
         Promise.resolve().then(()=>exportOrder(orderId)).catch(e=>{
           if(typeof toast==='function')toast('导出失败：'+e.message,'error');
         });
-        return JSON.stringify({ok:true,message:'已触发 Excel 导出：'+orderId});
+        return JSON.stringify({ok:true,message:'已触发 Excel 导出（异步执行，结果以浏览器下载为准）：'+orderId});
       }
       if(name==='open_settlement_drawer'){
         if(typeof openSettleDetail!=='function')return JSON.stringify({ok:false,error:'openSettleDetail() 未加载'});
+        // P1 修复：先关闭已有 modal/drawer 避免层叠
+        if(typeof closeModal==='function')closeModal();
+        if(typeof closeDrawer==='function')closeDrawer();
         const tabType=args.tabType||'receipt';
         openSettleDetail(args.unitId,tabType);
         return JSON.stringify({ok:true,message:'已打开结算抽屉：'+unitNameSafe(args.unitId)+' / '+tabType});
       }
       if(name==='open_invoice_drawer'){
         if(typeof openInvEdit!=='function')return JSON.stringify({ok:false,error:'openInvEdit() 未加载'});
+        // P1 修复：先关闭已有 modal/drawer 避免层叠
+        if(typeof closeModal==='function')closeModal();
+        if(typeof closeDrawer==='function')closeDrawer();
         openInvEdit(args.invoiceId);
         return JSON.stringify({ok:true,message:'已打开发票抽屉：'+args.invoiceId});
       }

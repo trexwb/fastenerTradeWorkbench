@@ -257,18 +257,22 @@ const TRASH_TYPE_LABEL={unit:'单位',spec:'属性',bom:'BOM',price:'报价',ord
 function _opTagCls(op){return op==='delete'?'err':(op==='create'?'green':(op==='restore'?'purple':''));}
 /** 阶段4：操作历史筛选器渲染 */
 function renderOpsFilter(){
-  const f=window._aiOpsFilter||{op:'',operator:''};
+  const f=window._aiOpsFilter||{op:'',operator:'',batchId:''};
   const opOpts=['',...Object.keys(OP_LABEL)].map(k=>'<option value="'+k+'"'+(f.op===k?' selected':'')+'>'+(k?OP_LABEL[k]:'全部操作')+'</option>').join('');
   const opOpts2=[{v:'',l:'全部操作者'},{v:'ai',l:'AI'},{v:'user',l:'用户'}].map(o=>'<option value="'+o.v+'"'+(f.operator===o.v?' selected':'')+'>'+o.l+'</option>').join('');
+  // P3：按批次筛选 —— 列出有未回滚 op 的批次（前 8 位作为显示名）
+  const batchIds=[...new Set((DB.aiOps||[]).filter(o=>o.batchId&&!o.undone).map(o=>o.batchId))].slice(0,20);
+  const batchOpts=['<option value="">全部批次</option>'].concat(batchIds.map(bid=>'<option value="'+escAttr(bid)+'"'+(f.batchId===bid?' selected':'')+'>'+escHtml(bid.slice(0,8))+'</option>')).join('');
   return '<div class="ops-filter-bar">'+
     '<label class="ops-filter-item">操作类型<select onchange="_setAiOpsFilter(\'op\',this.value)">'+opOpts+'</select></label>'+
     '<label class="ops-filter-item">操作者<select onchange="_setAiOpsFilter(\'operator\',this.value)">'+opOpts2+'</select></label>'+
-    '<button class="btn sm" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');">重置</button>'+
-    '<button class="btn sm" onclick="_aiOpsSelftest()">'+icon('check')+'自检</button>'+
+    '<label class="ops-filter-item">批次<select onchange="_setAiOpsFilter(\'batchId\',this.value)">'+batchOpts+'</select></label>'+
+    '<button class="btn sm" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');">重置</button>'+
+    '<button class="btn sm" onclick="_aiOpsSelftest()">自检</button>'+
     '</div>';
 }
 function _setAiOpsFilter(key,val){
-  if(!window._aiOpsFilter)window._aiOpsFilter={op:'',operator:''};
+  if(!window._aiOpsFilter)window._aiOpsFilter={op:'',operator:'',batchId:''};
   window._aiOpsFilter[key]=val;
   render();
 }
@@ -285,8 +289,8 @@ function _aiOpsSelftest(){
     if(!op.id||!op.timestamp||!op.op||!op.type)missingFields++;
   });
   checks.push({name:'操作记录字段完整',ok:missingFields===0,detail:missingFields?missingFields+' 条缺失字段':''});
-  // 3. 关键函数可用性
-  const fns=['recordAiOp','undoAiOp','undoBatch','softDelete','restoreFromTrash','purgeTrash','clearTrash'];
+  // 3. 关键函数可用性（P2 修复：从 store.js 导出的 _AI_OPS_FNS 引用，避免硬编码）
+  const fns=(typeof _AI_OPS_FNS!=='undefined')?_AI_OPS_FNS:['recordAiOp','undoAiOp','undoBatch','softDelete','restoreFromTrash','purgeTrash','clearTrash'];
   fns.forEach(function(fn){
     checks.push({name:'store.'+fn+' 可用',ok:typeof window[fn]==='function'});
   });
@@ -310,7 +314,7 @@ function _aiOpsSelftest(){
   modal('AI 操控系统自检',
     '<div class="selftest-summary '+(allOk?'ok':'fail')+'">'+summary+'</div>'+
     '<div class="table-wrap"><table><thead><tr><th>检查项</th><th>结果</th><th>详情</th></tr></thead><tbody>'+rows+'</tbody></table></div>',
-    '关闭',null,true);
+    '关闭',function(){closeModal();},true);
   toast(summary,allOk?'success':'warning');
 }
 /** 渲染操作历史 tab：最近 100 条 AI/用户操作，可单条回滚 */
@@ -318,15 +322,16 @@ function renderOpsHistory(){
   const allOps=DB.aiOps||[];
   if(!allOps.length)return '<div class="empty-state">暂无操作历史</div>';
   // 阶段4：按筛选条件过滤
-  const f=window._aiOpsFilter||{op:'',operator:''};
+  const f=window._aiOpsFilter||{op:'',operator:'',batchId:''};
   let ops=allOps;
   if(f.op)ops=ops.filter(o=>o.op===f.op);
   if(f.operator)ops=ops.filter(o=>o.operator===f.operator);
+  if(f.batchId)ops=ops.filter(o=>o.batchId===f.batchId);
   const filterBar=renderOpsFilter();
-  if(!ops.length)return filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
-  // 统计每个 batchId 的未回滚操作数（用于判断是否显示「整批回滚」按钮）
+  if(!ops.length)return filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
+  // P2 修复：batchUndoneCount 基于全量 allOps 统计，避免筛选后计数偏小与 undoBatchConfirm 不一致
   const batchUndoneCount={};
-  ops.forEach(function(op){
+  allOps.forEach(function(op){
     if(op.batchId&&!op.undone)batchUndoneCount[op.batchId]=(batchUndoneCount[op.batchId]||0)+1;
   });
   const rows=ops.slice(0,100).map(function(op){
