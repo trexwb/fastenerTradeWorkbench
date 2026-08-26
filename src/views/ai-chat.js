@@ -270,8 +270,10 @@ async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';
   const bodyBuilder=async function(){
     const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版（file://）</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
-    const tokenDraft=await AI.getDeepseekTokenDraft();
-    const tokenInput='<div class="field"><label class="f" for="aiDeepseekToken">DeepSeek API_KEY <span style="color:var(--warn)">*</span></label><input id="aiDeepseekToken" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… 从 api.deepseek.com 获取，留空可删除已保存的 Key" value="'+escAttr(tokenDraft)+'"><div class="note">'+(isTauri?'由 Tauri 桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，用于直连调用 DeepSeek API，不会发送给任何第三方。</div></div>';
+    const savedKey=await AI.getDeepseekToken();
+    // 编辑态回显真实 Key（用户明确允许编辑时可见）；非编辑状态不展示
+    const placeholder=savedKey?'sk-… 已保存 Key，输入新值可覆盖；留空保存则删除':'sk-… 从 api.deepseek.com 获取';
+    const tokenInput='<div class="field"><label class="f" for="aiDeepseekToken">DeepSeek API_KEY <span style="color:var(--warn)">*</span></label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(placeholder)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 API_KEY（仅在编辑弹窗中可见）':'尚未设置 API_KEY')+' · '+(isTauri?'由 Tauri 桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，用于直连调用 DeepSeek API，不会发送给任何第三方。</div></div>';
     return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
       '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
       tokenInput+

@@ -63,6 +63,9 @@ fn ai_deepseek_token_write(app: tauri::AppHandle, token: String) -> Result<(), S
     if token.len() > 4000 {
         return Err("Token 过长，无法保存".into());
     }
+    if !token.starts_with("sk-") {
+        return Err("API_KEY 格式不正确：应为 sk- 开头".into());
+    }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
     let p = token_path(&app)?;
@@ -86,6 +89,16 @@ fn ai_deepseek_token_has(app: tauri::AppHandle) -> Result<bool, String> {
     }
     let tok = fs::read_to_string(&p).map_err(|e| format!("读取 Token 文件失败: {e}"))?;
     Ok(!tok.trim().is_empty())
+}
+
+/// 读取已保存的 Token 明文（供 AI 设置弹窗编辑态回显；非编辑状态不展示）。
+#[tauri::command]
+fn ai_deepseek_token_get(app: tauri::AppHandle) -> Result<String, String> {
+    let p = token_path(&app)?;
+    if !p.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&p).map_err(|e| format!("读取 Token 文件失败: {e}"))
 }
 
 /// 用系统默认浏览器打开外部链接（http/https）。
@@ -353,6 +366,7 @@ pub fn run() {
             data_file_save,
             ai_deepseek_token_write,
             ai_deepseek_token_has,
+            ai_deepseek_token_get,
             ai_deepseek_chat,
             open_external,
         ])

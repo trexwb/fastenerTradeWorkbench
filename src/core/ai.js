@@ -412,8 +412,13 @@ const AI=(function(){
   function abort(){if(state.abortController)state.abortController.abort();}
 
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除） */
+  /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除）
+   *  非空 Key 必须为 sk- 开头（DeepSeek 官方格式），防占位文本/拼写污染 */
   async function setDeepseekToken(raw){
     const token=String(raw||'').trim();
+    if(token&&!/^sk-/.test(token)){
+      throw new Error('API_KEY 格式不正确：应为 sk- 开头（可在 api.deepseek.com 获取）');
+    }
     if(state.runtime==='tauri'){
       await tauriInvoke('ai_deepseek_token_write',{token:token});
     }else{
@@ -423,12 +428,19 @@ const AI=(function(){
     state.hasKey=!!token;
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
-  async function getDeepseekTokenDraft(){
+  /** 读取已保存的 Key 明文（仅设置弹窗编辑态回显用；非编辑状态不展示） */
+  async function getDeepseekToken(){
     if(state.runtime==='tauri'){
-      const has=await tauriInvoke('ai_deepseek_token_has');
-      return has?'(已保存，不可读取明文)':'';
+      try{
+        const t=await tauriInvoke('ai_deepseek_token_get');
+        return typeof t==='string'?t:'';
+      }catch(e){return '';}
     }
-    return webHasKey()?'(已保存，不可读取明文)':'';
+    return (localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
+  }
+  async function getDeepseekTokenDraft(){
+    const t=await getDeepseekToken();
+    return t?'(已保存)':'';
   }
 
   return {
