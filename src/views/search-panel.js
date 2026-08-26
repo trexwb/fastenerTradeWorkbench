@@ -3,6 +3,7 @@
 let _cmdOpen=false;
 let _cmdSel=-1;
 let _cmdResults=[];
+let _cmdRendered=[];   // 实际渲染的扁平结果（键盘导航基准，与可见行一一对应）
 let _cmdQuery='';
 let _cmdTimer=0;
 
@@ -77,49 +78,60 @@ function cmdRender(){
   if(!box)return;
   const q=_cmdQuery;
   _cmdResults=cmdSearch(q);
-  _cmdSel=_cmdResults.length?0:-1;
+  _cmdRendered=[];   // 重建扁平渲染数组（每组最多 5 条）
   if(!_cmdResults.length){
+    _cmdSel=-1;
     box.innerHTML='<div class="cmd-empty"><div>无匹配结果</div><button type="button" class="cmd-ask-ai" onclick="askAISearch()">'+icon('zap','13')+' 问 AI</button></div>';
     return;
   }
   const groups={};
   _cmdResults.forEach(r=>{(groups[r.type]=groups[r.type]||[]).push(r);});
-  let html='',idx=0;
+  let html='';
   Object.keys(groups).forEach(k=>{
     html+='<div class="cmd-group"><div class="cmd-group-title">'+_CMD_TYPE_LABEL[k]+'</div>';
     groups[k].slice(0,5).forEach(r=>{
-      html+='<div class="cmd-row'+(idx===_cmdSel?' sel':'')+'" data-i="'+idx+'" onmouseenter="cmdHover('+idx+')" onclick="cmdOpen('+idx+')">'+
+      const idx=_cmdRendered.length;
+      _cmdRendered.push(r);
+      html+='<div class="cmd-row" data-i="'+idx+'" onmouseenter="cmdHover('+idx+')" onclick="cmdOpen('+idx+')">'+
         '<div class="cmd-row-main"><div class="cmd-row-title">'+_cmdHit(r.title,q)+'</div>'+
         (r.sub?'<div class="cmd-row-sub">'+escHtml(r.sub)+'</div>':'')+'</div>'+
         '<span class="cmd-row-go">'+icon('chevronRight','14')+'</span></div>';
-      idx++;
     });
     html+='</div>';
   });
   box.innerHTML=html;
+  _cmdSel=0;
+  cmdHighlight();
+}
+/** 仅刷新高亮（不重建 DOM，不重置选中）—— 键盘 ↑↓ 用此 */
+function cmdHighlight(){
+  const rows=document.querySelectorAll('#cmdResults .cmd-row');
+  rows.forEach((r,j)=>r.classList.toggle('sel',j===_cmdSel));
+  const sel=document.querySelector('#cmdResults .cmd-row.sel');
+  if(sel&&sel.scrollIntoView)sel.scrollIntoView({block:'nearest'});
 }
 
 function cmdInputKey(e){
   const k=e.key;
   if(k==='Escape'){e.preventDefault();closeSearchPanel();return;}
-  if(k==='ArrowDown'){e.preventDefault();if(_cmdResults.length)_cmdSel=Math.min(_cmdSel+1,_cmdResults.length-1);cmdRender();return;}
-  if(k==='ArrowUp'){e.preventDefault();if(_cmdResults.length)_cmdSel=Math.max(_cmdSel-1,0);cmdRender();return;}
+  if(k==='ArrowDown'){e.preventDefault();if(_cmdRendered.length){_cmdSel=Math.min(_cmdSel+1,_cmdRendered.length-1);cmdHighlight();}return;}
+  if(k==='ArrowUp'){e.preventDefault();if(_cmdRendered.length){_cmdSel=Math.max(_cmdSel-1,0);cmdHighlight();}return;}
   if(k==='Enter'){
     e.preventDefault();
-    if(_cmdResults.length&&_cmdSel>=0){cmdOpen(_cmdSel);return;}
+    if(_cmdRendered.length&&_cmdSel>=0){cmdOpen(_cmdSel);return;}
     askAISearch();
     return;
   }
   if(k==='Tab'){
     e.preventDefault();
-    if(_cmdResults.length&&_cmdSel>=0){askAIOnItem(_cmdSel);return;}
+    if(_cmdRendered.length&&_cmdSel>=0){askAIOnItem(_cmdSel);return;}
     return;
   }
 }
 
-function cmdHover(i){_cmdSel=i;const rows=document.querySelectorAll('#cmdResults .cmd-row');rows.forEach((r,j)=>r.classList.toggle('sel',j===i));}
+function cmdHover(i){_cmdSel=i;cmdHighlight();}
 function cmdOpen(i){
-  const r=_cmdResults[i];if(!r)return;
+  const r=_cmdRendered[i];if(!r)return;
   closeSearchPanel();
   if(r.action)r.action();
 }
@@ -136,7 +148,7 @@ function askAISearch(){
 
 /** 把选中条目作为上下文问 AI */
 function askAIOnItem(i){
-  const r=_cmdResults[i];if(!r)return;
+  const r=_cmdRendered[i];if(!r)return;
   const text='请分析这条数据：'+r.title+(r.sub?'（'+r.sub+'）':'');
   closeSearchPanel();
   if(typeof openAIWithMessage==='function')openAIWithMessage(text,'搜索结果：'+r.type+' | '+r.title+(r.sub?' | '+r.sub:''));

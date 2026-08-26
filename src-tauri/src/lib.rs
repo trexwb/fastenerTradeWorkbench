@@ -11,7 +11,6 @@ use tokio::io::AsyncBufReadExt;
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 const DEEPSEEK_TOKEN_FILENAME: &str = "deepseek_token";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
-const ALLOWED_MODELS: [&str; 2] = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const MAX_MESSAGES: usize = 20;
 const MAX_MESSAGE_BYTES: usize = 30_000;
 const MAX_TOOL_MESSAGE_BYTES: usize = 200_000; // tool 消息（查询结果 JSON）上限
@@ -33,6 +32,13 @@ fn token_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 fn valid_model(model: &str) -> bool {
     // 多模型接入：允许任意 OpenAI 兼容模型名（仅限制非空与长度）
     !model.trim().is_empty() && model.len() <= 100
+}
+
+/// 判断是否为本地端点（Ollama 等，免 API_KEY）
+fn is_local_endpoint(base_url: &str) -> bool {
+    let b = base_url.trim().to_lowercase();
+    b.starts_with("http://127.0.0.1") || b.starts_with("http://localhost")
+        || b.starts_with("https://127.0.0.1") || b.starts_with("https://localhost")
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -72,9 +78,6 @@ fn ai_deepseek_token_write(app: tauri::AppHandle, token: String) -> Result<(), S
     }
     if token.len() > 4000 {
         return Err("Token 过长，无法保存".into());
-    }
-    if !token.starts_with("sk-") {
-        return Err("API_KEY 格式不正确：应为 sk- 开头".into());
     }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
@@ -222,15 +225,22 @@ async fn ai_deepseek_chat(
     tools: Option<serde_json::Value>,
     base_url: Option<String>,
 ) -> Result<String, String> {
-    let token = {
+    // 本地端点（Ollama 等）免 Token；其余端点从 Token 文件读取
+    let local_base = base_url
+        .as_ref()
+        .map(|b| is_local_endpoint(b))
+        .unwrap_or(false);
+    let token = if local_base {
+        String::new()
+    } else {
         let p = token_path(&app)?;
         if !p.exists() {
-            return Err("未设置 DeepSeek Token，请先在 AI 设置中填写".into());
+            return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
         }
         let t = fs::read_to_string(&p).map_err(|e| format!("读取 Token 失败: {e}"))?;
         let t = t.trim().to_string();
         if t.is_empty() {
-            return Err("未设置 DeepSeek Token，请先在 AI 设置中填写".into());
+            return Err("未设置 API_KEY，请先在 AI 设置中填写".into());
         }
         t
     };
@@ -274,12 +284,15 @@ async fn ai_deepseek_chat(
         _ => DEEPSEEK_BASE_URL.to_string(),
     };
 
-    let req = client
+    let mut req = client
         .post(req_url)
         .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", if stream { "text/event-stream" } else { "application/json" })
-        .body(payload);
+        .header("Accept", if stream { "text/event-stream" } else { "application/json" });
+    // 本地端点免 Token；其余端点带 Authorization
+    if !token.is_empty() {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let req = req.body(payload);
 
     let resp = req
         .send()

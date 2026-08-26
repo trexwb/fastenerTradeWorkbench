@@ -6,6 +6,8 @@ let _settleTab='receipt'; // 'receipt' | 'payment'
 let _settleSubTab='unpaid'; // 'unpaid' | 'paid'
 let _settleSearch='';
 let _settleUnitFilter=''; // 单位筛选
+/** 结算提交防重锁 */
+let _settlementSaving=false;
 
 /* ---- 获取符合条件的订单（签约完成/送货中/完成） ---- */
 /** 获取所有符合条件的订单（签约完成/送货中/完成）
@@ -505,7 +507,7 @@ function delSettlement(id){
     softDelete('settlement',id,{operator:'user'});
     render();
     toast('结算记录已删除','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 
 /* ---- 新增结算记录 ---- */
@@ -770,6 +772,10 @@ function autoSumSettleAmount(){
  * @returns {void}
  */
 function submitSettlement(){
+  // 防重锁：防止重复点击导致重复提交结算
+  if(_settlementSaving){toast('正在保存中，请稍候...','info');return;}
+  _settlementSaving=true;
+  setTimeout(function(){_settlementSaving=false;},500);
   let type=document.getElementById('st_type').value;
   let unitId=document.getElementById('st_unit').dataset.val;
   let date=document.getElementById('st_date').value;
@@ -839,7 +845,7 @@ function submitSettlement(){
     closeDrawer();
     render();
     toast('结算记录已保存','success');
-  },'确认保存','取消');
+  },'确认保存','取消',null,true);
 }
 
 /* ---- 抽屉区块折叠 ---- */

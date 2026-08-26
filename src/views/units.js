@@ -2,6 +2,8 @@
 /* =========================================================
    关联单位管理
    ========================================================= */
+/** 关联单位新建/编辑保存防重锁 */
+let _unitSaving=false;
 /** 统计关联单位的角色分布和联系人覆盖情况
  * @returns {Object} 统计结果对象，含total/buyers/suppliers/both/noContacts
  */
@@ -267,6 +269,10 @@ function toggleInvoiceSection(el){
  */
 function newUnit(){
   let onSave=function(){
+    // 防重锁：防止重复点击导致重复新建
+    if(_unitSaving){toast('正在保存中，请稍候...','info');return;}
+    _unitSaving=true;
+    setTimeout(function(){_unitSaving=false;},500);
     let vr=validateAndCollectUnitForm(null);
     if(vr.error){toast(vr.error,'warning');return;}
     let _a=vr.data, name=_a.name, roles=_a.roles, contacts=_a.contacts, term=_a.term, rating=_a.rating, invoice=_a.invoice;
@@ -306,6 +312,10 @@ function editUnit(id){
   const p=DB.units.find(x=>x.id===id);
   if(!p)return;
   openDrawer('编辑关联单位',unitForm(p),function(){
+    // 防重锁：防止重复点击导致重复保存
+    if(_unitSaving){toast('正在保存中，请稍候...','info');return;}
+    _unitSaving=true;
+    setTimeout(function(){_unitSaving=false;},500);
     const vr=validateAndCollectUnitForm(id);
     if(vr.error){toast(vr.error,'warning');return;}
     const {name,roles,contacts,term,rating,invoice}=vr.data;
@@ -332,7 +342,7 @@ function delUnit(id){
   const usedPrice=DB.prices.some(pr=>pr.unitId===id);
   let msg='确认删除关联单位「'+escHtml(p.name)+'」?';
   if(used||usedPrice)msg='「'+escHtml(p.name)+'」已被订单或价格记录引用，删除后相关记录将显示为ID。确认删除?';
-  confirmModal(msg,()=>{softDelete('unit',id,{operator:'user'});closeModal();render();toast('已删除','info');},'确认删除');
+  confirmModal(msg,()=>{softDelete('unit',id,{operator:'user'});closeModal();render();toast('已删除','info');},'确认删除',null,null,true);
 }
 
 /** 渲染单条联系人编辑行 HTML
@@ -487,5 +497,5 @@ function batchDeleteUnits(){
     const idSet=new Set(ids);
     const bid=uid('AOB');ids.forEach(function(id){try{softDelete('unit',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+ids.length+' 个','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }

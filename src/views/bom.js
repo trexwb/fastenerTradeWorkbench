@@ -2,6 +2,10 @@
 /* =========================================================
    BOM管理
    ========================================================= */
+/** BOM 表单保存防重锁 */
+let _bomFormSaving=false;
+/** BOM 批量导入提交防重锁 */
+let _bomBatchSaving=false;
 
 /** 渲染BOM列表视图（含搜索、属性筛选栏、筛选徽章、分页）
  * @returns {string} BOM列表HTML字符串
@@ -368,6 +372,10 @@ function toggleBOMSpecsSection(el){
  * @returns {void}
  */
 function saveBOMForm(idx){
+  // 防重锁：防止重复点击导致多次提交
+  if(_bomFormSaving){toast('正在保存中，请稍候...','info');return;}
+  _bomFormSaving=true;
+  setTimeout(function(){_bomFormSaving=false;},500);
   // 校验
   let errs=[];
   let skuEl=document.getElementById('bom_sku');
@@ -557,6 +565,10 @@ function removeBatchRow(idx){
  * @returns {void}
  */
 function submitBOMBatch(){
+  // 防重锁：防止重复点击导致多次提交
+  if(_bomBatchSaving){toast('正在保存中，请稍候...','info');return;}
+  _bomBatchSaving=true;
+  setTimeout(function(){_bomBatchSaving=false;},500);
   let data=window._batchBOMData;
   if(!data||!data.length){toast('没有可提交的数据','warning');return;}
   DB.bom=DB.bom||[];
@@ -651,7 +663,7 @@ function batchDeleteBOM(){
   confirmModal(msg,function(){
     const bid=uid('AOB');indices.map(function(i){return DB.bom[i]&&DB.bom[i].id;}).filter(Boolean).forEach(function(id){try{softDelete('bom',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+indices.length+' 条 BOM','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 
 /* ---- BOM联动（供报价/订单页面调用） ---- */

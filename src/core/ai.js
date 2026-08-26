@@ -34,9 +34,6 @@ const AI=(function(){
     tauriToolAcc:[],
     removeStreamListener:null
   };
-  // 工具改动撤销栈（内存快照，最多保留 5 层；刷新页面后失效）
-  let _undoStack=[];
-  const UNDO_MAX=5;
   // 恢复多模型配置（浏览器与 Tauri 均用 localStorage；Tauri 版 API_KEY 仍在应用数据目录）
   try{
     const _b=localStorage.getItem(WEB_BASE_STORAGE);
@@ -175,11 +172,13 @@ const AI=(function(){
   /** 健康检查：tauri 检查 Rust 通道与 Token 文件；web 检查本地保存的 Key */
   async function probeProxy(){
     if(state.runtime==='tauri'){
+      // 本地端点（Ollama 等）免 Token；其余端点检查 Token 文件
+      const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
       try{
         const has=await tauriInvoke('ai_deepseek_token_has');
         state.proxyOnline=true;
-        state.hasKey=!!has;
-      }catch(e){state.proxyOnline=false;state.hasKey=false;}
+        state.hasKey=localBase||!!has;
+      }catch(e){state.proxyOnline=localBase;state.hasKey=localBase;}
     }else{
       // 本地端点（Ollama 等）无需 API_KEY 也可用
       state.hasKey=webHasKey()||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
@@ -188,7 +187,18 @@ const AI=(function(){
     if(typeof refreshAIStatus==='function')refreshAIStatus();return {runtime:state.runtime,online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
   }
   function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
-  function runtimeLabel(){return state.runtime==='tauri'?'桌面版（AI 直连 DeepSeek）':'浏览器（AI 直连 DeepSeek）';}
+  /** 端点显示名（按 baseUrl 域名识别，本地端点单列） */
+  function providerLabel(){
+    const b=state.baseUrl||DEFAULT_BASE_URL;
+    if(/^https?:\/\/(127\.0\.0\.1|localhost)/.test(b))return '本地模型';
+    const m=b.match(/^https?:\/\/([^\/]+)/);const host=m?m[1]:'';
+    if(/deepseek/.test(host))return 'DeepSeek';
+    if(/openai\.com/.test(host))return 'OpenAI';
+    if(/dashscope|aliyuncs/.test(host))return '通义千问';
+    if(/bigmodel|zhipuai/.test(host))return '智谱';
+    return host||'自定义';
+  }
+  function runtimeLabel(){const p=providerLabel();return state.runtime==='tauri'?('桌面版（AI · '+p+'）'):('浏览器（AI · '+p+'）');}
 
   /** Tauri 流式监听：把 Rust emit 来的 text 追加进 chunkBuf 并回调 onChunk；
    *  Rust 侧（lib.rs）已把 tool_calls delta 按 OpenAI 结构透传（{"text":"","toolCalls":[...]}），
@@ -409,7 +419,7 @@ const AI=(function(){
   async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
     const messages=[...initialMessages];
     let lastToolResults=[];
-    let _snapPushed=false;   // 本轮对话只快照一次（撤销 = 还原整轮 AI 改动）
+    let lastBatchId=null;   // 本轮首个写入批次 ID（供对话内一键撤销，复用持久化 undoBatch）
     const MAX_ROUNDS=8;  // 阶段3：查询+写入多轮，增加到 8 轮
     for(let round=0;round<MAX_ROUNDS;round++){
       // 上下文压缩：首轮前检查总长度，超阈值时先让模型压缩历史为摘要
@@ -431,7 +441,7 @@ const AI=(function(){
       const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
-        return {content:res.content,lastToolResults};
+        return {content:res.content,lastToolResults,lastBatchId};
       }
       // P0 修复：归一化 tool_calls —— 流式累积可能缺失 id，而 OpenAI 协议要求
       // assistant.tool_calls 的 id 与 tool 响应的 tool_call_id 非空且精确匹配，
@@ -476,18 +486,11 @@ const AI=(function(){
           writeResults=writeOps.map(tc=>({toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户取消了本次操作'})}));
           messages.push({role:'user',content:'用户取消了操作提案，请不要再次起草相同操作。'});
         }else{
-          // 本轮首次执行写入前：记录 DB 快照（支持一键撤销整轮 AI 改动）
-          if(!_snapPushed){
-            _snapPushed=true;
-            try{
-              _undoStack.push({time:Date.now(),snap:JSON.parse(JSON.stringify(DB))});
-              if(_undoStack.length>UNDO_MAX)_undoStack.shift();
-            }catch(e){}
-          }
-          // 批量执行（写入 DB + aiOps）
+          // 批量执行（写入 DB + aiOps）；记 batchId 供对话内一键撤销（复用持久化 undoBatch）
           const batchId=uid('AOB');
           const execRes=AIT.executeOps(confirmed.approvedOps,{aiChatId:aiChatId,batchId:batchId,operator:'ai'});
           lastToolResults=execRes.results;
+          lastBatchId=batchId;
           // 回填：approvedOps 的执行结果 + 未勾选的「用户未选」
           writeResults=writeOps.map(tc=>{
             const approvedIdx=confirmed.approvedOps.findIndex(o=>o.__toolCallId===tc.id);
@@ -505,29 +508,23 @@ const AI=(function(){
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }
-    return {content:'',lastToolResults};
+    return {content:'',lastToolResults,lastBatchId};
   }
-  /** 撤销最近一次 AI 工具改动（快照式还原，含批量操作）。成功返回 true */
-  function undoLastToolRun(){
-    const s=_undoStack.pop();
-    if(!s)return false;
-    try{
-      DB=JSON.parse(JSON.stringify(s.snap));
-      saveDB();
-      if(typeof render==='function')render();
-      return true;
-    }catch(e){return false;}
+  /** 撤销指定批次的 AI 工具改动（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
+   *  返回已撤销条数（供 UI 提示）；batchId 无效或已撤销返回 0 */
+  function undoLastBatch(batchId){
+    if(!batchId||typeof undoBatch!=='function')return 0;
+    return undoBatch(batchId);
   }
-  function undoStackLen(){return _undoStack.length;}
   function abort(){if(state.abortController)state.abortController.abort();}
 
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除） */
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage（空串删除）
-   *  非空 Key 必须为 sk- 开头（DeepSeek 官方格式），防占位文本/拼写污染 */
+   *  多模型接入：放开 sk- 前缀校验，自定义端点 Key 非空即可；仅限长度防滥用 */
   async function setDeepseekToken(raw){
     const token=String(raw||'').trim();
-    if(token&&!/^sk-/.test(token)){
-      throw new Error('API_KEY 格式不正确：应为 sk- 开头（可在 api.deepseek.com 获取）');
+    if(token&&token.length>4000){
+      throw new Error('API_KEY 过长，无法保存');
     }
     if(state.runtime==='tauri'){
       await tauriInvoke('ai_deepseek_token_write',{token:token});
@@ -535,7 +532,7 @@ const AI=(function(){
       if(token)localStorage.setItem(WEB_KEY_STORAGE,token);
       else localStorage.removeItem(WEB_KEY_STORAGE);
     }
-    state.hasKey=!!token;
+    state.hasKey=!!token||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
   /** 读取已保存的 Key 明文（仅设置弹窗编辑态回显用；非编辑状态不展示） */
@@ -554,9 +551,9 @@ const AI=(function(){
   }
 
   return {
-    state,runtimeLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
+    state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
     chat,aiWriteLoop,abort,setModel,setProvider,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft,
-    undoLastToolRun,undoStackLen
+    undoLastBatch
   };
 })();

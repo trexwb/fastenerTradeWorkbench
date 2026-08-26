@@ -164,7 +164,7 @@ function toggleSpecGroup(k){
  * @param {string} v - 搜索关键词
  * @returns {void} 无返回值
  */
-function filterSpecVals(k,v){
+function filterSpecValsNow(k,v){
   let vals=DB.specs[k]||[];
   let filterEl=document.getElementById('sff_'+k);
   let clearBtn=document.getElementById('sfcl_'+k);
@@ -181,6 +181,8 @@ function filterSpecVals(k,v){
     span.style.display=(!q||text.textContent.toLowerCase().includes(q))?'':'none';
   });
 }
+/** 属性值搜索防抖入口（对输入做 150ms 防抖） */
+const filterSpecVals=debounce(filterSpecValsNow,150);
 /**
  * 清除属性值搜索过滤并恢复全部显示。
  * @param {string} k - 属性字段名
@@ -214,7 +216,7 @@ function delSpecVal(k,i){
     softDeleteSpecOption(k,v,{operator:'user'});
     render();
     toast(SPEC_LABELS[k]+'值「'+v+'」已删除','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 
 /* 批量导入（单个维度或全维度） */

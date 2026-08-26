@@ -231,7 +231,7 @@ function delPrice(id){
     softDelete('price',id,{operator:'user'});
     closeDrawer();render();
     toast('已删除','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 /** 构建报价新建/编辑表单HTML（BOM引用、供应商、属性、单价） */
 function priceFormHTML(p){
@@ -369,7 +369,7 @@ function batchDeletePrices(){
     const idSet=new Set(ids);
     const bid=uid('AOB');ids.forEach(function(id){try{softDelete('price',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+ids.length+' 条','info');
-  },'确认删除');
+  },'确认删除',null,null,true);
 }
 
 /* ---- 新增报价下拉 ---- */
