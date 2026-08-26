@@ -21,6 +21,8 @@ const AI=(function(){
     chunkBuf:'',
     // web 模式流式接收：fetch ReadableStream 解析出的完整文本
     webBuf:'',
+    // web 模式 tool_calls 增量累积槽（按 index 累积，流结束解析为最终数组）
+    webToolAcc:[],
     removeStreamListener:null
   };
   const _T=window.__TAURI__;
@@ -88,7 +90,19 @@ const AI=(function(){
     const base='【经营概况】\n订单：'+(DB.orders||[]).length+'笔（'+status+'）\n销售额：'+money(overview.sales)+' | 采购成本：'+money(overview.cost)+' | 利润：'+money(overview.profit)+'（毛利率 '+overview.margin+'%）\n应收未收：'+money(overview.receivables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.receivables.length+'家） | 应付未付：'+money(overview.payables.reduce((sum,item)=>sum+item.balance,0))+'（'+overview.payables.length+'家）\n客户/供应商：'+(DB.units||[]).filter(item=>(item.roles||[]).includes('采购商')).length+'/'+(DB.units||[]).filter(item=>(item.roles||[]).includes('供应商')).length;
     return [base,extractPageContext(),extractByKeywords(message,overview)].filter(Boolean).join('\n\n');
   }
-  function buildSystemPrompt(snapshot){return '你是紧固件贸易助手。仅依据下方经过脱敏与本地计算的数据快照进行解释、总结、排序和话术生成；数据缺失时明确说明，禁止补造。金额、利润、余额和排名以本地结果为准，不要自行重算。金额使用¥与千分位，日期使用 YYYY-MM-DD。分析结论用简洁的 Markdown；催款话术用引用块。\n\n'+snapshot;}
+  function buildSystemPrompt(snapshot){
+    return '你是紧固件贸易工作台的助手。可调用写入工具（create_unit/update_unit/create_price/update_price/flow_order_status 等）起草对单位/报价/订单数据的修改，可调用查询工具（query_*）读取脱敏数据，可调用功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）触发视图导航、Excel 导出、打开抽屉等 UI 动作，也可基于脱敏快照做只读分析与建议。\n\n'+
+      '【硬性规则】\n'+
+      '1. 写入类工具调用是**提案**，前端将要求用户逐条确认，不会自动执行；不要在 content 中假装操作已完成，应用「我将起草…」语气。查询类（query_*）和功能层（navigate_view 等）工具会立即执行，不需要用户确认。\n'+
+      '2. 金额、利润、余额、排名一律以本地快照为准，不要自行重算或编造数字。\n'+
+      '3. 状态流转必须守 STATUS_FLOW（待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成）；只能前进到下一站，或转入「异常」「取消」终态分支；「未成交」是从「报价中」分支出的状态，可恢复回「报价中」；终态（完成/异常/取消）不可再流转。\n'+
+      '4. 工具参数中**不要**填写敏感字段（联系人电话/微信、税号、银行账号、单位地址）——这些字段不在 schema 中暴露，由用户在确认弹窗里手动补全；遇到需要补全的场景请在 content 中提示用户。\n'+
+      '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。\n'+
+      '6. 一条 tool_call 只起草一次操作；多个独立操作可并行起草（多个 tool_calls），但同一条记录不要在同一轮中既修改又删除。\n'+
+      '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
+      '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n\n'+
+      snapshot;
+  }
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
   function persistMessage(role,content,snapshot){const message={id:uid('AI'),role,content,context:view,timestamp:Date.now(),snapshot:snapshot||''};DB.aiChats=DB.aiChats||[];DB.aiChats.push(message);DB.aiChats=DB.aiChats.slice(-HISTORY_LIMIT);saveDB();return message;}
   function setModel(m){if(ALLOWED_MODELS.has(m))state.model=m;else state.model=DEFAULT_MODEL;}
@@ -129,21 +143,36 @@ const AI=(function(){
     state.removeStreamListener=null;
   }
 
-  /** 浏览器形态：前端直连 DeepSeek（CORS 已实测放行，含 file:// 的 null origin），SSE 流式解析 */
-  async function webChat(messages,onChunk,signal){
+  /** 浏览器形态：前端直连 DeepSeek（CORS 已实测放行，含 file:// 的 null origin），SSE 流式解析
+   *  v0.2 升级：同时解析 content delta（给对话区流式显示）与 tool_calls delta（按 index 累积，不显示）
+   *  返回值：{content:string, toolCalls:array} —— 调用方按需消费
+   *  options.tools 提供 → 透传给 DeepSeek（OpenAI 兼容 function calling）；缺省 → 仅返回 content
+   */
+  async function webChat(messages,onChunk,signal,options){
     const key=(localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
     if(!key)throw new Error('请先在 AI 设置中填写 DeepSeek API_KEY');
     state.webBuf='';
+    state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
+    const reqBody={
+      model:state.model,
+      messages:messages.map(function(m){
+        // tool 角色消息需带 tool_call_id 字段；user/assistant/system 只透传 role+content
+        const out={role:m.role,content:String(m.content||'')};
+        if(m.tool_call_id)out.tool_call_id=m.tool_call_id;
+        return out;
+      }),
+      stream:true,
+      temperature:0.3,
+      max_tokens:1200
+    };
+    if(options&&Array.isArray(options.tools)&&options.tools.length){
+      reqBody.tools=options.tools;
+      // tool_choice 默认 auto：让模型自主决定是否调用工具，避免强制调用导致纯分析场景失败
+    }
     const res=await fetch(WEB_API_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'text/event-stream'},
-      body:JSON.stringify({
-        model:state.model,
-        messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
-        stream:true,
-        temperature:0.3,
-        max_tokens:1200
-      }),
+      body:JSON.stringify(reqBody),
       signal:signal
     });
     if(!res.ok){
@@ -165,18 +194,53 @@ const AI=(function(){
         if(!raw||raw==='[DONE]')continue;
         try{
           const j=JSON.parse(raw);
-          const text=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-          if(typeof text==='string'&&text){
-            state.webBuf+=text;
-            if(onChunk)try{onChunk(text);}catch(_){}
+          const delta=j.choices&&j.choices[0]&&j.choices[0].delta;
+          if(!delta)continue;
+          // 1) content delta：照常给对话区流式显示
+          if(typeof delta.content==='string'&&delta.content){
+            state.webBuf+=delta.content;
+            if(onChunk)try{onChunk(delta.content);}catch(_){}
+          }
+          // 2) tool_calls delta：按 index 累积，不显示
+          if(Array.isArray(delta.tool_calls)){
+            delta.tool_calls.forEach(function(tc){
+              const i=tc.index||0;
+              const slot=state.webToolAcc[i]||(state.webToolAcc[i]={index:i,id:'',name:'',argsStr:''});
+              if(tc.id)slot.id=tc.id;
+              if(tc.function){
+                if(tc.function.name)slot.name=tc.function.name;
+                if(tc.function.arguments)slot.argsStr+=tc.function.arguments;
+              }
+            });
           }
         }catch(_){}
       }
     }
-    return state.webBuf;
+    // 流结束：tool_calls 累积槽 → 解析为最终数组（argsStr 容错解析）
+    const toolCalls=[];
+    for(let i=0;i<state.webToolAcc.length;i++){
+      const slot=state.webToolAcc[i];
+      if(!slot||!slot.name)continue;
+      let args=null;
+      if(slot.argsStr){
+        try{args=JSON.parse(slot.argsStr);}
+        catch(e){
+          // 容错：尝试修复尾随逗号
+          try{args=JSON.parse(slot.argsStr.replace(/,\s*([}\]])/g,'$1'));}
+          catch(e2){args=null;}
+        }
+      }
+      toolCalls.push({id:slot.id,name:slot.name,args:args||{}});
+    }
+    return {content:state.webBuf,toolCalls:toolCalls};
   }
 
-  async function chat(messages,onChunk){
+  /** 单次对话入口（兼容只读与带工具两种模式）
+   *  参数：messages, onChunk, options?（含 tools 数组）
+   *  返回：{content:string, toolCalls:array} —— 无 tools 时 toolCalls 为空数组
+   *  向后兼容：调用方原期望纯文本字符串的代码，改为 res.content 读取即可
+   */
+  async function chat(messages,onChunk,options){
     if(!ALLOWED_MODELS.has(state.model))state.model=DEFAULT_MODEL;
     state.chatting=true;
     state.abortController=null;
@@ -184,28 +248,138 @@ const AI=(function(){
       if(state.runtime==='tauri'){
         _ensureStreamListener(onChunk);
         try{
-          const full=await tauriInvoke('ai_deepseek_chat',{
-            messages:messages.map(function(m){return {role:m.role,content:String(m.content||'')};}),
+          // tauri 模式：透传 tools 参数给 Rust 侧 ai_deepseek_chat（Rust 端若未支持 tool_calls 解析，
+          // 则返回纯文本，toolCalls 为空数组，写入流程在桌面版降级为只读模式，由浏览器版主力承载）
+          const reqArgs={
+            messages:messages.map(function(m){
+              const out={role:m.role,content:String(m.content||'')};
+              if(m.tool_call_id)out.tool_call_id=m.tool_call_id;
+              return out;
+            }),
             model:state.model,
             stream:true,
             temperature:0.3,
             max_tokens:1200,
             streamEvent:STREAM_EVENT
-          });
+          };
+          if(options&&Array.isArray(options.tools)&&options.tools.length){
+            reqArgs.tools=options.tools;
+          }
+          const full=await tauriInvoke('ai_deepseek_chat',reqArgs);
           // Rust 返回最终完整文本；若事件接收比最终返回慢，用最终文本兜底补齐
           if(typeof full==='string'&&full.length>state.chunkBuf.length&&onChunk){
             onChunk(full.slice(state.chunkBuf.length));
             state.chunkBuf=full;
           }
-          return state.chunkBuf;
+          // tauri 模式本轮不解析 tool_calls（待 Rust 侧增强），返回空 toolCalls 数组
+          return {content:state.chunkBuf,toolCalls:[]};
         }finally{_cleanupStreamListener();}
       }
       // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
       const controller=new AbortController();
       state.abortController=controller;
-      try{return await webChat(messages,onChunk,controller.signal);}
+      try{return await webChat(messages,onChunk,controller.signal,options);}
       finally{state.abortController=null;}
+    }catch(e){
+      // 阶段4：错误处理边界 —— 分类网络错误/流式中断/tauri 命令异常，给出友好提示
+      throw _friendlyError(e);
     }finally{state.chatting=false;state.abortController=null;}
+  }
+
+  /** 阶段4：错误分类器 —— 把底层异常转换为对用户友好的中文提示
+   *  - AbortError（用户主动中止）保持原样，由调用方专门处理
+   *  - 网络层错误（fetch 失败/断网/CORS）统一为「网络连接失败」
+   *  - Tauri 命令异常归类为「AI 服务调用异常」
+   *  - HTTP 4xx/5xx 错误已在 webChat 中包装为中文，原样透传
+   *  - 其他未知异常附加「请稍后重试」提示
+   */
+  function _friendlyError(e){
+    if(!e)return new Error('未知错误，请稍后重试');
+    if(e.name==='AbortError')return e; // 中止错误由调用方专门处理，保持原语义
+    const msg=String(e.message||e);
+    // 网络错误（fetch 抛 TypeError，多半是断网/DNS/CORS）
+    if(e.name==='TypeError'||/Failed to fetch|NetworkError|network|loadfailed/i.test(msg)){
+      return new Error('网络连接失败，请检查网络后重试');
+    }
+    // Tauri 命令调用异常
+    if(/tauri|invoke|非 Tauri 运行时/i.test(msg)){
+      return new Error('AI 服务调用异常：'+msg);
+    }
+    // 流式响应中断
+    if(/stream|sse|eventsource/i.test(msg)){
+      return new Error('AI 响应流中断，请重试');
+    }
+    return e;
+  }
+
+  /** 多轮工具调用循环（写入流程入口）
+   *  流程：初始消息 → chat(带 tools) → 若有 tool_calls → 确认弹窗（由外部回调处理）→ 执行 → tool 响应回传 → 继续下一轮
+   *  - 无 tool_calls → 持久化 assistant 纯文本总结，结束
+   *  - 用户取消 → 推送「用户取消了本次操作」让模型决定后续
+   *  - 单条失败不中断其他，模型可基于失败结果决定下一步
+   *  onChunk：流式文本回调（对话区显示）
+   *  onConfirm(toolCalls) → Promise<{cancelled:boolean, approvedOps:array}>：确认弹窗回调（由 ai-chat.js 实现）
+   *  返回值：{content:string, lastToolResults:array}
+   */
+  async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
+    const messages=[...initialMessages];
+    let lastToolResults=[];
+    const MAX_ROUNDS=8;  // 阶段3：查询+写入多轮，增加到 8 轮
+    for(let round=0;round<MAX_ROUNDS;round++){
+      const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
+      if(!res.toolCalls||!res.toolCalls.length){
+        // 纯文本总结，结束
+        return {content:res.content,lastToolResults};
+      }
+      // 阶段3：分流 —— query/flow 类自动执行（不经弹窗），write/delete 类走确认弹窗
+      // 阶段4：flow 类（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）自动执行
+      const flowOps=res.toolCalls.filter(tc=>AIT.FLOW_TOOL_NAMES&&AIT.FLOW_TOOL_NAMES.has(tc.name));
+      const queryOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')===0);
+      const writeOps=res.toolCalls.filter(tc=>tc.name.indexOf('query_')!==0&&!AIT.FLOW_TOOL_NAMES.has(tc.name));
+
+      // 1) 查询类立即执行（无副作用，结果直接回填给模型）
+      const queryResults=queryOps.map(tc=>{
+        const content=(typeof AIT!=='undefined')?AIT.runQuery(tc.name,tc.args||{}):JSON.stringify({ok:false,error:'AIT 未加载'});
+        return {toolCallId:tc.id,content:content};
+      });
+
+      // 1.5) 功能层立即执行（UI 动作：导航/导出/打开抽屉，不写 DB，结果回填给模型）
+      const flowResults=flowOps.map(tc=>{
+        const content=(typeof AIT!=='undefined'&&AIT.runFlow)?AIT.runFlow(tc.name,tc.args||{}):JSON.stringify({ok:false,error:'AIT.runFlow 未加载'});
+        return {toolCallId:tc.id,content:content};
+      });
+
+      // 2) 写入类走确认弹窗（仅当有 writeOps 时才弹窗）
+      let writeResults=[];
+      if(writeOps.length){
+        const confirmed=await onConfirm(writeOps);
+        if(confirmed.cancelled){
+          // 用户取消：所有 writeOps 回填「用户取消」
+          writeResults=writeOps.map(tc=>({toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户取消了本次操作'})}));
+          messages.push({role:'user',content:'用户取消了操作提案，请不要再次起草相同操作。'});
+        }else{
+          // 批量执行（写入 DB + aiOps）
+          const batchId=uid('AOB');
+          const execRes=AIT.executeOps(confirmed.approvedOps,{aiChatId:aiChatId,batchId:batchId,operator:'ai'});
+          lastToolResults=execRes.results;
+          // 回填：approvedOps 的执行结果 + 未勾选的「用户未选」
+          writeResults=writeOps.map(tc=>{
+            const approvedIdx=confirmed.approvedOps.findIndex(o=>o.__toolCallId===tc.id);
+            if(approvedIdx<0)return {toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户未勾选该操作'})};
+            const r=execRes.results[approvedIdx]||{ok:false,error:'未执行'};
+            return {toolCallId:tc.id,content:AIT.buildToolResponse(confirmed.approvedOps[approvedIdx],r)};
+          });
+        }
+      }
+
+      // 3) 回填 assistant + tool 响应（OpenAI 协议要求所有 tool_calls 都有响应）
+      messages.push({role:'assistant',content:res.content||'',tool_calls:res.toolCalls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args||{})}}))});
+      queryResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
+      flowResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
+      writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
+      // 继续下一轮，模型可基于工具响应再调工具或给总结
+    }
+    return {content:'',lastToolResults};
   }
   function abort(){if(state.abortController)state.abortController.abort();}
 
@@ -232,6 +406,6 @@ const AI=(function(){
   return {
     state,runtimeLabel,QUICK_ACTIONS,ALLOWED_MODELS,DEFAULT_MODEL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
-    chat,abort,setModel,setDeepseekToken,getDeepseekTokenDraft
+    chat,aiWriteLoop,abort,setModel,setDeepseekToken,getDeepseekTokenDraft
   };
 })();

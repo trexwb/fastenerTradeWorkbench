@@ -1673,8 +1673,8 @@ function updateReceiveField(optId,field,value){
 /** 确认后删除指定采购订单 */
 function deleteOrder(id){
   confirmModal('确认删除该采购订单？单号: '+id,function(){
-    DB.orders=DB.orders.filter(function(x){return x.id!==id;});
-    saveDB();render();toast('已删除','info');
+    softDelete('order',id,{operator:'user'});
+    render();toast('已删除','info');
   },'确认删除');
 }
 /* ---- 联系人悬停气泡辅助函数 ---- */
@@ -1782,7 +1782,7 @@ function batchDeleteOrders(){
   }
   confirmModal(msg,function(){
     const idSet=new Set(ids);
-    DB.orders=DB.orders.filter(function(x){return !idSet.has(x.id);});
-    saveDB();render();toast('已删除 '+ids.length+' 条','info');
+    const bid=uid('AOB');ids.forEach(function(id){try{softDelete('order',id,{operator:'user',batchId:bid});}catch(e){}});
+    render();toast('已删除 '+ids.length+' 条','info');
   },'确认删除');
 }

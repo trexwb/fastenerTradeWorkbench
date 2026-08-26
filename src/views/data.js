@@ -151,12 +151,25 @@ function renderDangerZone(){
 function viewData(){
   let dataSize=new Blob([JSON.stringify(DB)]).size;
   let sizeStr=dataSize<1024?dataSize+' B':(dataSize<1048576?(dataSize/1024).toFixed(1)+' KB':(dataSize/1048576).toFixed(2)+' MB');
-  return renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderDangerZone();
+  const tab=window._dataTab||'data';
+  const tabs='<div class="data-tabs">'+
+    '<button class="data-tab'+(tab==='data'?' active':'')+'" onclick="_switchDataTab(\'data\')">数据管理</button>'+
+    '<button class="data-tab'+(tab==='history'?' active':'')+'" onclick="_switchDataTab(\'history\')">操作历史</button>'+
+    '<button class="data-tab'+(tab==='trash'?' active':'')+'" onclick="_switchDataTab(\'trash\')">回收站</button>'+
+    '</div>';
+  let body='';
+  if(tab==='history')body=renderOpsHistory();
+  else if(tab==='trash')body=renderTrash();
+  else body=renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderDangerZone();
+  return tabs+'<div class="data-tab-body">'+body+'</div>';
 }
+function _switchDataTab(name){window._dataTab=name;render();}
 
 /** 导出全部数据为 JSON 备份文件并触发下载 */
 function exportJSON(){
-  let data=JSON.stringify(DB,null,2);
+  // 导出不含回收站与操作历史（用户明确约束）
+  let exportData={...DB};delete exportData.trash;delete exportData.aiOps;
+  let data=JSON.stringify(exportData,null,2);
   let blob=new Blob([data],{type:'application/json'});
   let url=URL.createObjectURL(blob);
   let a=document.createElement('a');
@@ -177,6 +190,8 @@ function importJSON(event){
   reader.onload=function(e){
     try{
       let data=JSON.parse(e.target.result);
+      // 导入数据不含回收站/操作历史（用户约束）：强制丢弃文件中可能存在的 trash/aiOps
+      if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
       if(!data.units||!data.prices||!data.orders){
         toast('文件格式不正确，缺少必要字段','error');
         return;
@@ -229,9 +244,154 @@ function importJSON(event){
 function clearAllData(){
   confirmModal('您是否已导出最新的 JSON 备份文件？\n\n如未导出请先取消并到数据管理页点「导出 JSON 备份」。',function(){
     confirmModal('⚠ 确认清空全部数据？\n此操作不可恢复！',function(){
-      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],seq:100,orderSeq:1};
+      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],seq:100,orderSeq:1,trash:[],aiOps:[]};
       saveDB().then(function(){render();});
       toast('全部数据已清空','info');
     },'确认清空所有数据','取消保留数据');
   },'我已导出备份，继续','取消并去导出');
+}
+
+/* ===== 操作历史 / 回收站（阶段1：数据底座的用户操作面）===== */
+const OP_LABEL={create:'新增',update:'修改',delete:'删除',restore:'恢复',flow:'流转',assign:'寻货'};
+const TRASH_TYPE_LABEL={unit:'单位',spec:'属性',bom:'BOM',price:'报价',order:'订单',order_item:'订单明细',settlement:'结算',invoice:'发票'};
+function _opTagCls(op){return op==='delete'?'err':(op==='create'?'green':(op==='restore'?'purple':''));}
+/** 阶段4：操作历史筛选器渲染 */
+function renderOpsFilter(){
+  const f=window._aiOpsFilter||{op:'',operator:''};
+  const opOpts=['',...Object.keys(OP_LABEL)].map(k=>'<option value="'+k+'"'+(f.op===k?' selected':'')+'>'+(k?OP_LABEL[k]:'全部操作')+'</option>').join('');
+  const opOpts2=[{v:'',l:'全部操作者'},{v:'ai',l:'AI'},{v:'user',l:'用户'}].map(o=>'<option value="'+o.v+'"'+(f.operator===o.v?' selected':'')+'>'+o.l+'</option>').join('');
+  return '<div class="ops-filter-bar">'+
+    '<label class="ops-filter-item">操作类型<select onchange="_setAiOpsFilter(\'op\',this.value)">'+opOpts+'</select></label>'+
+    '<label class="ops-filter-item">操作者<select onchange="_setAiOpsFilter(\'operator\',this.value)">'+opOpts2+'</select></label>'+
+    '<button class="btn sm" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');">重置</button>'+
+    '<button class="btn sm" onclick="_aiOpsSelftest()">'+icon('check')+'自检</button>'+
+    '</div>';
+}
+function _setAiOpsFilter(key,val){
+  if(!window._aiOpsFilter)window._aiOpsFilter={op:'',operator:''};
+  window._aiOpsFilter[key]=val;
+  render();
+}
+/** 阶段4：AI 操作历史自检 —— 验证 aiOps 数据结构与关键函数可用性 */
+function _aiOpsSelftest(){
+  const checks=[];
+  // 1. aiOps 数组结构
+  const ops=DB.aiOps||[];
+  checks.push({name:'aiOps 是数组',ok:Array.isArray(DB.aiOps)});
+  checks.push({name:'aiOps 条数：'+ops.length,ok:true});
+  // 2. 每条 op 必备字段
+  let missingFields=0;
+  ops.forEach(function(op){
+    if(!op.id||!op.timestamp||!op.op||!op.type)missingFields++;
+  });
+  checks.push({name:'操作记录字段完整',ok:missingFields===0,detail:missingFields?missingFields+' 条缺失字段':''});
+  // 3. 关键函数可用性
+  const fns=['recordAiOp','undoAiOp','undoBatch','softDelete','restoreFromTrash','purgeTrash','clearTrash'];
+  fns.forEach(function(fn){
+    checks.push({name:'store.'+fn+' 可用',ok:typeof window[fn]==='function'});
+  });
+  // 4. AIT 模块可用
+  checks.push({name:'AIT 模块加载',ok:typeof AIT!=='undefined'&&!!AIT.TOOLS_DEFS});
+  if(typeof AIT!=='undefined'&&AIT.TOOLS_DEFS){
+    checks.push({name:'AIT 工具数：'+AIT.TOOLS_DEFS.length,ok:AIT.TOOLS_DEFS.length>0});
+    checks.push({name:'AIT.validateOp 可用',ok:typeof AIT.validateOp==='function'});
+    checks.push({name:'AIT.executeOps 可用',ok:typeof AIT.executeOps==='function'});
+    checks.push({name:'AIT.runQuery 可用',ok:typeof AIT.runQuery==='function'});
+    checks.push({name:'AIT.runFlow 可用（阶段4）',ok:typeof AIT.runFlow==='function'});
+    checks.push({name:'AIT.FLOW_TOOL_NAMES 可用（阶段4）',ok:!!AIT.FLOW_TOOL_NAMES&&AIT.FLOW_TOOL_NAMES.size>0});
+  }
+  // 5. trash 数组结构
+  checks.push({name:'trash 是数组',ok:Array.isArray(DB.trash)});
+  checks.push({name:'trash 条数：'+(DB.trash||[]).length,ok:true});
+  // 渲染结果
+  const allOk=checks.every(c=>c.ok);
+  const rows=checks.map(c=>'<tr><td>'+escHtml(c.name)+'</td><td>'+(c.ok?'<span class="tag green">通过</span>':'<span class="tag err">失败</span>')+'</td><td>'+(c.detail?escHtml(c.detail):'')+'</td></tr>').join('');
+  const summary=allOk?'✓ 全部 '+checks.length+' 项检查通过':'✗ 共 '+checks.filter(c=>!c.ok).length+' 项失败';
+  modal('AI 操控系统自检',
+    '<div class="selftest-summary '+(allOk?'ok':'fail')+'">'+summary+'</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>检查项</th><th>结果</th><th>详情</th></tr></thead><tbody>'+rows+'</tbody></table></div>',
+    '关闭',null,true);
+  toast(summary,allOk?'success':'warning');
+}
+/** 渲染操作历史 tab：最近 100 条 AI/用户操作，可单条回滚 */
+function renderOpsHistory(){
+  const allOps=DB.aiOps||[];
+  if(!allOps.length)return '<div class="empty-state">暂无操作历史</div>';
+  // 阶段4：按筛选条件过滤
+  const f=window._aiOpsFilter||{op:'',operator:''};
+  let ops=allOps;
+  if(f.op)ops=ops.filter(o=>o.op===f.op);
+  if(f.operator)ops=ops.filter(o=>o.operator===f.operator);
+  const filterBar=renderOpsFilter();
+  if(!ops.length)return filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
+  // 统计每个 batchId 的未回滚操作数（用于判断是否显示「整批回滚」按钮）
+  const batchUndoneCount={};
+  ops.forEach(function(op){
+    if(op.batchId&&!op.undone)batchUndoneCount[op.batchId]=(batchUndoneCount[op.batchId]||0)+1;
+  });
+  const rows=ops.slice(0,100).map(function(op){
+    const time=new Date(op.timestamp).toLocaleString('zh-CN',{hour12:false});
+    const label=OP_LABEL[op.op]||op.op;
+    const typeLabel=TRASH_TYPE_LABEL[op.type]||op.type;
+    const target=op.targetId?escHtml(String(op.targetId)):'—';
+    const batchIdShort=op.batchId?escHtml(op.batchId.slice(0,8)):'—';
+    const undoneTag=op.undone?'<span class="tag gray">已回滚</span>':'';
+    const undoBtn=op.undone?'':'<button class="btn sm" onclick="undoAiOp(\''+escAttr(op.id)+'\');render();toast(\'已回滚\',\'info\');">回滚</button>';
+    // 同批次多条未回滚操作时显示「整批回滚」按钮
+    const batchBtn=(!op.undone&&op.batchId&&(batchUndoneCount[op.batchId]||0)>1)
+      ?'<button class="btn sm" style="margin-left:4px" onclick="undoBatchConfirm(\''+escAttr(op.batchId)+'\');">整批回滚('+(batchUndoneCount[op.batchId])+')</button>'
+      :'';
+    return '<tr><td>'+time+'</td>'+
+      '<td><span class="tag '+_opTagCls(op.op)+'">'+label+'</span></td>'+
+      '<td>'+typeLabel+'</td><td>'+target+'</td>'+
+      '<td>'+(op.operator==='ai'?'AI':'用户')+'</td>'+
+      '<td>'+batchIdShort+'</td>'+
+      '<td class="td-act">'+undoneTag+undoBtn+batchBtn+'</td></tr>';
+  }).join('');
+  const summary='<div class="ops-filter-summary">筛选后 '+ops.length+' / 共 '+allOps.length+' 条</div>';
+  return filterBar+summary+'<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>类型</th><th>目标</th><th>操作者</th><th>批次</th><th class="td-act">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+/** 确认整批回滚（调用 store.js 的 undoBatch） */
+function undoBatchConfirm(batchId){
+  const ops=DB.aiOps||[];
+  const count=ops.filter(o=>o.batchId===batchId&&!o.undone).length;
+  if(!count){toast('该批次无可回滚操作','warning');return;}
+  confirmModal('确认整批回滚？该批次共 '+count+' 条操作将按逆序撤销，且不可重复回滚。',
+    function(){try{undoBatch(batchId);}catch(e){toast('回滚失败：'+e.message,'error');return;}closeModal();render();toast('已整批回滚 '+count+' 条','success');},
+    '确认整批回滚','取消');
+}
+/** 渲染回收站 tab：按类型分组，可恢复/彻底删除/全部清空 */
+function renderTrash(){
+  const trash=DB.trash||[];
+  if(!trash.length)return '<div class="empty-state">回收站为空</div>';
+  const groups={};
+  trash.forEach(function(t){(groups[t.type]=groups[t.type]||[]).push(t);});
+  const TYPE_ORDER=['unit','spec','bom','price','order','order_item','settlement','invoice'];
+  let html='<div class="trash-toolbar"><span class="muted">共 '+trash.length+' 条</span> <button class="btn sm" onclick="clearTrashConfirm()">全部清空</button></div>';
+  TYPE_ORDER.forEach(function(type){
+    if(!groups[type])return;
+    html+='<h4 class="trash-group-title">'+(TRASH_TYPE_LABEL[type]||type)+'（'+groups[type].length+'）</h4>';
+    html+='<div class="table-wrap"><table><thead><tr><th>原始ID</th><th>删除时间</th><th>删除者</th><th class="td-act">操作</th></tr></thead><tbody>';
+    groups[type].forEach(function(t){
+      const time=new Date(t.deletedAt).toLocaleString('zh-CN',{hour12:false});
+      const op=t.operator==='ai'?'AI':'用户';
+      html+='<tr><td>'+escHtml(String(t.originalId))+'</td><td>'+time+'</td><td>'+op+'</td>'+
+        '<td class="td-act">'+
+        '<button class="btn sm" onclick="restoreTrashItem(\''+escAttr(t.id)+'\')">恢复</button> '+
+        '<button class="btn sm" onclick="purgeTrashItem(\''+escAttr(t.id)+'\')">彻底删除</button>'+
+        '</td></tr>';
+    });
+    html+='</tbody></table></div>';
+  });
+  return html;
+}
+function restoreTrashItem(trashId){
+  try{restoreFromTrash(trashId);toast('已恢复','success');render();}
+  catch(e){toast('恢复失败：'+e.message,'error');}
+}
+function purgeTrashItem(trashId){
+  confirmModal('彻底删除后不可恢复，确认?',function(){purgeTrash(trashId);toast('已彻底删除','info');render();},'确认彻底删除');
+}
+function clearTrashConfirm(){
+  confirmModal('⚠ 清空回收站后所有被删记录不可恢复，确认?',function(){clearTrash();toast('回收站已清空','info');render();},'确认清空');
 }

@@ -501,9 +501,9 @@ function delSettlement(id){
   if(invRefs.length>0){
     warnMsg='⚠ 该结算记录已生成 '+invRefs.length+' 条发票记录（发票号 '+invRefs.map(function(inv){return escHtml(inv.invoiceNo||inv.id);}).join('、')+'），删除后发票数据会失配，是否仍继续？\n\n';
   }
-  confirmModal(warnMsg+'确认删除该结算记录？',function(){
-    DB.settlements=(DB.settlements||[]).filter(function(s){return s.id!==id;});
-    saveDB();render();
+  confirmModal(warnMsg+'确认删除该结算记录？（删除后进入回收站，可恢复）',function(){
+    softDelete('settlement',id,{operator:'user'});
+    render();
     toast('结算记录已删除','info');
   },'确认删除');
 }

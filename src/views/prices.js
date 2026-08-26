@@ -220,8 +220,8 @@ function delPrice(id){
   const p=DB.prices.find(x=>x.id===id);
   if(!p)return;
   confirmModal('确认删除这条报价？'+escHtml(pName(p.unitId)+' '+specLabel(p)),()=>{
-    DB.prices=DB.prices.filter(x=>x.id!==id);
-    saveDB();closeDrawer();render();
+    softDelete('price',id,{operator:'user'});
+    closeDrawer();render();
     toast('已删除','info');
   },'确认删除');
 }
@@ -356,8 +356,8 @@ function batchDeletePrices(){
   }
   confirmModal(msg,function(){
     const idSet=new Set(ids);
-    DB.prices=DB.prices.filter(function(x){return !idSet.has(x.id);});
-    saveDB();render();toast('已删除 '+ids.length+' 条','info');
+    const bid=uid('AOB');ids.forEach(function(id){try{softDelete('price',id,{operator:'user',batchId:bid});}catch(e){}});
+    render();toast('已删除 '+ids.length+' 条','info');
   },'确认删除');
 }
 

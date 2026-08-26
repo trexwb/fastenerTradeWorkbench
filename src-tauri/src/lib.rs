@@ -152,11 +152,27 @@ struct UpstreamBody<'a> {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct UpstreamFunctionDelta {
+    name: Option<String>,
+    arguments: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct UpstreamToolCallDelta {
+    index: Option<usize>,
+    id: Option<String>,
+    function: Option<UpstreamFunctionDelta>,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpstreamChoiceDelta {
     content: Option<String>,
+    tool_calls: Option<Vec<UpstreamToolCallDelta>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,6 +196,7 @@ async fn ai_deepseek_chat(
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     stream_event: Option<String>,
+    tools: Option<serde_json::Value>,
 ) -> Result<String, String> {
     let token = {
         let p = token_path(&app)?;
@@ -214,6 +231,7 @@ async fn ai_deepseek_chat(
         stream,
         temperature,
         max_tokens: Some(max_tokens),
+        tools,
     };
     let payload =
         serde_json::to_vec(&body).map_err(|e| format!("序列化请求失败: {e}"))?;
@@ -298,15 +316,24 @@ async fn ai_deepseek_chat(
             Ok(v) => v,
             Err(_) => continue,
         };
-        let content = parsed
+        if let Some(delta) = parsed
             .choices
             .and_then(|cs| cs.into_iter().next())
             .and_then(|c| c.delta)
-            .and_then(|d| d.content);
-        if let Some(text) = content {
-            if !text.is_empty() {
-                collected.push_str(&text);
-                let _ = window.emit(&evt_name, serde_json::json!({ "text": &text }));
+        {
+            if let Some(text) = delta.content {
+                if !text.is_empty() {
+                    collected.push_str(&text);
+                    let _ = window.emit(&evt_name, serde_json::json!({ "text": &text }));
+                }
+            }
+            if let Some(tcs) = delta.tool_calls {
+                if !tcs.is_empty() {
+                    let _ = window.emit(
+                        &evt_name,
+                        serde_json::json!({ "text": "", "toolCalls": tcs }),
+                    );
+                }
             }
         }
     }

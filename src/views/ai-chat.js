@@ -76,9 +76,196 @@ async function sendAIMessage(message,snapshot){
   let renderScheduled=false;
   const renderBubble=()=>{renderScheduled=false;const bubble=pendingEl.querySelector('.ai-bubble');if(bubble){bubble.innerHTML=renderAIMarkdown(pending.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
   const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
-  try{const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);await AI.chat(request,chunk=>{pending.content+=chunk;scheduleRender();});if(renderScheduled)renderBubble();if(!pending.content)pending.content='未收到有效回复，请稍后重试。';pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);}catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+  try{
+    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);
+    // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
+    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,pendingEl);
+    const res=await AI.aiWriteLoop(request,chunk=>{pending.content+=chunk;scheduleRender();},onConfirm,userMessage.id);
+    if(renderScheduled)renderBubble();
+    pending.content=res.content||'(操作已处理)';
+    pending.pending=false;
+    const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
+    pendingEl.outerHTML=aiMessageHTML(assistantMessage);
+    // 工具执行结果汇总提示
+    if(res.lastToolResults&&res.lastToolResults.length){
+      const okN=res.lastToolResults.filter(r=>r.ok).length;
+      const failN=res.lastToolResults.length-okN;
+      const tip='已执行 '+okN+' 条操作'+(failN?'，'+failN+' 条失败':'');
+      toast(tip,failN?'warning':'success');
+    }
+  }catch(error){pending.content=error.name==='AbortError'?'已停止生成。':'请求失败：'+error.message;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
+
+/* ===== AI 操作提案确认弹窗（写入流程核心交互） ===== */
+/** AI 操作确认弹窗：渲染 tool_calls 列表，用户勾选后执行
+ * @param {Array} toolCalls - 模型返回的 [{id,name,args}]
+ * @param {Element} pendingEl - 对话气泡 DOM（保留参数供未来高亮）
+ * @returns {Promise<{cancelled:boolean, approvedOps:array}>}
+ */
+function confirmOpsModal(toolCalls,pendingEl){
+  return new Promise(resolve=>{
+    // 1. 对每条 toolCall 调用 AIT.validateOp 获取预览
+    const items=toolCalls.map((tc,idx)=>{
+      const meta=(typeof AIT!=='undefined'&&AIT.TOOL_META[tc.name])||{label:tc.name,tagCls:'gray'};
+      const v=(typeof AIT!=='undefined')?AIT.validateOp({name:tc.name,args:tc.args||{}}):{ok:false,error:'AIT 未加载'};
+      return {idx,toolCallId:tc.id,name:tc.name,args:tc.args||{},meta,validation:v};
+    });
+    // 2. 渲染操作列表
+    const body='<div class="ops-list">'+items.map(renderOpsItem).join('')+'</div>'+
+      '<div class="ops-summary">共 '+items.length+' 条操作提案，<span id="opsSelectedCount">'+items.filter(it=>it.validation.ok).length+'</span> 条已选</div>'+
+      '<div class="ops-note">提示：写入操作会写入业务库并记入「操作历史」，可在数据管理页回滚</div>';
+    modal('确认 AI 操作提案',body,'执行选中操作',()=>{
+      // 收集选中的 ops（注入 __toolCallId 供 aiWriteLoop 回填 tool 响应）
+      const approvedOps=[];
+      items.forEach(it=>{
+        const cb=document.getElementById('ops_check_'+it.idx);
+        if(cb&&cb.checked&&it.validation.ok){
+          const args=Object.assign({},it.args);
+          // create_unit：合并用户补全的敏感字段（仅填了才并入，避免污染）
+          if(it.name==='create_unit'){
+            [['phone','phone'],['taxId','tax'],['bank','bank'],['accountNo','acct'],['address','addr']].forEach(function(pair){
+              const el=document.getElementById('ops_sen_'+pair[1]+'_'+it.idx);
+              if(el&&String(el.value||'').trim())args[pair[0]]=el.value.trim();
+            });
+            // 联系人姓名单独读取
+            const cn=document.getElementById('ops_sen_name_'+it.idx);
+            if(cn&&String(cn.value||'').trim())args.contactName=cn.value.trim();
+          }
+          approvedOps.push({
+            name:it.name,
+            args:args,
+            __toolCallId:it.toolCallId,
+            // 阶段4：并发脏读检测指纹 —— 弹窗确认时的 before 快照 JSON 字符串
+            // executeOp 执行前会重新读取当前 before 对比，不一致则拒绝执行（防止弹窗期间数据被并发修改）
+            __beforeFingerprint:(it.validation&&it.validation.preview&&it.validation.preview.before!==undefined)
+              ?JSON.stringify(it.validation.preview.before):null
+          });
+        }
+      });
+      if(!approvedOps.length){resolve({cancelled:true,approvedOps:[]});return;}
+      resolve({cancelled:false,approvedOps});
+    },true);
+    // 覆写取消按钮：标记 cancelled
+    const mask=document.getElementById('_mask');
+    if(mask){
+      const cancelBtn=mask.querySelector('.mf .btn:not(.primary)');
+      if(cancelBtn){cancelBtn.onclick=()=>{resolve({cancelled:true,approvedOps:[]});closeModal();};}
+      // 复选框联动：实时更新已选计数
+      mask.querySelectorAll('.ops-check').forEach(cb=>{
+        cb.onchange=()=>{
+          const checked=mask.querySelectorAll('.ops-check:checked');
+          const cnt=document.getElementById('opsSelectedCount');
+          if(cnt)cnt.textContent=checked.length;
+        };
+      });
+    }
+  });
+}
+/** 渲染单条操作卡片（含校验状态、diff 预览） */
+function renderOpsItem(it){
+  const meta=it.meta;const v=it.validation;
+  const cls=v.ok?'':'ops-item-invalid';
+  const diffHTML=v.ok?renderOpsDiff(it):'<div class="ops-error">校验失败：'+escHtml(v.error||'未知错误')+'</div>';
+  // 删除类：提示进入回收站（可恢复）；AI 无彻底删除能力（原则1）
+  let delNote='';
+  if(/^delete_/.test(it.name)||it.name==='remove_order_item'){
+    delNote='<div class="ops-note ops-note-trash">'+icon('trash','12')+' 删除后进入回收站，可在数据管理页恢复</div>';
+  }
+  // 新建单位：敏感字段待补区（AI 不收集敏感信息，由用户补全）
+  let sensitive='';
+  if(it.name==='create_unit'&&v.ok){
+    sensitive='<div class="ops-sensitive"><div class="ops-sensitive-hd">敏感字段（选填，AI 不收集此类信息）</div>'+
+      '<div class="ops-sensitive-grid">'+
+      '<label>联系人<input id="ops_sen_name_'+it.idx+'" placeholder="姓名"></label>'+
+      '<label>电话<input id="ops_sen_phone_'+it.idx+'" placeholder="手机/固话"></label>'+
+      '<label>税号<input id="ops_sen_tax_'+it.idx+'" placeholder="纳税人识别号"></label>'+
+      '<label>开户行<input id="ops_sen_bank_'+it.idx+'" placeholder="开户银行"></label>'+
+      '<label>账号<input id="ops_sen_acct_'+it.idx+'" placeholder="银行账号"></label>'+
+      '<label>地址<input id="ops_sen_addr_'+it.idx+'" placeholder="注册地址"></label>'+
+      '</div></div>';
+  }
+  return '<div class="ops-item '+cls+'">'+
+    '<div class="ops-item-hd">'+
+      '<label class="ops-check-wrap"><input type="checkbox" id="ops_check_'+it.idx+'" class="ops-check" '+(v.ok?'checked':'disabled')+'></label>'+
+      '<span class="tag '+meta.tagCls+'">'+escHtml(meta.label)+'</span>'+
+      '<span class="ops-target">'+escHtml(summarizeOpTarget(it))+'</span>'+
+    '</div>'+
+    diffHTML+delNote+sensitive+
+  '</div>';
+}
+/** 渲染操作 diff 预览（旧值→新值，按工具类型分发） */
+function renderOpsDiff(it){
+  const v=it.validation;const p=v.preview||{};
+  if(it.name==='create_unit'||it.name==='create_price'){
+    const after=p.after||{};
+    const rows=Object.keys(after).filter(k=>after[k]!==null&&after[k]!==undefined&&after[k]!=='').map(k=>
+      '<div class="ops-diff-row"><span class="ops-diff-key">'+escHtml(k)+'</span><span class="ops-diff-val">'+escHtml(fmtOpsVal(after[k]))+'</span></div>'
+    ).join('');
+    return '<div class="ops-diff">'+(rows||'<div class="ops-diff-row">(无字段)</div>')+'</div>';
+  }
+  if(it.name==='update_unit'||it.name==='update_price'){
+    const before=p.before||{};const after=p.after||{};
+    const rows=Object.keys(after).map(k=>{
+      const bv=before[k]===undefined?'':before[k];
+      const av=after[k]===undefined?'':after[k];
+      if(JSON.stringify(bv)===JSON.stringify(av))return '';
+      return '<div class="ops-diff-row">'+
+        '<span class="ops-diff-key">'+escHtml(k)+'</span>'+
+        '<span class="ops-diff-old">'+escHtml(fmtOpsVal(bv))+'</span>'+
+        '<span class="ops-diff-arrow">→</span>'+
+        '<span class="ops-diff-new">'+escHtml(fmtOpsVal(av))+'</span>'+
+      '</div>';
+    }).filter(Boolean).join('');
+    return '<div class="ops-diff">'+(rows||'<div class="ops-diff-row">无字段变更</div>')+'</div>';
+  }
+  if(it.name==='flow_order_status'){
+    return '<div class="ops-diff">'+
+      '<div class="ops-diff-row"><span class="ops-diff-key">订单</span><span class="ops-diff-val">'+escHtml(p.orderId||'')+' '+(p.buyer?'('+p.buyer+')':'')+'</span></div>'+
+      '<div class="ops-diff-row"><span class="ops-diff-key">状态</span><span class="ops-diff-old">'+escHtml(p.before||'')+'</span><span class="ops-diff-arrow">→</span><span class="ops-diff-new">'+escHtml(p.after||'')+'</span></div>'+
+    '</div>';
+  }
+  return '<div class="ops-diff"><pre>'+escHtml(JSON.stringify(p,null,2))+'</pre></div>';
+}
+/** 简短描述操作目标（用于卡片标题） */
+function summarizeOpTarget(it){
+  const a=it.args||{};const v=it.validation;const p=(v&&v.preview)||{};
+  if(it.name==='create_unit')return '新增单位：'+(a.name||'');
+  if(it.name==='update_unit'){const u=DB.units.find(x=>x.id===a.unitId);return '修改单位：'+(u?u.name:a.unitId);}
+  if(it.name==='create_price'){const u=DB.units.find(x=>x.id===a.unitId);return '新增报价：'+(u?u.name:a.unitId)+' '+(a.spec||a.bomSku||'');}
+  if(it.name==='update_price')return '修改报价：'+a.priceId;
+  if(it.name==='flow_order_status')return '订单流转：'+a.orderId+' → '+a.toStatus;
+  if(it.name==='create_bom')return '新增BOM：'+(a.sku||a.name||'');
+  if(it.name==='update_bom')return '修改BOM：'+a.bomId;
+  if(it.name==='set_spec_value')return '属性值：'+a.field+'「'+(a.value||'')+'」'+(a.newValue?' → '+a.newValue:'');
+  if(it.name==='create_order'){const u=DB.units.find(x=>x.id===a.buyerId);return '新增订单：'+(u?u.name:a.buyerId)+' · '+(a.items||[]).length+' 项';}
+  if(it.name==='update_order_meta')return '修改订单：'+a.orderId;
+  if(it.name==='add_order_item')return '订单 '+a.orderId+' 添加明细';
+  if(it.name==='update_order_item')return '修改订单明细：'+a.itemId;
+  if(it.name==='remove_order_item')return '移除订单明细：'+a.itemId;
+  if(it.name==='assign_supplier')return '寻货分配：'+a.itemId+' ← '+(a.priceId||'');
+  if(it.name==='add_manual_supplier')return '手动录入供应商：'+(a.unitName||'');
+  if(it.name==='remove_sourcing_option')return '移除寻货分配：'+a.optionId;
+  if(it.name==='create_settlement')return '新增结算：'+(a.type==='receipt'?'收款':'付款')+' ¥'+(a.amount||'');
+  if(it.name==='update_settlement')return '修改结算：'+a.settleId;
+  if(it.name==='create_invoice')return '新增发票：'+(a.type==='issue'?'开票':'收票')+' ¥'+(a.amount||'');
+  if(it.name==='update_invoice')return '修改发票：'+a.invoiceId;
+  if(it.name==='delete_unit'){const u=DB.units.find(x=>x.id===a.unitId);return '删除单位：'+(u?u.name:a.unitId);}
+  if(it.name==='delete_bom')return '删除BOM：'+a.bomId;
+  if(it.name==='delete_price')return '删除报价：'+a.priceId;
+  if(it.name==='delete_order')return '删除订单：'+a.orderId;
+  if(it.name==='delete_spec_value')return '删除属性值：'+a.field+'「'+(a.value||'')+'」';
+  if(it.name==='delete_settlement')return '删除结算：'+a.settleId;
+  if(it.name==='delete_invoice')return '删除发票：'+a.invoiceId;
+  return it.name;
+}
+/** 格式化 diff 值（数组/对象/数字/字符串，统一为可读文本） */
+function fmtOpsVal(v){
+  if(v==null||v==='')return '(空)';
+  if(Array.isArray(v))return v.join('/');
+  if(typeof v==='object')return JSON.stringify(v);
+  return String(v);
+}
 async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';
   const bodyBuilder=async function(){
