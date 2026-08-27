@@ -672,6 +672,16 @@ kbd{display:inline-block;background:var(--bg-soft);border:1px solid var(--line);
 
 /* AI 工具改动撤销条 */
 .ai-undo-bar{border:1px dashed #fde2c3;background:var(--amber-l);border-radius:8px;align-items:center;gap:10px;margin:6px 0 2px;padding:7px 12px;font-size:12px;display:flex}
+
+/* 本地知识库（KB）— 引用标注与原文查看 */
+.ai-cite{display:inline-block;margin:0 2px;padding:0 7px;border:1px solid var(--pri-p);border-radius:10px;background:var(--pri-l);color:var(--pri);font:inherit;font-size:11px;line-height:18px;cursor:pointer;vertical-align:baseline;transition:all .15s}
+.ai-cite:hover{background:var(--pri);color:#fff}
+.kb-viewer{font-size:13px}
+.kb-viewer details{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:6px;background:var(--bg)}
+.kb-viewer details summary{cursor:pointer;padding:6px 10px;font-size:12px;color:var(--ink)}
+.kb-block{white-space:pre-wrap;word-break:break-word;background:var(--card);border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius);padding:10px;font-size:12px;line-height:1.6;max-height:320px;overflow:auto;margin:0}
+#kbZone .note{margin-top:4px}
+#kbZone .btn.sm{margin-top:4px}
 .ai-undo-btn{border:1px solid var(--amber);background:#fff;color:var(--amber);border-radius:6px;cursor:pointer;align-items:center;gap:5px;padding:5px 12px;font:inherit;font-size:12px;display:inline-flex;transition:all .15s}
 .ai-undo-btn:hover{background:var(--amber);color:#fff}
 .ai-undo-hint{color:var(--gray);font-size:11px}

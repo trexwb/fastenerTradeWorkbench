@@ -26,6 +26,7 @@ const SCRIPTS = [
   'core/ai.js',
   'core/help-knowledge.js',
   'core/ai-tools.js',
+  'core/kb.js',
   'views/dashboard.js',
   'views/units.js',
   'views/specs.js',

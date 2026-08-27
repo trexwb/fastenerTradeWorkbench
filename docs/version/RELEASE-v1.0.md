@@ -5,6 +5,65 @@
 
 ---
 
+## v1.0.12 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.11
+> **版本范围**: AI 升级一期 — 本地知识库 RAG（目录即知识库：多格式解析 → 本地 BM25 检索 → 带依据回答）
+
+---
+
+## 功能背景
+
+AI 助手此前只基于脱敏经营快照回答，无法引用本地业务文档（规格书、质量手册、往来文件等）。一期引入「目录即知识库」的纯前端 RAG：绑定本机目录即完成知识库，提问时离线检索相关片段注入上下文，回答带源文件引用。
+
+| 能力 | 方案 |
+|------|------|
+| 解析格式 | md/txt 直读（剥 BOM）；PDF 用 pdf.js 提文本层；docx 用 mammoth 提纯文本 |
+| 分块 | 目标 500 字（400~600 区间），每块携带源元数据：**章节**（md 标题）/ **页码**（PDF 行级映射） |
+| 存储 | 独立 IndexedDB 库 `wb_fastener_kb`（与业务库隔离）：目录句柄 + 文件清单 + 分块全文全量落库 |
+| 检索 | 本地 BM25 纯前端计算（中文 bi-gram + 英文单词分词），不依赖 oMLX、不联网、不消耗 token |
+| 注入 | Top-N（默认 4，可选 3~5）片段拼入 system prompt，随经营快照一起发给接口；相关度低于阈值（<0.6）不注入省 token |
+| 引用 | 回答标注【依据：文件名】，可点击弹窗查看原文分块（含章节/页码） |
+
+## 变更
+
+### 1. 数据管理页新增「知识库」区块（src/views/data.js）
+
+- 目录选择/重新索引/断开、已绑定目录、文件数·分块数·占用估算、最近索引时间、索引中状态、错误提示
+- 检索开关「提问时检索知识库」、注入 Top-N（3/4/5）、回答来源标注开关
+- 与 AI 设置弹窗内 `kbZone` 双入口共享同一 KB 状态，任一入口操作即时同步
+
+### 2. 知识库核心模块（新文件 src/core/kb.js）
+
+- 独立库 `wb_fastener_kb`（key 分层 meta/dir/files/blocks），接口：init/chooseDir/rescan/unbind/setEnabled/setTopN/setCite/buildPromptBlock/fileBlocks/summarize/tokenize/splitBlocks/isSupported/bmQuery
+- 解析：`window.__KB_DEPS` 桥接 npm 依赖（pdfjs-dist 独立打包 worker、mammoth）；单文件超 200 万字符跳过，递归深度 ≤3
+- 分块：md 标题追踪章节；PDF 逐页收集 → 按行映射页码 → 块记录块首行页码；兼容旧版纯字符串块自动归一化
+- BM25：相关度阈值过滤后再取 Top-N（低分弱命中不注入）
+
+### 3. 提问链路与引用（src/views/ai-chat.js）
+
+- 提问时注入 `KB.buildPromptBlock()` 生成的【知识库参考】（命中片段含文件名/章节/页码标注）
+- 回答中【依据：文件名】渲染为可点击按钮，弹窗按分块展示原文（新增章节/页码标注）
+- main.js 挂载 __KB_DEPS 并设置 pdf.js worker 地址；App.vue SCRIPTS 注册 kb.js；app.js bootApp 挂载 KB.init()
+
+### 4. 依赖（package.json）
+
+- 新增 `pdfjs-dist ^6.2.108`、`mammoth ^1.12.1`
+
+## 二期/三期预告
+
+- 二期：图片 OCR（桌面 macOS Vision / 网页 Tesseract.js）+ 表格文件（xlsx）
+- 三期：oMLX 本地 embedding 模型（如 bge-m3）做混合检索 + 对话传图视觉问答（需另装 VL 模型）
+
+## 版本号
+
+- `package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `Cargo.toml` / `store.js` / `AGENTS.md` 六处同步递增至 **v1.0.12**
+- 验证：`npm run vite:build` 通过；kb.js 算法单测 19/19 通过（分词/分块/章节/页码/BM25 排序/阈值过滤）
+
+---
+
 ## v1.0.11 · 📝 待发布
 
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
