@@ -571,6 +571,10 @@ const AI=(function(){
     return t?'(已保存)':'';
   }
 
+  // 中途退出兜底：若流式回复尚未完成，页面隐藏/关闭时把已入库内容再刷盘一次
+  // （配合 sendAIMessage 的流式防抖增量落盘，关弹窗/中途退出都不丢已生成的部分）
+  try{if(typeof window!=='undefined'&&typeof saveDB==='function')window.addEventListener('pagehide',function(){if(state.chatting){try{saveDB();}catch(e){}}});}catch(e){}
+
   return {
     state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,

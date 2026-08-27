@@ -54,10 +54,22 @@ export default defineConfig({
     assetsInlineLimit: 4096,
     chunkSizeWarningLimit: 3000,
     rollupOptions: {
+      onwarn(warning, warn) {
+        // 过滤已知无害的 EMPTY_IMPORT_META 警告（iife 下 import.meta 批量告警）：
+        //  - vite/preload-helper.js：动态导入 helper，import.meta.url 仅用于拼接 preload 链接
+        //  - pdfjs-dist：import.meta.url 位于 NodeCanvasFactory._createCanvas 惰性方法内，
+        //    浏览器路径不会执行，替换为 {} 无副作用
+        // 其余警告（真实告警）原样上抛，避免被白名单掩盖。
+        if (warning.code === 'EMPTY_IMPORT_META') {
+          const id = warning.id || ''
+          if (id.includes('pdfjs-dist') || id.includes('preload-helper')) return
+        }
+        warn(warning)
+      },
       output: {
         // iife（非 module）：file:// 下可加载，避免 module script 的 CORS 拦截
+        // Vite 8 中 iife 输出默认 codeSplitting:false，无需再设 inlineDynamicImports
         format: 'iife',
-        inlineDynamicImports: true,
         entryFileNames: 'assets/js/[name].js',
         assetFileNames: 'assets/[ext]/[name][extname]',
       },

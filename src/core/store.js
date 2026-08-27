@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.10';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.14';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -79,6 +79,8 @@ function ensureDBFields(){
   if(!DB.settlements)DB.settlements=[];
   if(!DB.invoices)DB.invoices=[];
   if(!Array.isArray(DB.aiChats))DB.aiChats=[];
+  // AI 会话中断残留：上次会话流式回复未完成时退出应用会留下 pending 标记，加载时清除避免永久光标闪烁
+  if(DB.aiChats.length)DB.aiChats.forEach(m=>{if(m&&m.pending)m.pending=false;});
   if(!Array.isArray(DB.trash))DB.trash=[];          // 回收站（软删除隔离区，AI 永不触碰）
   if(!Array.isArray(DB.aiOps))DB.aiOps=[];          // AI/用户操作日志（审计+回滚依据）
   if(!DB.seq)DB.seq=100;

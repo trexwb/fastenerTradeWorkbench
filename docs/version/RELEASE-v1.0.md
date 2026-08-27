@@ -5,6 +5,182 @@
 
 ---
 
+## v1.0.14 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.13
+> **版本范围**: 知识库 PDF 解析收尾修复 — pdfjs-dist v6 API 差异（destroy）导致已提取成果整体作废
+
+---
+
+## 问题背景
+
+v1.0.13 的失败明细提示定位到真实根因：8 个 PDF 全部报 `pdf.destroy is not a function`。
+pdfjs-dist v6 的 `PDFDocumentProxy` 已移除 `destroy()`（仅保留 `cleanup()`），正确的资源释放入口是 `PDFDocumentLoadingTask.destroy()`。旧写法导致逐页文本**提取全部成功**后，在最后一步清理时报错，整个文件作废（0 文件 / 0 分块）。
+
+## 变更
+
+- parseFile PDF 分支重构：持有 loadingTask 引用；提取逻辑包入 try/finally；finally 中优先 `task.destroy()`，不可用时回退 `pdf.cleanup()`，任一清理失败仅 console 告警，绝不影响已提取结果
+- 验证：node 单测 10/10 通过；`npm run vite:build` 通过
+- 版本号五处同步（package.json / package-lock.json / tauri.conf.json / Cargo.toml / AGENTS.md 基准版本）
+
+---
+
+## v1.0.13 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.12
+> **版本范围**: 知识库可用性修复 — PDF 在 file:// 下解析失败兑底 + BM25 词频修正 + 定时增量更新 + 失败明细可见
+
+---
+
+## 问题背景
+
+知识库绑定目录后索引结果为「0 个文件 · 0 个分块」，PDF 文件未被识别。
+
+| # | 问题 | 根因 | 影响 |
+|------|------|------|------|
+| 1 | **PDF 全部解析失败**（file:// 双击运行时） | 浏览器禁止 `new Worker()`；pdf.js 降级主线程 fake worker 需要全局钩子 `globalThis.pdfjsWorker`，main.js 未提供 | getDocument reject，所有 PDF 报错且被界面吞掉，显示 0 文件 |
+| 2 | **BM25 词频失效** | `tokenize` 内部对 token 去重，块内词频（tf）恒为 1、avgdl 失真 | 检索排序退化为纯 IDF，相关片段排不准 |
+| 3 | **无定时更新** | 只有手动「重新索引」，目录新增/修改文件无法自动同步 | 违背需求「定时更新」项 |
+| 4 | **失败被静默吞掉** | 目录读取异常直接 return、解析 errors 未在数据管理页展示、文件清单缺修改时间 | 出问题只能看到 0 个文件，无法定位 |
+
+## 变更
+
+### 1. PDF file:// 兑底（src/main.js + core/kb.js）
+
+- main.js 新增 `import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs'` 并挂到 `globalThis.pdfjsWorker`：真环境仍走独立 Worker 加速，file:// 下自动降级为主线程解析（pdf.js 官方 bundler 集成钩子）
+- parseFile 对 PDF/docx 解析器缺失与失败给出明确中文报错
+
+### 2. BM25 词频修正（core/kb.js tokenize）
+
+- 分词不再去重：真实 tf 与文档长度参与打分；查询侧去重由 bmQuery 内部保持；node 单测验证高频词块排序正确
+
+### 3. 定时增量更新（core/kb.js）
+
+- 绑定成功 / 启动恢复后自动开启每 5 分钟静默扫描（仅页面可见时），比对 lastModified+size，未变化的文件复用旧分块不重读盘，新增/变更/删除自动同步进索引
+- 提问发送前距离上次索引超时则后台触发一次增量更新（不阻塞本次回答）；断开目录停止定时器
+- 文件清单补充 lastModified 修改时间元数据；增量模式下 fileId/块 index 统一重排保持一致性
+
+### 4. 失败明细可见（core/kb.js + views/data.js + views/ai-chat.js）
+
+- 目录读取权限异常不再静默 return，记入错误清单并回传 UI
+- 数据管理页与 AI 弹窗的索引结果 toast 统一展示：扫描到的受支持文件数、成功数、分块数与失败文件名明细（前 2 条）；扫到 0 个受支持文件时明确提示检查所选目录
+
+## 版本号
+
+- `package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` 基准版本同步递增至 **v1.0.13**
+- AGENTS.md 豁免段更新：「唯一豁免」改为豁免清单，第 2 项登记 pdfjs-dist / mammoth 及其打包挂载方式与 pdfjsWorker 兑底钩子约束
+- 构建验证：`npm run vite:build` 通过；kb.js 通过 node VM 单测（词频修复/BM25 排序/分块尺寸/归一化兼容）
+
+---
+
+## v1.0.12 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.11
+> **版本范围**: AI 升级一期 — 本地知识库 RAG（目录即知识库：多格式解析 → 本地 BM25 检索 → 带依据回答）
+
+---
+
+## 功能背景
+
+AI 助手此前只基于脱敏经营快照回答，无法引用本地业务文档（规格书、质量手册、往来文件等）。一期引入「目录即知识库」的纯前端 RAG：绑定本机目录即完成知识库，提问时离线检索相关片段注入上下文，回答带源文件引用。
+
+| 能力 | 方案 |
+|------|------|
+| 解析格式 | md/txt 直读（剥 BOM）；PDF 用 pdf.js 提文本层；docx 用 mammoth 提纯文本 |
+| 分块 | 目标 500 字（400~600 区间），每块携带源元数据：**章节**（md 标题）/ **页码**（PDF 行级映射） |
+| 存储 | 独立 IndexedDB 库 `wb_fastener_kb`（与业务库隔离）：目录句柄 + 文件清单 + 分块全文全量落库 |
+| 检索 | 本地 BM25 纯前端计算（中文 bi-gram + 英文单词分词），不依赖 oMLX、不联网、不消耗 token |
+| 注入 | Top-N（默认 4，可选 3~5）片段拼入 system prompt，随经营快照一起发给接口；相关度低于阈值（<0.6）不注入省 token |
+| 引用 | 回答标注【依据：文件名】，可点击弹窗查看原文分块（含章节/页码） |
+
+## 变更
+
+### 1. 数据管理页新增「知识库」区块（src/views/data.js）
+
+- 目录选择/重新索引/断开、已绑定目录、文件数·分块数·占用估算、最近索引时间、索引中状态、错误提示
+- 检索开关「提问时检索知识库」、注入 Top-N（3/4/5）、回答来源标注开关
+- 与 AI 设置弹窗内 `kbZone` 双入口共享同一 KB 状态，任一入口操作即时同步
+
+### 2. 知识库核心模块（新文件 src/core/kb.js）
+
+- 独立库 `wb_fastener_kb`（key 分层 meta/dir/files/blocks），接口：init/chooseDir/rescan/unbind/setEnabled/setTopN/setCite/buildPromptBlock/fileBlocks/summarize/tokenize/splitBlocks/isSupported/bmQuery
+- 解析：`window.__KB_DEPS` 桥接 npm 依赖（pdfjs-dist 独立打包 worker、mammoth）；单文件超 200 万字符跳过，递归深度 ≤3
+- 分块：md 标题追踪章节；PDF 逐页收集 → 按行映射页码 → 块记录块首行页码；兼容旧版纯字符串块自动归一化
+- BM25：相关度阈值过滤后再取 Top-N（低分弱命中不注入）
+
+### 3. 提问链路与引用（src/views/ai-chat.js）
+
+- 提问时注入 `KB.buildPromptBlock()` 生成的【知识库参考】（命中片段含文件名/章节/页码标注）
+- 回答中【依据：文件名】渲染为可点击按钮，弹窗按分块展示原文（新增章节/页码标注）
+- main.js 挂载 __KB_DEPS 并设置 pdf.js worker 地址；App.vue SCRIPTS 注册 kb.js；app.js bootApp 挂载 KB.init()
+
+### 4. 依赖（package.json）
+
+- 新增 `pdfjs-dist ^6.2.108`、`mammoth ^1.12.1`
+
+## 二期/三期预告
+
+- 二期：图片 OCR（桌面 macOS Vision / 网页 Tesseract.js）+ 表格文件（xlsx）
+- 三期：oMLX 本地 embedding 模型（如 bge-m3）做混合检索 + 对话传图视觉问答（需另装 VL 模型）
+
+## 版本号
+
+- `package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `Cargo.toml` / `store.js` / `AGENTS.md` 六处同步递增至 **v1.0.12**
+- 验证：`npm run vite:build` 通过；kb.js 算法单测 19/19 通过（分词/分块/章节/页码/BM25 排序/阈值过滤）
+
+---
+
+## v1.0.11 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.10
+> **版本范围**: AI 对话持久化修复 — 接口未返回时关闭弹窗/中途退出不再丢失对话内容
+
+---
+
+## 问题背景
+
+AI 使用过程中，如果没有等接口返回（或接口没完全返回）就关闭了 AI 弹窗，再次进入 AI 助手时对话内容无法看到。
+
+| 环节 | 修复前行为 | 后果 |
+|------|-----------|------|
+| 助手回复落盘时机 | 流式全部完成后才写入 DB | 未完成前 DB 里只有用户消息，界面出现无回复的空档 |
+| 关闭弹窗后再完成 | 结果写入已被移除的旧 DOM 节点 | 重开的弹窗永远不显示该条回复 |
+| 中途退出应用 | 未完成的回复未落盘 | 回复彻底丢失 |
+| 点「停止」 | 整段丢弃已流出的内容，只存一句「已停止生成。」 | 已生成部分看不到 |
+
+## 变更
+
+### 1. 助手消息改为「创建即入库 + 流式增量防抖落盘」（src/views/ai-chat.js）
+
+- 发送瞬间即创建带 `id` 的助手消息对象并推入 `DB.aiChats`（与用户消息顺序一致），随流式 chunk 更新内容并 `saveDBDebounced(800)` 增量落盘；完成后 `pending=false` 并 `saveDB()` 终态固化
+- 关闭弹窗后台请求照常完成并已入库：重开弹窗即可看到完整回复；中途退出最多丢最后 <1s 的增量内容
+- 流式渲染改为按 `data-ai-id` 实时定位气泡：弹窗关闭再打开也能命中新 DOM，边生成边可见（旧实现缓存节点，弹窗重建后写入失效节点）
+- 「停止」/出错不再整段丢弃：保留已生成部分，仅在末尾追加「已停止生成，以上为已生成部分」或「请求失败：…」说明
+- 进行中消息不可删除（删除按钮对 `pending` 消息隐藏）；回复生成期间重复发送给出明确 toast 提示
+
+### 2. 加载时清理中断残留（src/core/store.js）
+
+- `ensureDBFields()` 中清除 `aiChats` 内残留的 `pending` 标记（上次会话流式中断退出所致），避免重开后永久光标闪烁
+
+### 3. 页面隐藏/关闭刷盘兜底（src/core/ai.js）
+
+- 监听 `pagehide`：若流式仍在进行，把已入库内容再刷盘一次，最大限度保证退出应用不丢内容
+
+## 版本号
+
+- `package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` 基准版本同步递增至 **v1.0.11**
+- 构建验证：`npm run vite:build` 通过（dist 产物可双击运行）
+
+---
+
 ## v1.0.10 · 📝 待发布
 
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）

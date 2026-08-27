@@ -298,6 +298,92 @@ function _renderWebDataLocation(){
 }
 
 /** 渲染危险操作区（清空全部数据按钮及警告提示） */
+/** 知识库（本地 RAG）：异步填充目录选择、索引状态与检索开关 */
+function renderKbSection(){
+  setTimeout(_kbRefreshBox,0);
+  return '<div class="card" style="margin-top:20px">'+
+    '<div class="data-section-hd">'+icon('fileText','16')+' 知识库 <span class="tag info" style="font-size:11px">本地 RAG</span>'+
+      '<span class="note" style="float:right;font-size:12px">提问时离线检索本地文档 · 不联网</span></div>'+
+    '<div id="kbSectionBox" style="font-size:13px;color:var(--gray)">正在加载…</div>'+
+  '</div>';
+}
+async function _kbRefreshBox(){
+  const box=document.getElementById('kbSectionBox');
+  if(!box)return;
+  let s=null;
+  try{
+    if(typeof KB!=='undefined'){await KB.init();s=KB.summarize();}
+  }catch(e){/* 知识库模块未加载或初始化失败 */}
+  if(!s){
+    box.innerHTML='知识库模块未加载。';
+    return;
+  }
+  if(!s.bound){
+    box.innerHTML='<div style="line-height:1.9">'+
+      '<span class="tag gray">未绑定</span> <span style="color:var(--gray)">选择本机目录作为 AI 知识库，将解析其中的 md / txt / PDF / docx（纯前端解析、不联网、本地检索）。</span>'+
+      '<div style="margin-top:10px"><button type="button" class="btn primary sm" onclick="_kbChoose()">选择目录并索引</button></div>'+
+    '</div>';
+    return;
+  }
+  const sizeStr=s.chars<1024?s.chars+' B':(s.chars<1048576?(s.chars/1024).toFixed(1)+' KB':(s.chars/1048576).toFixed(1)+' MB');
+  const timeTxt=s.indexedAt?_backupTimeLabel(s.indexedAt):'';
+  const inner='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+      '<span class="tag ok">已绑定</span>'+
+      '<code style="font-size:12px;word-break:break-all">'+escHtml(s.dirName)+'</code>'+
+      (s.indexing?'<span class="tag warn">索引中…</span>':'')+
+      '<span style="color:var(--ink)">'+s.files+' 个文件 · '+s.blocks+' 个分块 · '+sizeStr+'</span>'+
+      (timeTxt?'<span style="color:var(--gray)">最近索引 '+timeTxt+'</span>':'')+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
+      '<button type="button" class="btn sm" onclick="_kbRescan()" '+(s.indexing?'disabled':'')+'>'+icon('refresh','14')+' 重新索引</button>'+
+      '<button type="button" class="btn sm" onclick="_kbUnbind()" '+(s.indexing?'disabled':'')+'>'+icon('link','14')+' 断开</button>'+
+    '</div>'+
+    '<div style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)"><input type="checkbox" id="kbSectEnabled" '+(s.enabled?'checked':'')+' onchange="_kbToggle(this.checked)"> 提问时检索知识库</label>'+
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)">注入 Top-N '+
+        '<select id="kbSectTopN" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg)" onchange="_kbTopN(this.value)">'+
+          [3,4,5].map(n=>'<option value="'+n+'"'+(s.topN===n?' selected':'')+'>'+n+' 片段</option>').join('')+
+        '</select></label>'+
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)"><input type="checkbox" id="kbSectCite" '+(s.cite?'checked':'')+' onchange="_kbCite(this.checked)"> 回答标注来源</label>'+
+    '</div>'+
+    (s.error?'<div class="note" style="color:var(--red);margin-top:8px;margin-bottom:0">'+escHtml(s.error)+'</div>':'');
+  box.innerHTML=inner;
+}
+async function _kbChoose(){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  const r=await KB.chooseDir();
+  if(r&&r.cancelled)return;
+  if(r&&r.ok){
+    _kbToastResult('知识库索引完成',r);
+    if((r.scanned||0)===0&&(!r.errors||!r.errors.length)){toast('所选目录中没有找到 md / txt / PDF / docx 文件','warning');}
+  }
+  else{toast(r&&r.error?r.error:'选择目录失败','error');}
+  _kbRefreshBox();
+}
+async function _kbRescan(){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  const r=await KB.rescan();
+  if(r&&r.ok){_kbToastResult('重新索引完成',r);}
+  else{toast(r&&r.error?r.error:'重新索引失败','error');}
+  _kbRefreshBox();
+}
+async function _kbUnbind(){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  await KB.unbind();
+  toast('已断开知识库目录','info');
+  _kbRefreshBox();
+}
+/** 索引结果提示：扫描数/失败明细不再被静默吞掉 */
+function _kbToastResult(prefix,r){
+  const errs=(r&&Array.isArray(r.errors))?r.errors:[];
+  let msg=prefix+(r?('：扫描 '+((typeof r.scanned==='number')?r.scanned:r.files)+' 个受支持文件，成功 '+(r.files)+' 个 · '+(r.blocks)+' 个分块'):'' );
+  if(errs.length)msg+='；失败 '+errs.length+' 个（'+errs.slice(0,2).join(' / ')+(errs.length>2?' 等':'')+'）';
+  toast(msg,errs.length?'warning':'success');
+}
+function _kbToggle(v){if(typeof KB==='undefined')return;KB.setEnabled(v);toast(v?'提问时将检索知识库':'已关闭知识库检索','info');}
+function _kbTopN(v){if(typeof KB==='undefined')return;const n=KB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}
+function _kbCite(v){if(typeof KB==='undefined')return;KB.setCite(v);toast(v?'回答将标注来源':'已关闭来源标注','info');}
+
 function renderDangerZone(){
   return '<div style="border-top:1px solid var(--line);padding-top:20px">'+
       '<div class="card" style="border-color:var(--red-line)">'+
@@ -321,7 +407,7 @@ function viewData(){
   let body='';
   if(tab==='history')body=renderOpsHistory();
   else if(tab==='trash')body=renderTrash();
-  else body=renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderDangerZone();
+  else body=renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderKbSection()+renderDangerZone();
   return tabs+'<div class="data-tab-body">'+body+'</div>';
 }
 function _switchDataTab(name){window._dataTab=name;render();}

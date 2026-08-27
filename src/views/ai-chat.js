@@ -42,8 +42,32 @@ function aiStatusLabel(){
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
-  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=message.id?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
-  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+(isUser?escHtml(message.content):renderAIMarkdown(message.content))+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+'</article>';
+  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
+  const content=isUser?escHtml(message.content):aiRenderCite(renderAIMarkdown(message.content));
+  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+'</article>';
+}
+/** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
+function aiRenderCite(html){
+  if(!html)return html;
+  return String(html).replace(/【依据：([^】]+)】/g,function(m,name){
+    const trimmed=(name||'').trim();
+    if(!trimmed)return m;
+    return '<button type="button" class="ai-cite" onclick="kbShowFile(\''+escAttr(trimmed)+'\')" title="查看原文：'+escAttr(trimmed)+'">'+escHtml(trimmed)+'</button>';
+  });
+}
+/** 查看知识库某文件的原文（弹窗展示其全部分块，用于核对引用来源） */
+async function kbShowFile(nameOrRel){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  const blocks=await KB.fileBlocks(nameOrRel);
+  if(!blocks.length){toast('未在知识库中找到该文件：'+nameOrRel,'warning');return;}
+  const html='<div class="kb-viewer"><div style="margin-bottom:8px"><span class="tag green">'+escHtml(nameOrRel)+'</span> <span class="note">'+blocks.length+' 个分块</span></div>'+blocks.map(function(b,bi){
+    const meta=[];
+    if(b.chapter)meta.push('章节：'+escHtml(b.chapter));
+    if(b.page)meta.push('第'+b.page+'页');
+    const mtag=meta.length?' <span class="note">'+meta.join(' · ')+'</span>':'';
+    return '<details'+(bi===0?' open':'')+'><summary>分块 '+(bi+1)+mtag+'</summary><pre class="kb-block">'+escHtml(b.text)+'</pre></details>';
+  }).join('')+'</div>';
+  modal('知识库原文 · '+nameOrRel,html,'关闭',()=>closeModal(),true);
 }
 function aiWelcomeHTML(){return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong><p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p><p style="font-size:13px;color:var(--gray)">当前运行：'+escHtml(AI.runtimeLabel())+'</p></article>';}
 function aiScrollBottom(){const box=document.getElementById('aiMessages');if(box)box.scrollTop=box.scrollHeight;}
@@ -81,7 +105,10 @@ function openAIWithMessage(text,extraContext){
   },60);
 }
 function requestAISend(){
-  const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
+  const input=document.getElementById('aiInput');
+  if(!input)return;
+  if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;} // 明确反馈：后台回复仍在进行（弹窗重开后同样适用）
+  const message=input.value.trim();if(!message){input.focus();return;}
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
   const extra=_aiExtraContext;_aiExtraContext='';
   _aiCurrentSnapshot=AI.buildPreview(message,extra);
@@ -98,20 +125,40 @@ async function sendAIMessage(message,snapshot){
   const _welcome=document.querySelector('#aiMessages .ai-empty');
   if(_welcome)_welcome.remove();
   const userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
-  const pending={role:'assistant',content:'',pending:true,snapshot};messages.insertAdjacentHTML('beforeend',aiMessageHTML(pending));const pendingEl=messages.lastElementChild;const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
+  // 助手消息改为「创建即入库 + 流式增量防抖落盘」：关闭弹窗 / 中断 / 退出应用都不丢已生成的部分
+  // （修复：接口未完全返回时关闭 AI 弹窗，重开对话内容丢失的问题）
+  const liveMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),snapshot:snapshot||'',pending:true};
+  DB.aiChats.push(liveMsg);
+  if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
+  saveDBDebounced(400);
+  messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
+  const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
   aiScrollBottom();
   let renderScheduled=false;
-  const renderBubble=()=>{renderScheduled=false;const bubble=pendingEl.querySelector('.ai-bubble');if(bubble){bubble.innerHTML=renderAIMarkdown(pending.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
+  // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
+  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
   const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
   try{
-    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);
+    // 知识库检索：若已绑定且启用，本地 BM25 取 Top-N 片段拼入 system prompt（带源标注）
+    let kbBlock='';
+    try{
+      if(typeof KB!=='undefined'){
+        if(!KB.state.bound){await KB.init();}
+        if(KB.state.bound&&KB.state.enabled){
+          KB.ensureFresh(); // 距上次索引超时则后台增量更新，不阻塞本次回答
+          kbBlock=KB.buildPromptBlock(message);
+        }
+      }
+    }catch(e){console.warn('KB retrieve failed',e);}
+    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message}]);
     // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
-    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,pendingEl);
-    const res=await AI.aiWriteLoop(request,chunk=>{pending.content+=chunk;scheduleRender();},onConfirm,userMessage.id);
+    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,null);
+    const res=await AI.aiWriteLoop(request,chunk=>{liveMsg.content+=chunk;scheduleRender();saveDBDebounced(800);},onConfirm,userMessage.id);
     if(renderScheduled)renderBubble();
-    pending.content=res.content||'(操作已处理)';
-    pending.pending=false;
-    const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
+    if(res.content)liveMsg.content=res.content;      // 以模型最终返回为准
+    if(!liveMsg.content)liveMsg.content='(操作已处理)'; // 流式中断时保留已累积内容兜底
+    liveMsg.pending=false;
+    saveDB();
     // 工具执行成功时在消息下方附「撤销本批」条（复用持久化 undoBatch，刷新不失效，不误伤手动改动）
     let undoBar='';
     if(res.lastToolResults&&res.lastToolResults.length){
@@ -126,8 +173,20 @@ async function sendAIMessage(message,snapshot){
       }
       if(typeof render==='function'&&okN>0)render();
     }
-    pendingEl.outerHTML=aiMessageHTML(assistantMessage)+undoBar;
-  }catch(error){const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');pending.content=error&&error.name==='AbortError'?'已停止生成。':'请求失败：'+errMsg;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+    // 更新弹窗内气泡为最终态；undoBar 紧随其后插入（弹窗未开则跳过，内容已落盘，重开可见）
+    const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
+    if(art)art.outerHTML=aiMessageHTML(liveMsg)+undoBar;
+  }catch(error){
+    const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');
+    // 中断/出错不再整段丢弃已生成的部分，仅在末尾追加说明并立即落盘
+    const note=error&&error.name==='AbortError'?'已停止生成'+(liveMsg.content?'，以上为已生成部分':'')+'。':'请求失败：'+errMsg+(liveMsg.content?'（以上为已生成部分）':'');
+    liveMsg.content=(liveMsg.content?liveMsg.content+'\n\n':'')+note;
+    liveMsg.pending=false;
+    saveDB();
+    const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
+    if(art)art.outerHTML=aiMessageHTML(liveMsg);
+    toast(note,'error');
+  }finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
 /** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
@@ -303,9 +362,74 @@ function fmtOpsVal(v){
   }
   return String(v);
 }
+/* ===== 本地知识库（KB）设置区 ===== */
+/** 渲染知识库设置区 HTML（AI 设置弹窗内嵌，id=kbZone） */
+function kbrenderZone(stat){
+  if(!stat)return '<p class="note">知识库模块未加载。</p>';
+  const s=stat;
+  let head='';
+  if(s.bound){
+    head+='<div style="margin:6px 0 2px"><span class="tag green">已绑定</span> <strong>'+escHtml(s.dirName)+'</strong>'+(s.indexing?' <span class="ai-status warning">● 索引中…</span>':'')+(s.enabled?' <span class="tag blue">检索开启（Top '+s.topN+'）</span>':' <span class="tag">检索关闭</span>')+'</div>'+
+      '<div class="note">'+s.files+' 个文件 · '+s.blocks+' 个分块 · 约 '+Math.round(s.chars/1000)+'K 字'+(s.indexedAt?(' · 索引于 '+new Date(s.indexedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):'')+'</div>';
+    if(s.error)head+='<div class="ai-status warning">⚠ '+escHtml(s.error)+'</div>';
+  }else{
+    head='<div style="margin:6px 0 2px"><span class="ai-status warning">● 未绑定知识库目录</span></div><div class="note">绑定一个本地文件夹作为知识库（支持 md/txt/pdf/docx，PDF/Word 需联网首次加载解析内核），正文留在原目录不动，解析后的分块全文与索引写入独立的 wb_fastener_kb 库，与业务数据分离。</div>';
+  }
+  const actions=s.bound
+    ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+((s.indexing)?' disabled':'')+'>断开</button>'
+    :'<button type="button" class="btn sm primary" onclick="kbBindDir()">选择目录并索引</button>';
+  const enableRow='<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetEnabled(this.checked)"> 提问时检索知识库</label>'+
+    (s.bound?'<label style="display:flex;align-items:center;gap:4px;font-size:13px">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" style="width:54px;padding:2px 6px" onchange="kbSetTopN(this.value)"></label>':'')+
+    '<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbCite" '+(s.cite?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetCite(this.checked)"> 回答标注来源</label></div>';
+  return head+'<div style="margin-top:6px">'+actions+'</div>'+enableRow;
+}
+/** 刷新设置弹窗内的知识库区块（每次操作后重渲染） */
+function kbRefreshZone(){
+  try{
+    const zone=document.getElementById('kbZone');
+    if(zone)zone.innerHTML=kbrenderZone(KB.summarize());
+  }catch(e){console.warn(e);}
+}
+/** 索引结果提示（AI 弹窗内）：失败明细不吞掉 */
+function kbToastResult(prefix,r){
+  const errs=(r&&Array.isArray(r.errors))?r.errors:[];
+  let msg=prefix+(r?('：扫描 '+((typeof r.scanned==='number')?r.scanned:r.files)+' 个受支持文件，成功 '+(r.files)+' 个 / '+(r.blocks)+' 个分块'):'' );
+  if(errs.length)msg+='；失败 '+errs.length+' 个（'+errs.slice(0,2).join(' / ')+(errs.length>2?' 等':'')+'）';
+  toast(msg,errs.length?'warning':'success');
+}
+async function kbBindDir(){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  const r=await KB.chooseDir();
+  if(r&&r.cancelled)return;
+  kbRefreshZone();
+  if(r&&r.ok)kbToastResult('知识库索引完成',r);
+  else if(r&&r.error)toast(r.error,'warning');
+}
+async function kbRescan(){
+  if(typeof KB==='undefined')return;
+  const r=await KB.rescan();
+  kbRefreshZone();
+  if(r&&r.ok)kbToastResult('已重新索引',r);
+  else if(r&&r.error)toast(r.error,'warning');
+}
+async function kbUnbind(){
+  if(typeof KB==='undefined')return;
+  confirmModal('确认断开知识库目录？将清空独立库 wb_fastener_kb 中的分块与索引（源文件不受影响）。',async()=>{
+    const r=await KB.unbind();
+    kbRefreshZone();
+    if(r&&r.ok)toast('知识库已断开','info');
+  },'断开知识库');
+}
+function kbSetEnabled(v){if(typeof KB!=='undefined'){KB.setEnabled(v);toast(v?'知识库检索已开启':'知识库检索已关闭','info');}}
+function kbSetTopN(v){if(typeof KB!=='undefined'){const n=KB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}}
+function kbSetCite(v){if(typeof KB!=='undefined'){KB.setCite(v);toast(v?'回答将标注来源':'已关闭来源标注','info');}}
+
 async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';
   const bodyBuilder=async function(){
+    let kbStat=null;
+    try{if(typeof KB!=='undefined'){await KB.init();kbStat=KB.summarize();}}catch(e){kbStat=null;}
+    const kbZone=kbrenderZone(kbStat);
     const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
     let savedKey='';
     try{if(typeof AI.getDeepseekToken==='function')savedKey=await AI.getDeepseekToken();}catch(e){savedKey='';}
@@ -324,6 +448,7 @@ async function openAISettings(){
     const keyPh=savedKey?'已保存 Key，输入新值覆盖；留空保存则删除':'粘贴 API_KEY（本地 Ollama 可留空）';
     return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
       '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
+      '<div class="field"><label class="f">知识库（本地 RAG）</label><div id="kbZone">'+kbZone+'</div></div>'+
       '<div class="field"><label class="f">端点预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点选预设自动填入下方 Base URL 与模型；也可手动自定义任意 OpenAI 兼容端点。</div></div>'+
       '<div class="field"><label class="f" for="aiBaseUrl">Base URL（OpenAI 兼容端点）</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'"><div class="note">需以 /v1 结尾；本地 Ollama 填 http://127.0.0.1:11434/v1（Key 可留空）；本地 oMLX 填 http://127.0.0.1:8000/v1，API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。</div></div>'+
       '<div class="field"><label class="f" for="aiModel">模型</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"><div class="note">OpenAI 兼容模型名；自定义端点可填该端点支持的任意模型。</div></div>'+
