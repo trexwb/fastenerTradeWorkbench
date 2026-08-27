@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.9';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.10';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -97,6 +97,7 @@ function ensureDBFields(){
 
 /* ---- 本地文件同步（File System Access API） ---- */
 let fileHandle=null;       // 文件句柄
+let syncDirHandle=null;    // 同步目录句柄（网页版用于展示「数据所在目录」，仅用于显示/备份定位）
 let fileSync=false;        // true=已绑定且有权, 'pending'=已绑定但需重新授权, false=未绑定
 let fileLastSave='';       // 最后写入时间
 let bindingInProgress=false; // true=正在执行绑定流程，禁止一切文件写入（防止竞态覆盖）
@@ -136,6 +137,30 @@ async function fhLoad(){const db=await fhOpen();return new Promise((res,rej)=>{c
  * @returns {Promise<void>} 完成（无返回值）
  */
 async function fhDelete(){const db=await fhOpen();return new Promise((res,rej)=>{const tx=db.transaction(FH_STORE,'readwrite');tx.objectStore(FH_STORE).delete(FH_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+/* 通用句柄持久化（同一 FH_DB 库，按 key 区分：同步目录 / 备份目录） */
+const KEY_SYNC_DIR='syncDir';const KEY_BACKUP_DIR='backupDir';
+/**
+ * 将任意 FileSystemHandle 按 key 持久化到 IndexedDB（目录句柄需单独保存以便刷新后展示目录名）。
+ * @param {string} key - 句柄键名
+ * @param {FileSystemHandle|null} h - 待持久化的句柄，传 null 表示删除
+ * @returns {Promise<void>} 完成（无返回值）
+ */
+async function fhStoreKey(key,h){
+  const db=await fhOpen();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(FH_STORE,'readwrite');
+    const os=tx.objectStore(FH_STORE);
+    if(h===null)os.delete(key);else os.put(h,key);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+/**
+ * 按 key 读取持久化的句柄。
+ * @param {string} key - 句柄键名
+ * @returns {Promise<FileSystemHandle|null>} 句柄或 null
+ */
+async function fhLoadKey(key){const db=await fhOpen();return new Promise((res,rej)=>{const tx=db.transaction(FH_STORE,'readonly');const r=tx.objectStore(FH_STORE).get(key);r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error);});}
 
 /* 权限检查 */
 /**
@@ -282,9 +307,11 @@ async function _doBindDirectory(){
       await idbSave();
     }
     // 情况3：文件为空（刚创建/原本就空） → 保持当前 DB 不变，待 saveToFile 把当前库写入文件
-    // 正式开启同步并持久化句柄
+    // 正式开启同步并持久化句柄（文件句柄 + 目录句柄：目录句柄用于展示「数据所在目录」）
     fileSync=true;
+    syncDirHandle=dirHandle;
     await fhSave(handle);
+    await fhStoreKey(KEY_SYNC_DIR,dirHandle);
     bindingInProgress=false;
     // 将合并/导入/当前的 DB 写回文件，确保文件与 IndexedDB 一致；
     // 由于合并模式下写入的是 IndexedDB ∪ 文件数据的并集，绝不发生「清空目标文件」
@@ -306,7 +333,9 @@ async function _doBindDirectory(){
 async function unbindFile(){
   confirmModal('解绑后数据将仅保存在浏览器 localStorage。确认解绑本地文件？',async()=>{
     fileHandle=null;fileSync=false;fileLastSave='';
+    syncDirHandle=null;
     await fhDelete();
+    await fhStoreKey(KEY_SYNC_DIR,null);
     closeModal();render();
     toast('已解绑本地文件','info');
   },'确认解绑');
@@ -455,6 +484,8 @@ async function initFileHandle(){
     const handle=await fhLoad();
     if(!handle)return;
     fileHandle=handle;
+    // 恢复同步目录句柄（用于展示「数据所在目录」；旧版本未持久化时为空，仅影响展示）
+    syncDirHandle=await fhLoadKey(KEY_SYNC_DIR);
     const perm=await handle.queryPermission({mode:'readwrite'});
     if(perm==='granted'){
       fileSync=true;
@@ -638,6 +669,7 @@ async function initApp(){
     render();
   }
   autoPurgeTrash();
+  initAutoBackup();
 }
 
 /**
@@ -944,3 +976,299 @@ const _AI_OPS_FNS=['recordAiOp','undoAiOp','undoBatch','softDelete','softDeleteS
 function seedData(){
   _seedData(DEFAULT_SPECS, saveDB);
 }
+
+/* =========================================================
+   自动备份 + 数据所在目录（数据管理「备份与恢复」增强）
+   桌面版（Tauri）：备份目录固定为应用数据目录（用户约束：打包桌面应用即把数据同步目录作为备份目录），
+                   备份=Rust 命令复制 data.json → backup_<本地时间戳>.json
+   网页版：备份目录为 showDirectoryPicker 选择的目录（句柄持久化），
+           备份=写「紧固件贸易工作台_备份_<本地时间戳>.json」到该目录
+   存储：配置放 localStorage；备份/同步目录句柄复用 FH_DB 库（key=backupDir / syncDir）
+   ========================================================= */
+const BACKUP_CFG_KEY='wb_fastener_backup_cfg';
+const BACKUP_FILE_PREFIX='紧固件贸易工作台_备份_';   // 网页版备份文件名前缀
+const DST_BACKUP_PREFIX='backup_';                  // 桌面版备份文件名前缀（与 lib.rs BACKUP_PREFIX 一致）
+const DAY_MS=86400000;                              // 1 天毫秒数
+const BACKUP_INTERVAL_OPTIONS=[1,3,7,14,30];        // 快照/提醒间隔可选天数
+const BACKUP_KEEP_OPTIONS=[5,10,20,30,50];          // 快照保留份数可选值
+const BACKUPS_SUBDIR='backups';                     // 快照存放子目录（对齐「数据目录 backups/」）
+
+let _backupDirHandle=null;   // 网页版备份目录句柄（内存缓存，指向用户所选目录；快照实际写入其 backups/ 子目录）
+let _autoBackupTimer=null;   // 自动备份检查定时器
+let _backupRetryAt=0;        // 自动备份失败冷却时间戳（10分钟内不重试，避免静默高频重试）
+
+/** 读取自动备份配置（含旧版本迁移：period 字符串 → intervalDays 天数） */
+function backupCfgGet(){
+  try{
+    const c=JSON.parse(localStorage.getItem(BACKUP_CFG_KEY)||'{}');
+    // 旧版字段迁移（daily/weekly/monthly → 天）
+    if('period' in c&&!(c.intervalDays>0)){
+      const map={daily:1,weekly:7,monthly:30};
+      c.intervalDays=map[c.period]||7;
+      c.enabled=c.period!=='off'&&c.enabled;
+      delete c.period;
+    }
+    return {
+      enabled:!!c.enabled,
+      intervalDays:c.intervalDays>0?c.intervalDays:7,
+      keepCount:c.keepCount>0?c.keepCount:20,
+      remindEnabled:!!c.remindEnabled,
+      remindIntervalDays:c.remindIntervalDays>0?c.remindIntervalDays:7,
+      lastBackupAt:c.lastBackupAt||0,
+      lastRemindAt:c.lastRemindAt||0
+    };
+  }catch(e){return {enabled:false,intervalDays:7,keepCount:20,remindEnabled:false,remindIntervalDays:7,lastBackupAt:0,lastRemindAt:0};}
+}
+/** 保存自动备份配置 */
+function backupCfgSet(cfg){try{localStorage.setItem(BACKUP_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
+/** 自动快照开关 */
+function setBackupEnabled(on){const c=backupCfgGet();c.enabled=!!on;backupCfgSet(c);}
+/** 自动快照间隔（天数） */
+function setBackupInterval(days){const c=backupCfgGet();c.intervalDays=Math.max(1,Math.floor(Number(days)||7));backupCfgSet(c);}
+/** 快照保留份数（超出自动删除最旧） */
+function setKeepCount(n){const c=backupCfgGet();c.keepCount=Math.max(1,Math.floor(Number(n)||20));backupCfgSet(c);}
+/** 备份提醒开关 */
+function setRemindEnabled(on){const c=backupCfgGet();c.remindEnabled=!!on;backupCfgSet(c);}
+/** 备份提醒间隔（天数） */
+function setRemindInterval(days){const c=backupCfgGet();c.remindIntervalDays=Math.max(1,Math.floor(Number(days)||7));backupCfgSet(c);}
+/** 本地时区时间戳 YYYYMMDD_HHMMSS（备份文件名用，避免 UTC 差 8 小时） */
+function _localStamp(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+}
+/** 时间戳 → 显示用「YYYY-MM-DD HH:mm」 */
+function _backupTimeLabel(ts){
+  if(!ts)return '';
+  const d=new Date(ts);
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+/** 备份快照：排除回收站与操作历史（与导出/文件同步约束一致） */
+function _backupSnapshot(){const s={...DB};delete s.trash;delete s.aiOps;return s;}
+
+/* ---- 备份目录句柄（网页版） ---- */
+async function _loadBackupDirHandle(){
+  if(_backupDirHandle)return _backupDirHandle;
+  try{_backupDirHandle=await fhLoadKey(KEY_BACKUP_DIR);}catch(e){_backupDirHandle=null;}
+  return _backupDirHandle;
+}
+async function _saveBackupDirHandle(h){_backupDirHandle=h;await fhStoreKey(KEY_BACKUP_DIR,h);}
+/** 网页版：获取快照子目录句柄（所选备份目录下的 backups/，自动创建）；未设置备份目录返回 null */
+async function _backupSnapDirHandle(){
+  const dir=await _loadBackupDirHandle();
+  if(!dir)return null;
+  try{return await dir.getDirectoryHandle(BACKUPS_SUBDIR,{create:true});}catch(e){return null;}
+}
+/** 网页版：弹出目录选择器设置备份目录 */
+async function chooseBackupDir(){
+  if(!('showDirectoryPicker' in window)){toast('当前浏览器不支持目录选择，请使用 Chrome 或 Edge','error');return;}
+  try{
+    const dir=await window.showDirectoryPicker({mode:'readwrite'});
+    if(!(await fhPerm(dir,true))){toast('未获得目录读写权限，请点「允许」授予后重试','error');return;}
+    await _saveBackupDirHandle(dir);
+    render();
+    toast('备份目录已设置为：'+dir.name,'success');
+  }catch(e){if(e.name!=='AbortError')toast('选择备份目录失败：'+e.message,'error');}
+}
+/** 备份目录显示名（网页版；未设置返回空串） */
+async function backupDirName(){const h=await _loadBackupDirHandle();return h&&h.name?h.name:'';}
+
+/* ---- 执行备份 ---- */
+/**
+ * 执行一次备份（立即或自动共用）：
+ *  - 桌面版：先 saveDB 确保 data.json 为最新，再调 Rust backup_create 复制为带时间戳文件；
+ *  - 网页版：写入备份目录中带时间戳的 JSON 文件。
+ * @returns {Promise<string>} 备份文件名
+ */
+async function performBackup(){
+  const name=IS_TAURI_RUNTIME?(DST_BACKUP_PREFIX+_localStamp()+'.json'):(BACKUP_FILE_PREFIX+_localStamp()+'.json');
+  if(IS_TAURI_RUNTIME){
+    await saveDB(); // 双写落盘（含 data_file_save → data.json），保证备份的是最新数据
+    await window.__TAURI__.core.invoke('backup_create',{name:name});
+  }else{
+    const snapDir=await _backupSnapDirHandle();
+    if(!snapDir){const err=new Error('未设置备份目录');err.code='NO_BACKUP_DIR';throw err;}
+    const fh=await snapDir.getFileHandle(name,{create:true});
+    const w=await fh.createWritable();
+    await w.write(JSON.stringify(_backupSnapshot(),null,2));
+    await w.close();
+  }
+  return name;
+}
+/** 立即备份（UI 按钮触发） */
+async function nowBackup(){
+  try{
+    const name=await performBackup();
+    const c=backupCfgGet();c.lastBackupAt=Date.now();backupCfgSet(c);
+    await pruneOldBackups(); // 按保留份数清理最旧快照
+    toast('备份成功：'+name,'success');
+  }catch(e){
+    if(e.code==='NO_BACKUP_DIR'){toast('请先设置备份目录','error');}
+    else{toast('备份失败：'+e.message,'error');}
+  }
+  render();
+}
+/** 是否到自动备份时间点（间隔判断，单位天） */
+function _backupDue(c){
+  return c.enabled&&(!c.lastBackupAt||(Date.now()-c.lastBackupAt)>=c.intervalDays*DAY_MS);
+}
+/** 自动备份到期检查（应用启动时 + 定时器调用） */
+async function maybeAutoBackup(){
+  const c=backupCfgGet();
+  if(!c.enabled||Date.now()<_backupRetryAt)return;
+  if(!_backupDue(c))return;
+  try{
+    if(!IS_TAURI_RUNTIME){
+      const dir=await _backupSnapDirHandle();
+      if(!dir){_backupRetryAt=Date.now()+600000;return;} // 未设置备份目录，冷却后再试
+    }
+    const name=await performBackup();
+    const nc=backupCfgGet();nc.lastBackupAt=Date.now();backupCfgSet(nc);
+    await pruneOldBackups();
+    // 仅在前台可见时弹提示，避免后台标签页静默打扰
+    if(typeof document==='undefined'||!document.hidden)toast('已自动备份：'+name,'success');
+  }catch(e){_backupRetryAt=Date.now()+600000;}
+}
+/** 备份提醒：距上次备份超过提醒间隔时，应用启动后弹窗提醒（每个备份周期仅提醒一次） */
+async function checkBackupReminder(){
+  const c=backupCfgGet();
+  if(!c.remindEnabled||!c.lastBackupAt)return;
+  if(Date.now()-c.lastBackupAt<c.remindIntervalDays*DAY_MS)return;
+  if(c.lastRemindAt>=c.lastBackupAt)return; // 本周期已提醒过
+  const nc=backupCfgGet();nc.lastRemindAt=Date.now();backupCfgSet(nc);
+  if(typeof document==='undefined'||document.hidden)return;
+  const days=Math.max(1,Math.floor((Date.now()-c.lastBackupAt)/DAY_MS));
+  confirmModal('距上次备份已超过 '+days+' 天，建议立即备份以防数据丢失。',function(){closeModal();nowBackup();},'立即备份','稍后提醒');
+}
+/** 初始化自动备份调度（initApp 末尾调用）：启动后 3 秒检查一次备份与提醒，之后每分钟检查 */
+function initAutoBackup(){
+  if(_autoBackupTimer)return;
+  setTimeout(function(){maybeAutoBackup();checkBackupReminder();},3000);
+  _autoBackupTimer=setInterval(function(){
+    if(typeof document!=='undefined'&&document.hidden)return; // 后台标签不轮询，恢复可见时 next tick 补查
+    maybeAutoBackup();
+  },60000);
+}
+
+/* ---- 备份列表 / 删除 / 恢复 ---- */
+/** 列出备份文件（最新在前）：[{name,size,modified}] */
+async function listBackups(){
+  if(IS_TAURI_RUNTIME){
+    const arr=await window.__TAURI__.core.invoke('backup_list');
+    if(!Array.isArray(arr))return [];
+    return arr.map(function(b){return {name:b.name,size:b.size||0,modified:(b.modified||0)*1000};}); // Rust modified 为 Unix 秒，转毫秒
+  }
+  const dir=await _backupSnapDirHandle();
+  if(!dir)return [];
+  const out=[];
+  try{
+    for await(const entry of dir.values()){
+      if(entry.kind!=='file'||!entry.name.startsWith(BACKUP_FILE_PREFIX)||!entry.name.endsWith('.json'))continue;
+      let size=0,modified=0;
+      try{const f=await entry.getFile();size=f.size;modified=f.lastModified;}catch(e){}
+      out.push({name:entry.name,size:size,modified:modified});
+    }
+  }catch(e){}
+  out.sort((a,b)=>b.modified-a.modified);
+  return out;
+}
+/** 按保留份数清理：超出 keepCount 份的最旧快照自动删除（列表已按最新在前排序，尾部即最旧） */
+async function pruneOldBackups(){
+  const cfg=backupCfgGet();
+  const list=await listBackups();
+  if(list.length<=cfg.keepCount)return;
+  const toRemove=list.slice(cfg.keepCount);
+  for(const b of toRemove){
+    try{
+      if(IS_TAURI_RUNTIME){await window.__TAURI__.core.invoke('backup_remove',{name:b.name});}
+      else{
+        const snapDir=await _backupSnapDirHandle();
+        if(snapDir&&typeof snapDir.removeEntry==='function')await snapDir.removeEntry(b.name);
+      }
+    }catch(e){/* 单条清理失败不阻塞其余 */}
+  }
+}
+/** 删除指定备份（二次确认） */
+async function deleteBackup(name){
+  if(!name)return;
+  confirmModal('确认删除备份「'+name+'」？删除后不可恢复。',async function(){
+    try{
+      if(IS_TAURI_RUNTIME){await window.__TAURI__.core.invoke('backup_remove',{name:name});}
+      else{
+        const snapDir=await _backupSnapDirHandle();
+        if(snapDir&&typeof snapDir.removeEntry==='function')await snapDir.removeEntry(name);
+      }
+      closeModal();render();
+      toast('已删除备份：'+name,'info');
+    }catch(e){toast('删除备份失败：'+e.message,'error');}
+  },'确认删除');
+}
+/** 从备份恢复：读取备份内容 → 统一导入校验 → 覆盖当前数据 */
+async function restoreBackup(name){
+  if(!name)return;
+  try{
+    let text;
+    if(IS_TAURI_RUNTIME){text=await window.__TAURI__.core.invoke('backup_read',{name:name});}
+    else{
+      const snapDir=await _backupSnapDirHandle();
+      if(!snapDir){toast('备份目录不可用，请重新设置','error');return;}
+      const f=await snapDir.getFileHandle(name);
+      const file=await f.getFile();
+      text=await file.text();
+    }
+    const data=JSON.parse(text);
+    await importParsedData(data);
+    toast('已从备份恢复：'+DB.orders.length+' 订单、'+DB.prices.length+' 价格、'+DB.units.length+' 单位','success');
+  }catch(e){
+    if(e&&e.code==='IMPORT_CANCELLED'){} // 用户取消
+    else{toast('恢复失败：'+(e&&e.message||e||'未知错误'),'error');}
+  }
+}
+
+/* ---- 统一导入/恢复逻辑（cover DB） ----
+ * 供「导入 JSON 恢复」与「从备份恢复」共用：
+ * 结构校验 + 完整性警告 + 二次确认 + 覆盖 + 迁移 + 落盘。
+ * 用户取消时抛 code='IMPORT_CANCELLED' 的错误；校验失败抛普通 Error。
+ */
+async function importParsedData(data){
+  // 导入/恢复数据不含回收站与操作历史（用户约束）：强制丢弃
+  if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
+  if(!data.units||!data.prices||!data.orders){throw new Error('数据格式不正确，缺少必要字段');}
+  if(!Array.isArray(data.units)||!data.units.every(function(u){return u&&u.id&&u.name;})){throw new Error('数据校验失败：关联单位数据不完整（缺少id或name）');}
+  if(!Array.isArray(data.prices)){throw new Error('数据校验失败：价格数据格式错误');}
+  if(!Array.isArray(data.orders)){throw new Error('数据校验失败：订单数据格式错误');}
+  // 完整性检查（结算-单位 / 结算-订单 / 发票-结算）
+  const badUnits=(data.settlements||[]).filter(s=>!(data.units||[]).some(u=>u.id===s.unitId));
+  const badOrderRefs=[];(data.settlements||[]).forEach(s=>(s.orders||[]).forEach(so=>{if(!(data.orders||[]).some(o=>o.id===so.orderId))badOrderRefs.push({sId:s.id,oId:so.orderId});}));
+  const badInv=(data.invoices||[]).filter(inv=>!(data.settlements||[]).some(s=>s.id===inv.settleId));
+  const badCount=badUnits.length+badOrderRefs.length+badInv.length;
+  let warnMsg='';
+  if(badCount>0){warnMsg='⚠ 数据完整性警告：'+badCount+' 条记录存在关联缺失（单位'+badUnits.length+'、订单引用'+badOrderRefs.length+'、发票关联'+badInv.length+'），恢复后相关页面可能报错，是否仍继续？\n\n';}
+  // 二次确认（用户可取消）
+  const ok=await new Promise(function(resolve){
+    confirmModal(warnMsg+'导入将覆盖当前所有数据，确认继续?',function(){closeModal();resolve(true);},'确认导入','取消',function(){resolve(false);});
+  });
+  if(!ok){const e=new Error('已取消');e.code='IMPORT_CANCELLED';throw e;}
+  // 覆盖 + 默认字段补齐
+  DB=data;
+  if(!DB.specs)DB.specs=JSON.parse(JSON.stringify(DEFAULT_SPECS));
+  if(!DB.bom)DB.bom=[];
+  if(!DB.settlements)DB.settlements=[];
+  if(!DB.invoices)DB.invoices=[];
+  if(!DB.seq)DB.seq=100;
+  if(!DB.orderSeq){
+    const maxSeq=DB.orders.reduce(function(m,o){
+      const mt=o.id.match(/PO\d{8}-(\d+)/);
+      return mt?Math.max(m,parseInt(mt[1],10)):m;
+    },1);
+    DB.orderSeq=maxSeq+1;
+  }
+  migrateItems();
+  await saveDB();
+  closeModal();
+  return true;
+}
+
+/* 备份相关函数清单（供 data.js 自检/UI 引用，避免硬编码） */
+const _BACKUP_FNS=['backupCfgGet','setBackupEnabled','setBackupInterval','setKeepCount','setRemindEnabled','setRemindInterval','chooseBackupDir','backupDirName','nowBackup','listBackups','deleteBackup','restoreBackup','importParsedData','maybeAutoBackup','pruneOldBackups'];

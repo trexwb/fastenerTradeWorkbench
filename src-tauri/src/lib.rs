@@ -135,6 +135,108 @@ fn data_dir_get(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 const DATA_FILENAME: &str = "data.json";
+const BACKUP_PREFIX: &str = "backup_";
+
+/// 校验备份文件名合法性（仅允许 backup_ 开头、.json 结尾的标准文件名，禁止路径穿越）。
+/// 备份文件始终位于应用数据目录（与主数据文件同目录），文件名由前端按本地时区生成。
+fn valid_backup_name(name: &str) -> bool {
+    name.starts_with(BACKUP_PREFIX)
+        && name.ends_with(".json")
+        && name.len() <= 64
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains("..")
+}
+
+#[derive(Debug, Serialize)]
+struct BackupInfo {
+    name: String,
+    /// 文件大小（字节）
+    size: u64,
+    /// 修改时间（Unix 秒）
+    modified: u64,
+}
+
+fn backup_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    // 备份目录：应用数据目录下的 backups 子目录（打包桌面应用时数据同步目录即应用数据目录）
+    let root = data_root(app)?;
+    let backups = root.join("backups");
+    fs::create_dir_all(&backups).map_err(|e| format!("创建备份目录失败: {e}"))?;
+    Ok(backups)
+}
+
+/// 执行一次自动备份：把主数据文件 data.json 复制为备份目录中的带时间戳文件。
+/// name 由前端生成（本地时区 YYYYMMDD_HHMMSS），Rust 侧仅做合法性校验。
+#[tauri::command]
+fn backup_create(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    if !valid_backup_name(&name) {
+        return Err("备份文件名不合法".into());
+    }
+    let root = backup_root(&app)?;
+    let src = root.join(DATA_FILENAME);
+    if !src.exists() {
+        return Err("主数据文件不存在，无法备份".into());
+    }
+    let dst = root.join(&name);
+    if dst.exists() {
+        return Err("同名备份文件已存在，请重试".into());
+    }
+    fs::copy(&src, &dst).map_err(|e| format!("备份失败: {e}"))?;
+    Ok(name)
+}
+
+/// 列出备份目录中的所有备份文件（按修改时间倒序，最新在前）。
+#[tauri::command]
+fn backup_list(app: tauri::AppHandle) -> Result<Vec<BackupInfo>, String> {
+    let root = backup_root(&app)?;
+    let mut out = Vec::new();
+    if let Ok(rd) = fs::read_dir(&root) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !valid_backup_name(&name) {
+                continue;
+            }
+            let md = entry.metadata().map_err(|e| format!("读取备份信息失败: {e}"))?;
+            let modified = md
+                .modified()
+                .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0))
+                .unwrap_or(0);
+            out.push(BackupInfo { name, size: md.len(), modified });
+        }
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    Ok(out)
+}
+
+/// 读取指定备份文件内容（JSON 字符串），供「从备份恢复」。
+#[tauri::command]
+fn backup_read(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    if !valid_backup_name(&name) {
+        return Err("备份文件名不合法".into());
+    }
+    let p = backup_root(&app)?.join(&name);
+    if !p.exists() {
+        return Err("备份文件不存在".into());
+    }
+    fs::read_to_string(&p).map_err(|e| format!("读取备份失败: {e}"))
+}
+
+/// 删除指定备份文件。
+#[tauri::command]
+fn backup_remove(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    if !valid_backup_name(&name) {
+        return Err("备份文件名不合法".into());
+    }
+    let p = backup_root(&app)?.join(&name);
+    if !p.exists() {
+        return Err("备份文件不存在".into());
+    }
+    fs::remove_file(&p).map_err(|e| format!("删除备份失败: {e}"))
+}
 
 /// 读取应用数据目录中的主数据文件（JSON 字符串）。
 /// 文件不存在返回 Ok(None)。macOS WKWebView 的 tauri:// 协议下 IndexedDB
@@ -402,6 +504,10 @@ pub fn run() {
             data_dir_get,
             data_file_load,
             data_file_save,
+            backup_create,
+            backup_list,
+            backup_read,
+            backup_remove,
             ai_deepseek_token_write,
             ai_deepseek_token_has,
             ai_deepseek_token_get,
