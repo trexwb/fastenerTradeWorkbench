@@ -55,19 +55,160 @@ function renderStorageStatus(sizeStr){
   '</div>';
 }
 
-/** 渲染备份与恢复操作区（导出 JSON、导出 CSV、导入 JSON） */
+/** 渲染备份与恢复操作区（导出 JSON、导入 JSON、自动备份、备份文件列表） */
+/** 备份与恢复设置区（对齐「备份提醒 / 自动快照 / 保留份数」分段式完整逻辑） */
 function renderBackupSection(){
+  const cfg=backupCfgGet();
+  const isTauri=AI.state.runtime==='tauri';
+  const lastTxt=cfg.lastBackupAt?_backupTimeLabel(cfg.lastBackupAt):'尚未备份';
+  // 与 store.js BACKUP_INTERVAL_OPTIONS / BACKUP_KEEP_OPTIONS 保持一致的可选值
+  const INTV=[1,3,7,14,30],KEEPS=[5,10,20,30,50];
+  const selBase='padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font-size:13px;font-family:inherit;';
+  const rowBase='display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 12px;border-top:1px solid var(--line);';
+  const swB=function(checked,onchange){
+    return '<input type="checkbox"'+(checked?' checked':'')+' onchange="'+onchange+'" style="accent-color:var(--accent);width:16px;height:16px;flex:0 0 auto">';
+  };
+  const midB=function(t,d){
+    return '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">'+t+'</div><div style="font-size:12px;color:var(--gray);margin-top:2px">'+d+'</div></div>';
+  };
+  const selDays=function(id,cur,onchange){
+    return '<select id="'+id+'" onchange="'+onchange+'" style="'+selBase+'">'+
+      INTV.map(function(d){return '<option value="'+d+'"'+(cur===d?' selected':'')+'>每'+d+'天</option>';}).join('')+'</select>';
+  };
+  const dirRow=isTauri?
+    '<div style="'+rowBase+'">'+midB('数据所在目录','桌面版备份保存在应用数据目录下的 backups/ 子目录')+
+      '<div style="flex:0 0 auto;min-width:0;max-width:58%;text-align:right">'+
+        '<code id="backupDirSpan" style="font-size:12px;word-break:break-all;display:inline-block;vertical-align:middle">正在获取...</code>'+
+        '<button class="btn" style="padding:2px 9px;margin-left:6px;vertical-align:middle" onclick="_copyDirPath()">'+icon('copy','13')+'复制</button>'+
+      '</div></div>':
+    '<div style="'+rowBase+'">'+midB('备份目录','网页版快照写入所选目录下的 backups/ 子目录')+
+      '<button class="btn" style="flex:0 0 auto;padding:3px 10px" onclick="chooseBackupDir()">'+icon('folder','14')+'选择目录</button>'+
+      '<div style="flex:0 0 auto;max-width:100%;text-align:right">'+
+        '<div id="backupDirSpan" style="font-size:13px;font-weight:600;color:var(--ink);word-break:break-all">未设置</div>'+
+        '<div style="font-size:11px;color:var(--gray);margin-top:2px">浏览器安全限制：不显示系统绝对路径，仅展示所选文件夹名</div>'+
+      '</div></div>';
+  // render 为同步流程，目录名/备份列表异步填充后再更新
+  setTimeout(_renderBackupRuntime,0);
   return '<div style="border-top:1px solid var(--line);padding-top:20px;margin-bottom:20px">'+
-      '<div class="card">'+
+      '<div class="card" style="overflow:hidden">'+
         '<div class="data-section-hd">'+icon('download','16')+' 备份与恢复</div>'+
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;padding:14px 14px 16px">'+
           '<button class="btn primary" onclick="exportJSON()">'+icon('download')+'导出 JSON 备份</button>'+
           '<button class="btn" onclick="document.getElementById(\'importFile\').click()">'+icon('upload')+'导入 JSON 恢复</button>'+
           '<input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">'+
         '</div>'+
-        '<div class="note" style="margin-bottom:0">导出的 JSON 文件包含全部数据（关联单位、属性、价格、订单）。导入时会覆盖当前数据，请谨慎操作。建议定期导出备份。</div>'+
+        '<div style="background:var(--bg-tint)">'+
+          '<div style="'+rowBase+'">'+midB('上次备份',lastTxt)+
+            '<button class="btn" style="flex:0 0 auto" onclick="nowBackup()">'+icon('zap','14')+'立即备份</button>'+
+          '</div>'+
+          '<div style="'+rowBase+'">'+swB(cfg.remindEnabled,'_backupRemindToggled(this.checked)')+
+            midB('备份提醒','超过设定时间未备份时提醒我，可一键立即备份')+selDays('backupRemindSel',cfg.remindIntervalDays,'_backupRemindIntervalChanged(this.value)')+
+          '</div>'+
+          '<div style="'+rowBase+'">'+swB(cfg.enabled,'_backupToggle(this.checked)')+
+            midB('自动快照','开启后按设定间隔生成数据快照')+selDays('backupIntervalSel',cfg.intervalDays,'_backupIntervalChanged(this.value)')+
+          '</div>'+
+          '<div style="'+rowBase+'">'+midB('保留快照份数','超出后自动删除最旧快照，避免无限累积')+
+            '<select onchange="_backupKeepChanged(this.value)" style="'+selBase+'">'+
+              KEEPS.map(function(n){return '<option value="'+n+'"'+(cfg.keepCount===n?' selected':'')+'>'+n+'份</option>';}).join('')+'</select>'+
+          '</div>'+
+          dirRow+
+        '</div>'+
+        '<div style="padding:14px 14px 6px">'+
+          '<div style="font-size:13px;font-weight:600;margin-bottom:8px">备份文件</div>'+
+          '<div id="backupListBox" style="font-size:13px;color:var(--gray)">正在加载备份列表...</div>'+
+        '</div>'+
+        '<div class="note" style="margin:8px 14px 14px">导出的 JSON 文件包含全部数据（关联单位、属性、价格、订单）。恢复/导入时会覆盖当前数据，请谨慎操作。自动快照按设定间隔生成并保留指定份数，可从此处随时恢复或删除。</div>'+
       '</div>'+
     '</div>';
+}
+/** 备份区异步填充：备份目录显示名 + 备份文件列表 */
+function _renderBackupRuntime(){
+  const dirEl=document.getElementById('backupDirSpan');
+  if(dirEl){
+    if(AI.state.runtime==='tauri'){
+      if(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==='function'){
+        window.__TAURI__.core.invoke('data_dir_get').then(function(p){if(p)dirEl.textContent=p.replace(/\/+$/,'')+'/backups/';}).catch(function(){});
+      }
+    }else{
+      backupDirName().then(function(n){if(n)dirEl.textContent=''+n;});
+    }
+  }
+  refreshBackupList();
+}
+/** 自动快照开关 */
+function _backupToggle(checked){
+  setBackupEnabled(!!checked);
+  toast(checked?'已开启自动快照':'已关闭自动快照','success');
+  render();
+}
+/** 自动快照间隔变更 */
+function _backupIntervalChanged(val){
+  setBackupInterval(Number(val)||7);
+  toast('自动快照间隔已设为每 '+val+' 天','success');
+  render();
+}
+/** 保留份数变更 */
+function _backupKeepChanged(val){
+  setKeepCount(Number(val)||20);
+  toast('快照保留份数已设为 '+val+' 份','info');
+  render();
+}
+/** 备份提醒开关 */
+function _backupRemindToggled(checked){
+  setRemindEnabled(!!checked);
+  toast(checked?'已开启备份提醒':'已关闭备份提醒','success');
+  render();
+}
+/** 备份提醒间隔变更 */
+function _backupRemindIntervalChanged(val){
+  setRemindInterval(Number(val)||7);
+  toast('备份提醒间隔已设为每 '+val+' 天','info');
+  render();
+}
+/** 复制备份目录完整路径到剪贴板（桌面版可拿到绝对路径；网页版受浏览器限制仅有目录名） */
+async function _copyDirPath(){
+  const el=document.getElementById('backupDirSpan');
+  if(!el||!el.textContent||el.textContent==='正在获取...'||el.textContent==='未设置'){
+    toast('目录路径尚未就绪','error');return;
+  }
+  const path=String(el.textContent).trim();
+  try{
+    await navigator.clipboard.writeText(path);
+    toast('已复制完整路径：'+path,'success');
+  }catch(e){
+    toast('复制失败：'+e.message+'（可手动选取复制）','error');
+  }
+}
+/** 刷新备份文件列表（过滤并渲染可恢复/删除项） */
+async function refreshBackupList(){
+  const box=document.getElementById('backupListBox');
+  if(!box)return;
+  try{
+    const list=await listBackups();
+    if(!list.length){
+      box.innerHTML='<div style="font-size:13px;color:var(--gray);padding:4px 0">暂无备份文件'+(AI.state.runtime==='tauri'?'':'，请先设置备份目录并点击「立即备份」或开启自动备份')+'</div>';
+      return;
+    }
+    box.innerHTML=list.map(function(b){
+      const name=String(b.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return '<div style="display:flex;align-items:center;gap:10px;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;flex-wrap:wrap;background:var(--bg-tint)">'+
+        '<div style="min-width:0">'+
+          '<div style="font-size:13px;word-break:break-all">'+escHtml(b.name||'')+'</div>'+
+          '<div style="font-size:11px;color:var(--gray)">'+fmtBytes(b.size||0)+' · '+escHtml(_backupTimeLabel(b.modified||0))+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0">'+
+          '<button class="btn" style="padding:3px 10px" onclick="restoreBackup(\''+name+'\')">'+icon('rotateCcw','14')+'恢复</button>'+
+          '<button class="btn danger" style="padding:3px 10px" onclick="deleteBackup(\''+name+'\')">'+icon('trash','14')+'删除</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){box.innerHTML='<div style="font-size:13px;color:var(--err)">备份列表加载失败：'+escHtml(e.message||e)+'</div>';}
+}
+/** 字节数格式化 */
+function fmtBytes(n){
+  if(n<1024)return n+' B';
+  if(n<1048576)return (n/1024).toFixed(1)+' KB';
+  return (n/1048576).toFixed(2)+' MB';
 }
 
 /** 渲染本地文件同步模块（根据同步状态展示绑定/授权/解绑操作） */
@@ -94,6 +235,8 @@ function renderFileSyncSection(){
       '</div>'+
     '</div>';
   }
+  // 网页版：异步填充「数据所在目录」显示（render 为同步流程，setTimeout 后按 id 更新）
+  setTimeout(_renderWebDataLocation,0);
   let syncContent;
   if(fsaSupported()){
     if(fileSync===true){
@@ -132,8 +275,26 @@ function renderFileSyncSection(){
       '<div class="card">'+
         '<div class="data-section-hd">'+icon('fileText','16')+' 本地文件同步 <span class="tag ok" style="font-size:11px">推荐</span></div>'+
         syncContent+
+        '<div id="dataLocationInfo" style="font-size:13px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);line-height:1.9;color:var(--gray)">正在获取数据所在位置...</div>'+
       '</div>'+
     '</div>';
+}
+/** 网页版：填充「数据所在目录」显示（IndexedDB 主存储 + 同步目录 + 备份目录） */
+function _renderWebDataLocation(){
+  const el=document.getElementById('dataLocationInfo');
+  if(!el)return;
+  backupDirName().then(function(bd){
+    let syncName='';
+    if(fileSync===true){
+      syncName=(syncDirHandle&&syncDirHandle.name)?syncDirHandle.name:(fileHandle&&fileHandle.name||'');
+    }
+    let html='<b style="color:var(--ink)">数据所在位置</b>';
+    html+='<div>• 主存储：<b style="color:var(--ink)">浏览器 IndexedDB</b><span style="font-size:12px">（网页版数据默认保存在此，属浏览器内部存储，无磁盘路径）</span></div>';
+    if(syncName)html+='<div>• 本地同步目录：<b style="color:var(--ink)">'+escHtml(syncName)+'</b><span style="font-size:12px">（数据文件 '+escHtml(BIND_FILE_NAME)+'）</span></div>';
+    if(bd)html+='<div>• 自动备份目录：<b style="color:var(--ink)">'+escHtml(bd)+'</b><span style="font-size:12px">（所选文件夹名）</span></div>';
+    html+='<div style="font-size:12px;margin-top:6px;color:var(--gray)">浏览器出于安全限制不提供完整磁盘路径；本地文件同步绑定的目录即网页版数据所在目录，可前往操作系统文件管理器中查看该文件夹。</div>';
+    el.innerHTML=html;
+  });
 }
 
 /** 渲染危险操作区（清空全部数据按钮及警告提示） */
@@ -182,59 +343,22 @@ function exportJSON(){
   toast('已导出 '+DB.orders.length+' 条订单、'+DB.prices.length+' 条价格记录','success');
 }
 
-/** 导入 JSON 备份文件并覆盖当前数据库（含数据格式和完整性校验） */
+/** 导入 JSON 备份文件并覆盖当前数据库（结构校验+完整性警告+二次确认，逻辑集中在 store.js importParsedData） */
 function importJSON(event){
   let file=event.target.files[0];
   if(!file)return;
   let reader=new FileReader();
   reader.onload=function(e){
-    try{
-      let data=JSON.parse(e.target.result);
-      // 导入数据不含回收站/操作历史（用户约束）：强制丢弃文件中可能存在的 trash/aiOps
-      if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
-      if(!data.units||!data.prices||!data.orders){
-        toast('文件格式不正确，缺少必要字段','error');
-        return;
-      }
-      if(!Array.isArray(data.units)||!data.units.every(function(u){return u&&u.id&&u.name;})){
-        toast('数据校验失败：关联单位数据不完整（缺少id或name）','error');
-        return;
-      }
-      if(!Array.isArray(data.prices)){
-        toast('数据校验失败：价格数据格式错误','error');
-        return;
-      }
-      if(!Array.isArray(data.orders)){
-        toast('数据校验失败：订单数据格式错误','error');
-        return;
-      }
-      let badUnits=(data.settlements||[]).filter(function(s){return !(data.units||[]).some(function(u){return u.id===s.unitId;});});
-      let badOrderRefs=[];(data.settlements||[]).forEach(function(s){(s.orders||[]).forEach(function(so){if(!(data.orders||[]).some(function(o){return o.id===so.orderId;}))badOrderRefs.push({sId:s.id,oId:so.orderId});});});
-      let badInv=(data.invoices||[]).filter(function(inv){return !(data.settlements||[]).some(function(s){return s.id===inv.settleId;});});
-      let badCount=badUnits.length+badOrderRefs.length+badInv.length;
-      let warnMsg='';
-      if(badCount>0){warnMsg='⚠ 数据完整性警告：'+badCount+' 条记录存在关联缺失（单位'+badUnits.length+'、订单引用'+badOrderRefs.length+'、发票关联'+badInv.length+'），导入后相关页面可能报错，是否仍继续？\n\n';}
-      confirmModal(warnMsg+'导入将覆盖当前所有数据，确认继续?',function(){
-        DB=data;
-        if(!DB.specs)DB.specs=JSON.parse(JSON.stringify(DEFAULT_SPECS));
-        if(!DB.bom)DB.bom=[];
-        if(!DB.settlements)DB.settlements=[];
-        if(!DB.invoices)DB.invoices=[];
-        if(!DB.seq)DB.seq=100;
-        if(!DB.orderSeq){
-          let maxSeq=DB.orders.reduce(function(max,o){
-            let m=o.id.match(/PO\d{8}-(\d+)/);
-            return m?Math.max(max,parseInt(m[1],10)):max;
-          },1);
-          DB.orderSeq=maxSeq+1;
-        }
-        migrateItems();
-        saveDB().then(function(){closeModal();render();});
+    (async function(){
+      try{
+        const data=JSON.parse(e.target.result);
+        await importParsedData(data);
         toast('数据已导入：'+DB.orders.length+' 订单、'+DB.prices.length+' 价格、'+DB.units.length+' 单位','success');
-      },'确认导入');
-    }catch(err){
-      toast('文件解析失败：'+err.message,'error');
-    }
+      }catch(err){
+        if(err&&err.code==='IMPORT_CANCELLED'){} // 用户取消导入
+        else{toast('导入失败：'+(err&&err.message||err),'error');}
+      }
+    })();
   };
   reader.readAsText(file);
   event.target.value='';

@@ -5,6 +5,39 @@
 
 ---
 
+## v1.0.10 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.9
+> **版本范围**: 数据备份能力重构 — 备份提醒 + 自动快照（按天间隔）+ 保留份数自动清理 + 快照隔离目录
+
+---
+
+## 变更
+
+### 1. 自动备份重构为分段式完整逻辑
+
+| 能力 | 之前 | 现在 |
+|------|------|------|
+| 自动备份入口 | 单一周期下拉（关闭/每天/每周/每月）+ 开关 | **备份提醒** 与 **自动快照** 独立开关，各自可设间隔天数 |
+| 备份间隔 | daily / weekly / monthly | **每 N 天**（1/3/7/14/30 可选，默认 7 天） |
+| 备份提醒 | 无 | 独立「备份提醒」开关 + 间隔；超期未备份时应用启动后弹窗提醒（一键立即备份 / 稍后提醒），每个周期仅提醒一次（lastRemindAt 防重复） |
+| 保留份数 | 无上限，无人值守清理 | **保留份数**（5/10/20/30/50 份，默认 20 份），超出自动删除最旧快照（pruneOldBackups 联动手动/自动备份） |
+| 快照存放 | 桌面：数据目录根；网页：所选目录根 | 统一写入备份目录下 **`backups/` 子目录**，与数据文件隔离 |
+| 调度 | 启动 3 秒检查 + 每分钟轮询（后台不轮询、失败冷却 10 分钟） | 不变；启动 3 秒同时检查「到期备份 + 备份提醒」 |
+| 旧配置兼容 | — | period（daily/weekly/monthly/off）自动迁移为 intervalDays，保留 enabled / lastBackupAt，无需重新设置 |
+
+**变更文件**：`src/core/store.js`（backupCfgGet 迁移逻辑 + setBackupEnabled / setBackupInterval / setKeepCount / setRemindEnabled / setRemindInterval + `_backupSnapDirHandle`（网页版快照子目录）+ `pruneOldBackups`（保留清理）+ `checkBackupReminder`（提醒）+ nowBackup / maybeAutoBackup 联动）、`src/views/data.js`（renderBackupSection 分段布局「上次备份·立即备份 / 备份提醒 / 自动快照 / 保留快照份数 / 备份目录」+ 各分段 handler）、`src-tauri/src/lib.rs`（backup_root → 应用数据目录 `backups/` 子目录，自动创建）
+
+### 2. 验证
+
+- `node --check` 语法通过；`vite build` 成功；`cargo check` 通过
+- 旧配置迁移单测 6 用例全部通过（daily / weekly / monthly / off / 新版完整配置 / 损坏 JSON）
+- 浏览器冒烟：数据管理-备份与恢复 4 分段齐全、勾选与下拉交互正常、无 JS 报错，截图归档 output/
+
+---
+
 ## v1.0.9 · 📝 待发布
 
 > **状态**: 📝 待发布（构建验证后改为 ✅ 已发布）
