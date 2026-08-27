@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "fastener_workbench"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",

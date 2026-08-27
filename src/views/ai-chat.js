@@ -42,7 +42,7 @@ function aiStatusLabel(){
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
-  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=message.id?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
+  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+(isUser?escHtml(message.content):renderAIMarkdown(message.content))+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+'</article>';
 }
 function aiWelcomeHTML(){return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong><p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p><p style="font-size:13px;color:var(--gray)">当前运行：'+escHtml(AI.runtimeLabel())+'</p></article>';}
@@ -81,7 +81,10 @@ function openAIWithMessage(text,extraContext){
   },60);
 }
 function requestAISend(){
-  const input=document.getElementById('aiInput');if(!input||AI.state.chatting)return;const message=input.value.trim();if(!message){input.focus();return;}
+  const input=document.getElementById('aiInput');
+  if(!input)return;
+  if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;} // 明确反馈：后台回复仍在进行（弹窗重开后同样适用）
+  const message=input.value.trim();if(!message){input.focus();return;}
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
   const extra=_aiExtraContext;_aiExtraContext='';
   _aiCurrentSnapshot=AI.buildPreview(message,extra);
@@ -98,20 +101,29 @@ async function sendAIMessage(message,snapshot){
   const _welcome=document.querySelector('#aiMessages .ai-empty');
   if(_welcome)_welcome.remove();
   const userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
-  const pending={role:'assistant',content:'',pending:true,snapshot};messages.insertAdjacentHTML('beforeend',aiMessageHTML(pending));const pendingEl=messages.lastElementChild;const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
+  // 助手消息改为「创建即入库 + 流式增量防抖落盘」：关闭弹窗 / 中断 / 退出应用都不丢已生成的部分
+  // （修复：接口未完全返回时关闭 AI 弹窗，重开对话内容丢失的问题）
+  const liveMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),snapshot:snapshot||'',pending:true};
+  DB.aiChats.push(liveMsg);
+  if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
+  saveDBDebounced(400);
+  messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
+  const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
   aiScrollBottom();
   let renderScheduled=false;
-  const renderBubble=()=>{renderScheduled=false;const bubble=pendingEl.querySelector('.ai-bubble');if(bubble){bubble.innerHTML=renderAIMarkdown(pending.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
+  // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
+  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
   const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
   try{
     const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)}].concat(history,[{role:'user',content:message}]);
     // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
-    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,pendingEl);
-    const res=await AI.aiWriteLoop(request,chunk=>{pending.content+=chunk;scheduleRender();},onConfirm,userMessage.id);
+    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,null);
+    const res=await AI.aiWriteLoop(request,chunk=>{liveMsg.content+=chunk;scheduleRender();saveDBDebounced(800);},onConfirm,userMessage.id);
     if(renderScheduled)renderBubble();
-    pending.content=res.content||'(操作已处理)';
-    pending.pending=false;
-    const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);
+    if(res.content)liveMsg.content=res.content;      // 以模型最终返回为准
+    if(!liveMsg.content)liveMsg.content='(操作已处理)'; // 流式中断时保留已累积内容兜底
+    liveMsg.pending=false;
+    saveDB();
     // 工具执行成功时在消息下方附「撤销本批」条（复用持久化 undoBatch，刷新不失效，不误伤手动改动）
     let undoBar='';
     if(res.lastToolResults&&res.lastToolResults.length){
@@ -126,8 +138,20 @@ async function sendAIMessage(message,snapshot){
       }
       if(typeof render==='function'&&okN>0)render();
     }
-    pendingEl.outerHTML=aiMessageHTML(assistantMessage)+undoBar;
-  }catch(error){const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');pending.content=error&&error.name==='AbortError'?'已停止生成。':'请求失败：'+errMsg;pending.pending=false;const assistantMessage=AI.persistMessage('assistant',pending.content,snapshot);pendingEl.outerHTML=aiMessageHTML(assistantMessage);toast(pending.content,'error');}finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+    // 更新弹窗内气泡为最终态；undoBar 紧随其后插入（弹窗未开则跳过，内容已落盘，重开可见）
+    const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
+    if(art)art.outerHTML=aiMessageHTML(liveMsg)+undoBar;
+  }catch(error){
+    const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');
+    // 中断/出错不再整段丢弃已生成的部分，仅在末尾追加说明并立即落盘
+    const note=error&&error.name==='AbortError'?'已停止生成'+(liveMsg.content?'，以上为已生成部分':'')+'。':'请求失败：'+errMsg+(liveMsg.content?'（以上为已生成部分）':'');
+    liveMsg.content=(liveMsg.content?liveMsg.content+'\n\n':'')+note;
+    liveMsg.pending=false;
+    saveDB();
+    const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
+    if(art)art.outerHTML=aiMessageHTML(liveMsg);
+    toast(note,'error');
+  }finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
 /** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
