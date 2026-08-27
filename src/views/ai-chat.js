@@ -144,7 +144,10 @@ async function sendAIMessage(message,snapshot){
     try{
       if(typeof KB!=='undefined'){
         if(!KB.state.bound){await KB.init();}
-        if(KB.state.bound&&KB.state.enabled){kbBlock=KB.buildPromptBlock(message);}
+        if(KB.state.bound&&KB.state.enabled){
+          KB.ensureFresh(); // 距上次索引超时则后台增量更新，不阻塞本次回答
+          kbBlock=KB.buildPromptBlock(message);
+        }
       }
     }catch(e){console.warn('KB retrieve failed',e);}
     const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message}]);
@@ -387,19 +390,26 @@ function kbRefreshZone(){
     if(zone)zone.innerHTML=kbrenderZone(KB.summarize());
   }catch(e){console.warn(e);}
 }
+/** 索引结果提示（AI 弹窗内）：失败明细不吞掉 */
+function kbToastResult(prefix,r){
+  const errs=(r&&Array.isArray(r.errors))?r.errors:[];
+  let msg=prefix+(r?('：扫描 '+((typeof r.scanned==='number')?r.scanned:r.files)+' 个受支持文件，成功 '+(r.files)+' 个 / '+(r.blocks)+' 个分块'):'' );
+  if(errs.length)msg+='；失败 '+errs.length+' 个（'+errs.slice(0,2).join(' / ')+(errs.length>2?' 等':'')+'）';
+  toast(msg,errs.length?'warning':'success');
+}
 async function kbBindDir(){
   if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
   const r=await KB.chooseDir();
   if(r&&r.cancelled)return;
   kbRefreshZone();
-  if(r&&r.ok)toast('知识库索引完成：'+r.files+' 个文件 / '+r.blocks+' 个分块',r.errors&&r.errors.length?'warning':'success');
+  if(r&&r.ok)kbToastResult('知识库索引完成',r);
   else if(r&&r.error)toast(r.error,'warning');
 }
 async function kbRescan(){
   if(typeof KB==='undefined')return;
   const r=await KB.rescan();
   kbRefreshZone();
-  if(r&&r.ok)toast('已重新索引：'+r.files+' 个文件 / '+r.blocks+' 个分块',r.errors&&r.errors.length?'warning':'success');
+  if(r&&r.ok)kbToastResult('已重新索引',r);
   else if(r&&r.error)toast(r.error,'warning');
 }
 async function kbUnbind(){

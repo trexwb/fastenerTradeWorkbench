@@ -353,14 +353,17 @@ async function _kbChoose(){
   if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
   const r=await KB.chooseDir();
   if(r&&r.cancelled)return;
-  if(r&&r.ok){toast('知识库索引完成：'+r.files+' 个文件 · '+r.blocks+' 个分块','success');}
+  if(r&&r.ok){
+    _kbToastResult('知识库索引完成',r);
+    if((r.scanned||0)===0&&(!r.errors||!r.errors.length)){toast('所选目录中没有找到 md / txt / PDF / docx 文件','warning');}
+  }
   else{toast(r&&r.error?r.error:'选择目录失败','error');}
   _kbRefreshBox();
 }
 async function _kbRescan(){
   if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
   const r=await KB.rescan();
-  if(r&&r.ok){toast('重新索引完成：'+r.files+' 个文件 · '+r.blocks+' 个分块','success');}
+  if(r&&r.ok){_kbToastResult('重新索引完成',r);}
   else{toast(r&&r.error?r.error:'重新索引失败','error');}
   _kbRefreshBox();
 }
@@ -369,6 +372,13 @@ async function _kbUnbind(){
   await KB.unbind();
   toast('已断开知识库目录','info');
   _kbRefreshBox();
+}
+/** 索引结果提示：扫描数/失败明细不再被静默吞掉 */
+function _kbToastResult(prefix,r){
+  const errs=(r&&Array.isArray(r.errors))?r.errors:[];
+  let msg=prefix+(r?('：扫描 '+((typeof r.scanned==='number')?r.scanned:r.files)+' 个受支持文件，成功 '+(r.files)+' 个 · '+(r.blocks)+' 个分块'):'' );
+  if(errs.length)msg+='；失败 '+errs.length+' 个（'+errs.slice(0,2).join(' / ')+(errs.length>2?' 等':'')+'）';
+  toast(msg,errs.length?'warning':'success');
 }
 function _kbToggle(v){if(typeof KB==='undefined')return;KB.setEnabled(v);toast(v?'提问时将检索知识库':'已关闭知识库检索','info');}
 function _kbTopN(v){if(typeof KB==='undefined')return;const n=KB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}

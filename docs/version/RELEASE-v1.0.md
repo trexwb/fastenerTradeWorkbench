@@ -5,6 +5,78 @@
 
 ---
 
+## v1.0.14 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.13
+> **版本范围**: 知识库 PDF 解析收尾修复 — pdfjs-dist v6 API 差异（destroy）导致已提取成果整体作废
+
+---
+
+## 问题背景
+
+v1.0.13 的失败明细提示定位到真实根因：8 个 PDF 全部报 `pdf.destroy is not a function`。
+pdfjs-dist v6 的 `PDFDocumentProxy` 已移除 `destroy()`（仅保留 `cleanup()`），正确的资源释放入口是 `PDFDocumentLoadingTask.destroy()`。旧写法导致逐页文本**提取全部成功**后，在最后一步清理时报错，整个文件作废（0 文件 / 0 分块）。
+
+## 变更
+
+- parseFile PDF 分支重构：持有 loadingTask 引用；提取逻辑包入 try/finally；finally 中优先 `task.destroy()`，不可用时回退 `pdf.cleanup()`，任一清理失败仅 console 告警，绝不影响已提取结果
+- 验证：node 单测 10/10 通过；`npm run vite:build` 通过
+- 版本号五处同步（package.json / package-lock.json / tauri.conf.json / Cargo.toml / AGENTS.md 基准版本）
+
+---
+
+## v1.0.13 · 📝 待发布
+
+> **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-27
+> **上一版本**: v1.0.12
+> **版本范围**: 知识库可用性修复 — PDF 在 file:// 下解析失败兑底 + BM25 词频修正 + 定时增量更新 + 失败明细可见
+
+---
+
+## 问题背景
+
+知识库绑定目录后索引结果为「0 个文件 · 0 个分块」，PDF 文件未被识别。
+
+| # | 问题 | 根因 | 影响 |
+|------|------|------|------|
+| 1 | **PDF 全部解析失败**（file:// 双击运行时） | 浏览器禁止 `new Worker()`；pdf.js 降级主线程 fake worker 需要全局钩子 `globalThis.pdfjsWorker`，main.js 未提供 | getDocument reject，所有 PDF 报错且被界面吞掉，显示 0 文件 |
+| 2 | **BM25 词频失效** | `tokenize` 内部对 token 去重，块内词频（tf）恒为 1、avgdl 失真 | 检索排序退化为纯 IDF，相关片段排不准 |
+| 3 | **无定时更新** | 只有手动「重新索引」，目录新增/修改文件无法自动同步 | 违背需求「定时更新」项 |
+| 4 | **失败被静默吞掉** | 目录读取异常直接 return、解析 errors 未在数据管理页展示、文件清单缺修改时间 | 出问题只能看到 0 个文件，无法定位 |
+
+## 变更
+
+### 1. PDF file:// 兑底（src/main.js + core/kb.js）
+
+- main.js 新增 `import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs'` 并挂到 `globalThis.pdfjsWorker`：真环境仍走独立 Worker 加速，file:// 下自动降级为主线程解析（pdf.js 官方 bundler 集成钩子）
+- parseFile 对 PDF/docx 解析器缺失与失败给出明确中文报错
+
+### 2. BM25 词频修正（core/kb.js tokenize）
+
+- 分词不再去重：真实 tf 与文档长度参与打分；查询侧去重由 bmQuery 内部保持；node 单测验证高频词块排序正确
+
+### 3. 定时增量更新（core/kb.js）
+
+- 绑定成功 / 启动恢复后自动开启每 5 分钟静默扫描（仅页面可见时），比对 lastModified+size，未变化的文件复用旧分块不重读盘，新增/变更/删除自动同步进索引
+- 提问发送前距离上次索引超时则后台触发一次增量更新（不阻塞本次回答）；断开目录停止定时器
+- 文件清单补充 lastModified 修改时间元数据；增量模式下 fileId/块 index 统一重排保持一致性
+
+### 4. 失败明细可见（core/kb.js + views/data.js + views/ai-chat.js）
+
+- 目录读取权限异常不再静默 return，记入错误清单并回传 UI
+- 数据管理页与 AI 弹窗的索引结果 toast 统一展示：扫描到的受支持文件数、成功数、分块数与失败文件名明细（前 2 条）；扫到 0 个受支持文件时明确提示检查所选目录
+
+## 版本号
+
+- `package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` 基准版本同步递增至 **v1.0.13**
+- AGENTS.md 豁免段更新：「唯一豁免」改为豁免清单，第 2 项登记 pdfjs-dist / mammoth 及其打包挂载方式与 pdfjsWorker 兑底钩子约束
+- 构建验证：`npm run vite:build` 通过；kb.js 通过 node VM 单测（词频修复/BM25 排序/分块尺寸/归一化兼容）
+
+---
+
 ## v1.0.12 · 📝 待发布
 
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）

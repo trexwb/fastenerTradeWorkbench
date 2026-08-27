@@ -20,6 +20,7 @@ window.KB=(function(){
   const EXT_PDF='.pdf';
   const EXT_DOCX='.docx';
   const DEFAULT_TOPN=4;
+  const RESCAN_INTERVAL=5*60*1000;   // 定时增量更新间隔：目录新增/修改文件后最多 5 分钟内被同步进索引
   const MAX_FILE_CHARS=2_000_000;    // 单文件超过 200 万字符跳过（防御超长文件）
   const MAX_RECURSE_DEPTH=3;         // 递归遍历子目录最大深度
   const BLOCK_TARGET=500;            // 分块目标字数（400~600 区间取中）
@@ -80,14 +81,15 @@ window.KB=(function(){
     });
   }
 
-  /* ---------- 分词：中文 bi-gram + 英文/数字单词 ---------- */
+  /* ---------- 分词：中文 bi-gram + 英文/数字单词 ----------
+     注意：返回结果不去重 —— BM25 需要真实词频（tf）与文档长度（dl），
+     去重会令 tf 恒为 1、avgdl 失真，检索排序质量大幅下降；
+     查询侧的去重由 bmQuery 内部单独处理。 */
   function tokenize(text){
     const t=String(text==null?'':text);
     const res=[];
-    const seen={};
     function add(w){
       if(!w||w.length<1)return;
-      if(seen[w])return;seen[w]=1;
       res.push(w);
     }
     const zhRe=/[\u4e00-\u9fa5]+/g;
@@ -198,9 +200,19 @@ window.KB=(function(){
     }
     if(e===EXT_PDF){
       const deps=window.__KB_DEPS||{};
-      if(!deps.pdfjs){throw new Error('pdf.js 未加载');}
-      const pdf=await deps.pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-      const pageTexts=[];
+      if(!deps.pdfjs){throw new Error('PDF 解析器未加载，请刷新页面后重试');}
+      // 注意：pdfjs-dist v6 的 PDFDocumentProxy 已无 destroy()，
+      // 正确的销毁入口是 loadingTask.destroy()；旧写法会导致「提取已全部完成」
+      // 却在最后一步报错而整个文件作废。清理放进 finally 且失败不影响结果。
+      let task=null,pdf=null;
+      try{
+        try{
+          task=deps.pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())});
+          pdf=await task.promise;
+        }catch(err){
+          throw new Error('PDF 解析失败'+(err&&err.message?'：'+String(err.message).slice(0,120):'')+'；请重新构建/刷新后重试');
+        }
+        const pageTexts=[];
       const maxPages=Math.min(pdf.numPages,200);
       for(let p=1;p<=maxPages;p++){
         try{
@@ -210,7 +222,6 @@ window.KB=(function(){
           pageTexts.push(itemTexts);
         }catch(err){/* 单页失败跳过 */}
       }
-      await pdf.destroy();
       // 按行对齐页码：逐页展开为「行+页码」，确保分块能记录到精准页码
       const rows=[];const lp=[];
       pageTexts.forEach(function(pt,idx){
@@ -227,41 +238,70 @@ window.KB=(function(){
         fullPages=end?lp.slice(0,end):[];
       }
       return {text:full,chars:full.length,page:maxPages,linePages:fullPages};
+      }finally{
+        // 资源释放：优先 loadingTask.destroy()；任一清理失败仅告警，绝不影响已提取的结果
+        try{if(task&&typeof task.destroy==='function'){await task.destroy();}}catch(e){console.warn('[KB] PDF 资源释放失败(loadingTask)',e);}
+        if(!task||typeof task.destroy!=='function'){
+          try{if(pdf&&typeof pdf.cleanup==='function')await pdf.cleanup();}catch(e){/* 忽略 */}
+        }
+      }
     }
     if(e===EXT_DOCX){
       const deps=window.__KB_DEPS||{};
-      if(!deps.mammoth){throw new Error('mammoth 未加载');}
+      if(!deps.mammoth){throw new Error('docx 解析器未加载，请刷新页面后重试');}
       const res=await deps.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});
-      const text=(res&&res.value)||'';
-      if(text.length>MAX_FILE_CHARS)text.slice(0,MAX_FILE_CHARS);
+      let text=(res&&res.value)||'';
+      if(text.length>MAX_FILE_CHARS)text=text.slice(0,MAX_FILE_CHARS);
       return {text,chars:text.length,page:0,linePages:null};
     }
     return null;
   }
 
   /* ---------- 递归遍历目录（只读，不改动任何文件） ---------- */
-  async function walkDir(dir,prefix,depth,out){
+  async function walkDir(dir,prefix,depth,out,errs){
     if(depth>MAX_RECURSE_DEPTH)return;
     const entries=[];
-    try{for await(const entry of dir.values())entries.push(entry);}catch(e){return;}
+    try{for await(const entry of dir.values())entries.push(entry);}
+    catch(e){errs.push((prefix||dir.name)+': 无法读取目录内容'+(e&&e.name?'('+e.name+')':''));return;}
     for(const entry of entries){
       const name=entry.name;
       if(name.startsWith('.')||name==='node_modules')continue;
       const rel=prefix?prefix+'/'+name:name;
       if(entry.kind==='directory'){
-        await walkDir(entry,rel,depth+1,out);
+        await walkDir(entry,rel,depth+1,out,errs);
       }else if(entry.kind==='file'&&isSupported(name)){
         out.push({name:name,rel:rel,handle:entry});
       }
     }
   }
 
-  /* ---------- 绑定目录 + 全量索引 ---------- */
-  async function indexDir(dir){
+  /* ---------- 绑定目录 + 索引（支持增量模式） ----------
+     opts.incremental=true 时与上次清单逐文件比对 lastModified+size：
+     未变化的文件直接复用旧分块（不重新读盘解析），只有新增/变更/删除被处理。
+     用于定时静默更新 —— 目录新增或修改了文件也能自动同步进索引。 */
+  async function indexDir(dir,opts){
+    opts=opts||{};const incremental=!!opts.incremental;
     state.indexing=true;state.error='';
     try{
-      const found=[];
-      await walkDir(dir,'',0,found);
+      const found=[];const errs=[];
+      await walkDir(dir,'',0,found,errs);
+      // 上轮清单/分块（仅增量模式使用）：rel → 文件记录；rel → 旧分块列表
+      const prevByRel={};
+      if(incremental)(state.files||[]).forEach(function(f){if(f&&f.rel)prevByRel[f.rel]=f;});
+      const oldBlocksByRel={};
+      if(incremental){
+        (state.blocks||[]).forEach(function(b){
+          if(!b||b.text==null)return;
+          const f=(state.files||[])[b.file];
+          if(!f||!f.rel)return;
+          (oldBlocksByRel[f.rel]=oldBlocksByRel[f.rel]||[]).push({text:b.text,chapter:b.chapter||'',page:b.page||0});
+        });
+      }
+      // 采样现文件的 stat（lastModified/size），兼供全量记录与增量比对
+      const statByRel={};
+      for(let i=0;i<found.length;i++){
+        try{const st=await found[i].handle.getFile();statByRel[found[i].rel]={lastModified:st.lastModified||0,size:st.size||0};}catch(e){}
+      }
       if(!found.length){
         state.bound=true;state.dirName=dir.name;state.files=[];state.blocks=[];state.chars=0;state.indexedAt=Date.now();
         await kbPut(K_DIR,dir);
@@ -269,39 +309,84 @@ window.KB=(function(){
         await kbPut(K_FILES,[]);
         await kbPut(K_BLOCKS,[]);
         _bm=null;
-        return {ok:true,files:0,blocks:0,reads:0};
+        return {ok:true,files:0,blocks:0,reads:0,scanned:0,errors:errs.slice()};
       }
-      // 分文件解析（顺序执行，避免并发句柄竞争；实时汇报进度）
-      const files=[];const allBlocks=[];
+      // 第一遍：逐文件判定「复用旧分块」还是「重新解析」，产出最终 files 记录
+      const finalFiles=[];const newBlocksRaw={};const reusedRels={};
       let totalChars=0;let reads=0;const errors=[];
       for(let i=0;i<found.length;i++){
         const f=found[i];
         if(!f.handle)continue;
+        const prev=prevByRel[f.rel];const st=statByRel[f.rel]||{lastModified:0,size:0};
+        const canReuse=incremental&&prev&&oldBlocksByRel[f.rel]&&(prev.lastModified===st.lastModified)&&(prev.size===st.size);
+        if(canReuse){
+          reusedRels[f.rel]=1;
+          finalFiles.push(Object.assign({},prev,{id:finalFiles.length,lastModified:st.lastModified,size:st.size}));
+          totalChars+=Number(prev.chars)||0;reads++;
+          continue;
+        }
         try{
           const r=await parseFile(f.name,f.handle);
           if(r&&r.chars>0){
             const btexts=splitBlocks(f.name,r.text,r.linePages);
-            const fileId=files.length;
-            files.push({id:fileId,name:f.name,rel:f.rel,chars:r.chars,pages:r.page,blocks:btexts.length,size:f.handle?await f.handle.getFile().catch(()=>null).then(ff=>ff?ff.size:0):0});
-            btexts.forEach((bt,bi)=>{
-              allBlocks.push({id:fileId+':'+bi,file:fileId,index:bi,text:bt.text,chapter:bt.chapter||'',page:bt.page||0});
-            });
+            newBlocksRaw[f.rel]=btexts;
+            finalFiles.push({id:-1,name:f.name,rel:f.rel,chars:r.chars,pages:r.page,blocks:btexts.length,size:st.size,lastModified:st.lastModified});
             totalChars+=r.chars;reads++;
           }
+          // 提取不到文本的文件：与旧版一致静默跳过
         }catch(e){
           errors.push(f.name+': '+(e&&e.message?e.message:'解析失败'));
         }
       }
-      state.bound=true;state.dirName=dir.name;state.files=files;state.blocks=allBlocks;state.chars=totalChars;state.indexedAt=Date.now();
+      // 第二遍：按最终下标统一组装分块（复用块 + 新解析块，file/index/id 全部对齐）
+      const finalBlocks=[];
+      finalFiles.forEach(function(rec,nid){
+        rec.id=nid;
+        const src=reusedRels[rec.rel]?oldBlocksByRel[rec.rel]:newBlocksRaw[rec.rel];
+        (src||[]).forEach(function(bt,bi){
+          finalBlocks.push({id:nid+':'+bi,file:nid,index:bi,text:bt.text,chapter:bt.chapter||'',page:bt.page||0});
+        });
+      });
+      state.bound=true;state.dirName=dir.name;state.files=finalFiles;state.blocks=finalBlocks;state.chars=totalChars;state.indexedAt=Date.now();
       await kbPut(K_DIR,dir);
       await kbPut(K_META,{bound:true,dirName:dir.name,enabled:state.enabled,topN:state.topN,cite:state.cite,indexedAt:state.indexedAt});
-      await kbPut(K_FILES,files);
-      await kbPut(K_BLOCKS,allBlocks);
+      await kbPut(K_FILES,finalFiles);
+      await kbPut(K_BLOCKS,finalBlocks);
       _bm=null;
-      return {ok:true,files:files.length,blocks:allBlocks.length,reads:reads,errors:errors};
+      return {ok:true,files:finalFiles.length,blocks:finalBlocks.length,reads:reads,scanned:found.length,errors:errs.concat(errors)};
     }finally{
       state.indexing=false;
     }
+  }
+
+  /* ---------- 定时静默更新（增量）：目录新增/修改文件后自动同步进索引 ---------- */
+  let autoTimer=null;
+  function startAutoScan(){
+    if(autoTimer)return;
+    autoTimer=setInterval(function(){
+      if(document.visibilityState!=='visible')return; // 页面不可见时不空耗
+      if(state.indexing||!state.bound)return;
+      if(Date.now()-state.indexedAt<RESCAN_INTERVAL)return;
+      silentRescan('auto');
+    },RESCAN_INTERVAL);
+  }
+  function stopAutoScan(){if(autoTimer){clearInterval(autoTimer);autoTimer=null;}}
+  /** 静默增量重扫：不弹提示不打断；完成后若数据管理页打开则刷新其知识库区块 */
+  async function silentRescan(reason){
+    if(!dirHandle){try{const d=await kbGet(K_DIR);if(d)dirHandle=d;}catch(e){}}
+    if(!dirHandle)return;
+    try{
+      const r=await indexDir(dirHandle,{incremental:true});
+      console.info('[KB] 定时更新完成：'+r.files+' 个文件 · '+r.blocks+' 个分块'+(reason?' ('+reason+')':''));
+      if(typeof _kbRefreshBox==='function'&&view==='data'){try{_kbRefreshBox();}catch(e){}}
+    }catch(e){console.warn('[KB] 定时更新失败',e);}
+  }
+  /** 提问前调用：距上次索引超过间隔时，后台触发一次增量更新（不阻塞本次回答） */
+  function ensureFresh(){
+    if(!state.enabled||!state.bound)return;
+    if(Date.now()-state.indexedAt<RESCAN_INTERVAL)return;
+    if(state.indexing)return;
+    silentRescan('send');
   }
 
   /* ---------- 从独立库恢复（应用启动时调用） ---------- */
@@ -319,6 +404,7 @@ window.KB=(function(){
       state.chars=state.blocks.reduce((s,b)=>s+(b.text?b.text.length:0),0);
       dirHandle=await kbGet(K_DIR);
       _bm=null;
+      startAutoScan(); // 恢复绑定后自动开启定时增量更新
     }
     ready=true;
     return state;
@@ -343,16 +429,21 @@ window.KB=(function(){
       }
     }catch(e){/* 部分环境权限 API 受限，先尝试解析 */}
     dirHandle=dir;
-    return indexDir(dir);
+    const r=await indexDir(dir);
+    startAutoScan();
+    return r;
   }
   async function rescan(){
     if(!dirHandle){
       const d=await kbGet(K_DIR);if(d)dirHandle=d;
     }
     if(!dirHandle)return {ok:false,error:'尚未绑定知识库目录'};
-    return indexDir(dirHandle);
+    const r=await indexDir(dirHandle,{incremental:false});
+    startAutoScan();
+    return r;
   }
   async function unbind(){
+    stopAutoScan();
     dirHandle=null;
     await Promise.all([kbDelete(K_META),kbDelete(K_DIR),kbDelete(K_FILES),kbDelete(K_BLOCKS)]);
     Object.assign(state,{bound:false,dirName:'',enabled:false,files:[],blocks:[],chars:0,indexedAt:0,error:''});
@@ -375,8 +466,8 @@ window.KB=(function(){
     if(!hits.length)return '';
     const parts=hits.map(hit=>{
       const b=state.blocks[hit.i];
-      const f=state.files[b.file];
-      const name=f?f.name:(b.file||'unknown');
+      const f=(b&&typeof b.file==='number')?state.files[b.file]:null;
+      const name=(f&&f.name)?f.name:'未知来源';
       const meta=[];
       if(b.chapter)meta.push('章节：'+b.chapter);
       if(b.page)meta.push('第'+b.page+'页');
@@ -405,7 +496,8 @@ window.KB=(function(){
   return {
     init,chooseDir,rescan,unbind,setEnabled,setTopN,setCite,
     buildPromptBlock,fileBlocks,summarize,state,
-    tokenize,splitBlocks,isSupported,bmQuery
+    tokenize,splitBlocks,isSupported,bmQuery,
+    ensureFresh,startAutoScan,stopAutoScan
   };
 })();
 // 初始化时机：由 app.js 的 bootApp 异步挂载（不阻塞首屏），见 app.js

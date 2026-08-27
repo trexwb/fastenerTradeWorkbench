@@ -21,7 +21,7 @@
 2. `src-tauri/tauri.conf.json` 的 version 字段（Tauri 桌面版）
 3. `AGENTS.md` 中的「当前基准版本」
 
-当前基准版本：**v1.0.12**。
+当前基准版本：**v1.0.14**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -36,7 +36,10 @@
 
 > 以上约束适用于所有 Sub-Agent（file-agent、browser-agent、computer-agent 等），无论其在何种上下文中执行任务，均不得以任何理由违反。
 
-**唯一豁免**：`src/core/exporter.js` 的 Excel 导出功能动态加载 `xlsx-js-style@1.2.0`（SheetJS 0.18.5 的支持样式 fork，暴露全局 `window.XLSX`，带 `style_version` 标记）。加载策略为**本地优先**（`src/public/vendor/cpexcel.js` + `src/public/vendor/xlsx.min.js`，构建后位于 `dist/vendor/`，离线可用）→ **CDN 兜底**（URL 见 `_CPEXCEL_CDN`/`_XLSX_CDN`），保持按需动态加载（非静态 `<script>` 引入，file:// 下可用）。加载顺序：`cpexcel.js`（设置全局 `cptable`，提供完整代码页/多语言编码支持）→ `xlsx.min.js`（主库，检测到 `cptable` 后自动启用）。**不得换回 `xlsx@0.18.5` 社区版**（其 write 端不写单元格样式），**不得删除本地 vendor 文件改为纯 CDN**（离线场景会失败），**不得省略 cpexcel.js**（xlsx.min.js 内部 `require("./cpexcel.js")` 在浏览器环境无法执行，需通过 `<script>` 标签预先加载 cpexcel.js 设置全局 `cptable`）。导出样式在单元格上以 `cell.s` 子对象写入，适配逻辑见 `_toStyleObj`/`_wc`。导出按订单状态分发（`exportOrder` 的 switch）：`_exportOrderPendingConfirm`（待确认·产品确认单）、`_exportOrderSourcing`（寻货中·寻源进度单）、`_exportOrderQuoting`（报价中/未成交·报价中报价单，产品明细为主行、供应商报价为子行，未满足需求数量的产品在「供应数量提醒」区红色醒目提示）、`_exportOrderSignedComplete`（签约完成·签约完成结算单，重点为采购商应收明细与供应商应付明细，含已收/已付/未结金额与红色结算提醒）、`_exportOrderDelivering`（送货中/完成·送货结算单，两状态内容一致仅文件名不同；除结算明细外含送货信息——快递至采购商的地址/单号/时间，及供应商邮寄信息——各供应商按联系人/电话/邮寄地址将产品快递至我方，链路：供应商→我方收货验货→采购商）、`_exportOrderGeneral`（其余状态·通用采购订单）。
+**运行时依赖豁免清单**：
+
+1. `src/core/exporter.js` 的 Excel 导出功能动态加载 `xlsx-js-style@1.2.0`（SheetJS 0.18.5 的支持样式 fork，暴露全局 `window.XLSX`，带 `style_version` 标记）。加载策略为**本地优先**（`src/public/vendor/cpexcel.js` + `src/public/vendor/xlsx.min.js`，构建后位于 `dist/vendor/`，离线可用）→ **CDN 兜底**（URL 见 `_CPEXCEL_CDN`/`_XLSX_CDN`），保持按需动态加载（非静态 `<script>` 引入，file:// 下可用）。加载顺序：`cpexcel.js`（设置全局 `cptable`，提供完整代码页/多语言编码支持）→ `xlsx.min.js`（主库，检测到 `cptable` 后自动启用）。**不得换回 `xlsx@0.18.5` 社区版**（其 write 端不写单元格样式），**不得删除本地 vendor 文件改为纯 CDN**（离线场景会失败），**不得省略 cpexcel.js**（xlsx.min.js 内部 `require("./cpexcel.js")` 在浏览器环境无法执行，需通过 `<script>` 标签预先加载 cpexcel.js 设置全局 `cptable`）。导出样式在单元格上以 `cell.s` 子对象写入，适配逻辑见 `_toStyleObj`/`_wc`。导出按订单状态分发（`exportOrder` 的 switch）：`_exportOrderPendingConfirm`（待确认·产品确认单）、`_exportOrderSourcing`（寻货中·寻源进度单）、`_exportOrderQuoting`（报价中/未成交·报价中报价单，产品明细为主行、供应商报价为子行，未满足需求数量的产品在「供应数量提醒」区红色醒目提示）、`_exportOrderSignedComplete`（签约完成·签约完成结算单，重点为采购商应收明细与供应商应付明细，含已收/已付/未结金额与红色结算提醒）、`_exportOrderDelivering`（送货中/完成·送货结算单，两状态内容一致仅文件名不同；除结算明细外含送货信息——快递至采购商的地址/单号/时间，及供应商邮寄信息——各供应商按联系人/电话/邮寄地址将产品快递至我方，链路：供应商→我方收货验货→采购商）、`_exportOrderGeneral`（其余状态·通用采购订单）。
+2. **知识库解析依赖（v1.0.12 起）**：`pdfjs-dist`（PDF 文本层提取）与 `mammoth`（docx 提取纯文本），由 `src/main.js` 以 npm 依赖静态 import 打包进单一 iife bundle 并挂载到 `window.__KB_DEPS`，供 `core/kb.js` 取用；**不再走 CDN 动态加载**。PDF worker 采用「双通道」：真环境用独立 worker（`?url` 外置 asset 加速）；file:// 双击运行时浏览器禁止 `new Worker()`，由全局钩子 `globalThis.pdfjsWorker` 提供主线程 fake worker 兑底——**该钩子不可移除，否则 file:// 下 PDF 解析必败**。
 
 ### 2. 文件操作根目录
 
