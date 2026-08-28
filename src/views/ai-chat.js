@@ -257,6 +257,9 @@ function undoAIBatch(batchStr,btnEl){
  */
 function confirmOpsModal(toolCalls,pendingEl){
   return new Promise(resolve=>{
+    // settled 防双 resolve；settle 是唯一出口（onOk/取消/X/遮罩/Esc 兜底全部走它）
+    let settled=false;
+    const settle=function(val){if(settled)return;settled=true;resolve(val);};
     // 1. 对每条 toolCall 调用 AIT.validateOp 获取预览
     const items=toolCalls.map((tc,idx)=>{
       const meta=(typeof AIT!=='undefined'&&AIT.TOOL_META[tc.name])||{label:tc.name,tagCls:'gray'};
@@ -286,14 +289,27 @@ function confirmOpsModal(toolCalls,pendingEl){
       });
       // 执行按钮：先关弹窗再返回（用户可立即看到执行过程与结果）
       closeModal();
-      if(!approvedOps.length){resolve({cancelled:true,approvedOps:[]});return;}
-      resolve({cancelled:false,approvedOps});
+      if(!approvedOps.length){settle({cancelled:true,approvedOps:[]});return;}
+      settle({cancelled:false,approvedOps});
     },true);
-    // 覆写取消按钮：标记 cancelled
+    // 关闭路径统一接管：取消按钮 / X / 遮罩点击 / 全局 Esc（keyboard.js 调 closeModal 移除弹窗但不 resolve）
+    // 任何路径关闭都视为取消——否则 aiWriteLoop 永久 await，AI.state.chatting 锁死直到刷新页面
     const mask=document.getElementById('_mask');
+    const settleCancel=function(){if(settled)return;settled=true;closeModal();settle({cancelled:true,approvedOps:[]});};
     if(mask){
       const cancelBtn=mask.querySelector('.mf .btn:not(.primary)');
-      if(cancelBtn){cancelBtn.onclick=()=>{resolve({cancelled:true,approvedOps:[]});closeModal();};}
+      if(cancelBtn){cancelBtn.onclick=settleCancel;}
+      const xBtn=mask.querySelector('.mh .x');
+      if(xBtn)xBtn.onclick=settleCancel;
+      mask.onclick=function(e){if(e.target===mask)settleCancel();};
+      // Esc 兕底：全局 Esc 走 closeModal() 直接移除 _mask，用 MutationObserver 监听移除后兜底取消
+      const app=document.getElementById('app');
+      if(app&&typeof MutationObserver==='function'){
+        const obs=new MutationObserver(function(){
+          if(!document.getElementById('_mask')){obs.disconnect();settleCancel();}
+        });
+        obs.observe(app,{childList:true});
+      }
       // 复选框联动：实时更新已选计数
       mask.querySelectorAll('.ops-check').forEach(cb=>{
         cb.onchange=()=>{

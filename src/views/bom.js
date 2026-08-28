@@ -320,9 +320,9 @@ function _openBOMDrawer(b,idx){
     '<div class="field"><label class="f">规格 <span style="color:var(--red)">*</span></label>'+
       '<input id="bom_spec" class="bom-req" tabindex="12" value="'+escAttr(b.spec||'')+'" placeholder="如 M6×30mm · 描述尺寸规格" oninput="bomValidateField(\'spec\')">'+
     '</div>'+
-    '<div class="bom-specs-section">'+
+    '<div class="bom-specs-section sec-collapsed">'+
       '<div class="sec-hd" onclick="toggleBOMSpecsSection(this)">'+icon('chevronDown','13')+' 其他属性（点击展开）</div>'+
-      '<div class="sec-body sec-collapsed" id="bom_specs_body">'+
+      '<div class="sec-body" id="bom_specs_body">'+
         '<div class="grid3">'+
           '<div class="field"><label class="f">类型</label><div id="bom_type" class="combo" data-placeholder="选择类型..." data-val="'+escAttr(b.type||'')+'"></div></div>'+
           '<div class="field"><label class="f">标准</label><div id="bom_standard" class="combo" data-placeholder="选择标准..." data-val="'+escAttr(b.standard||'')+'"></div></div>'+
@@ -370,9 +370,12 @@ function bomValidateField(fld){
  * @returns {void}
  */
 function toggleBOMSpecsSection(el){
-  let body=document.getElementById('bom_specs_body');
-  if(!body)return;
-  let isC=body.classList.toggle('sec-collapsed');
+  // 折叠类挂在父容器上（与 units.js 单位表单同模式）：CSS 规则 .sec-collapsed .sec-body 以祖先选择器命中，
+  // 旧实现在 sec-body 自身切类，规则永不命中导致「点击无法收起」
+  const sec=el.closest('.bom-specs-section');
+  const body=document.getElementById('bom_specs_body');
+  if(!sec||!body)return;
+  const isC=sec.classList.toggle('sec-collapsed');
   el.innerHTML=(isC?icon('chevronDown','13'):icon('chevronUp','13'))+' 其他属性（点击'+(isC?'展开':'收起')+'）';
 }
 

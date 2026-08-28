@@ -612,6 +612,9 @@ function openNewSettlement(presetUnitId,type){
 
   // 绑定单位下拉
   setTimeout(function(){
+    // 绑定抽屉内容的 input/change 事件，标记未保存状态
+    const bd=document.querySelector('.drawer-panel .drawer-bd');
+    if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
     let isReceipt=document.getElementById('st_type').value==='receipt';
     let roleLabel=isReceipt?'采购商':'供应商';
     let unitOpts=DB.units.filter(function(u){return u.roles.includes(roleLabel);}).map(function(u){

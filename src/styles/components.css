@@ -382,15 +382,27 @@ tbody tr:hover .td-act .btn{opacity:1}
 
 /* UNIT SECTION — 表单分段 */
 .unit-section{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;}
-.sec-hd{background:var(--bg-soft);padding:10px 16px;font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;user-select:none;}
+.sec-hd{background:var(--bg-soft);padding:10px 16px;font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;user-select:none;cursor:pointer;}
 .sec-hd .sec-arrow{margin-left:auto;transition:transform .2s;}
 .sec-body{padding:16px;}
 .sec-body .field{margin-bottom:16px;}
 .sec-body .field:last-child{margin-bottom:0;}
+/* 祖先折叠（unit-section 父容器控制） */
 .sec-collapsed .sec-body{display:none;}
+/* 自身折叠（sec-body 自身带 sec-collapsed） */
+.sec-body.sec-collapsed{display:none;padding:0;margin:0;}
 .sec-collapsed .sec-arrow{transform:rotate(0deg);}
 .sec-expanded .sec-arrow{transform:rotate(0deg);}
 .unit-section:not(.sec-collapsed) .sec-arrow svg{transform:rotate(180deg);}
+
+/* BOM 规格分段 — 独立折叠区 */
+.bom-specs-section{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;}
+.bom-specs-section .sec-hd{background:var(--bg-soft);padding:10px 16px;font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;transition:background .15s;}
+.bom-specs-section .sec-hd:hover{background:var(--line);}
+.bom-specs-section .sec-hd svg{transition:transform .2s;}
+.bom-specs-section .sec-hd svg.chev-up{transform:rotate(180deg);}
+.bom-specs-section .sec-body{padding:16px;}
+.bom-specs-section .sec-body.sec-collapsed{display:none;padding:0;margin:0;}
 
 /* CONTACT ITEM — 联系人行 */
 .ci-row{display:flex;align-items:center;gap:4px;font-size:12px;padding:2px 0;cursor:default;}

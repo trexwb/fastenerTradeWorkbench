@@ -5,6 +5,69 @@
 
 ---
 
+## v1.0.26 · 📝 待发布
+
+> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-28
+> **上一版本**: v1.0.25
+> **版本范围**: 交互体验全面审查 — 修复「AI 操作提案弹窗关闭路径不回填导致 AI 发送永久锁死」
+
+---
+
+## 审查范围与方法
+
+对全部用户操作路径做系统性审查：① 全局核对 `onclick/onchange/oninput` 引用与函数定义（防「点击无效」）；② 全部 `classList.toggle` 折叠/显隐切换点的类挂载模式；③ modal / drawer / combo 的全部关闭路径（X / 遮罩点击 / Esc / 取消按钮 / blur）；④ 状态文案与实际状态同步；⑤ 全部表单保存防重锁覆盖。
+
+## 审查结论
+
+| 审查项 | 结论 |
+|--------|------|
+| onclick 引用完整性 | ✅ 无缺失（filterPriceMatch / filterSpecVals 为 debounce const 定义，误报排除） |
+| 折叠类挂载模式 | ✅ BOM 已修（v1.0.25）、units.js 祖先模式正确、侧栏/菜单切换正常 |
+| 箭头/文案状态同步 | ✅ units 与 BOM 均随状态切换 |
+| 保存防重锁 | ✅ units / bom / prices / settlements / invoices / orders 全覆盖 |
+| modal 关闭路径 | ❌ **发现严重缺陷：AI 操作提案弹窗（Promise 型）的 X / 遮罩点击 / Esc 关闭不回填 Promise** |
+| combo 关闭 | ✅ blur 关闭正常 |
+
+## 变更
+
+### 修复：AI 操作提案弹窗关闭导致 AI 发送永久锁死（src/views/ai-chat.js confirmOpsModal）
+
+- **场景**：模型发起写入提案弹出确认窗后，用户点击右上角 × / 遮罩空白处 / 按 Esc——这三条路径只调 `closeModal()` 移除弹窗，**不会 resolve 等待中的 Promise**；`aiWriteLoop` 永久 `await onConfirm`，`AI.state.chatting` 锁死为 true，之后所有 AI 发送被「正在生成回复」拦截，只能刷新页面恢复
+- **修复**：`settle` 唯一出口 + `settled` 防双回填；取消按钮 / X / 遮罩点击统一接管为「取消并回填」；全局 Esc（keyboard.js 调 `closeModal()` 直接移除弹窗）用 MutationObserver 监听弹窗移除后兑底取消——四条关闭路径全部闭环
+- 附带收益：任何未来新增的关闭路径（如快捷键）也自动被兑底覆盖
+
+## 版本号
+
+- 五处同步 **v1.0.26**；构建通过（settle/MutationObserver 逻辑入产物）
+
+---
+
+## v1.0.25 · 📝 待发布
+
+> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-28
+> **上一版本**: v1.0.24
+> **版本范围**: BOM 表单「其他属性」折叠修复 — 折叠类挂在祖先容器，点击展开/收起恢复生效
+
+---
+
+## 问题背景
+
+新建/编辑 BOM 表单中「其他属性」折叠条点击无效：内容始终展开，箭头与文案（▼ 点击展开）与实际状态不符。根因是折叠类 `sec-collapsed` 被切在 `.sec-body` 自身，而 CSS 规则 `.sec-collapsed .sec-body{display:none}` 以祖先选择器命中——自身带类永不匹配，折叠从未生效过；单位表单（units.js）的同机制因正确挂在父容器上而正常。
+
+## 变更
+
+1. 折叠类移到父容器 `.bom-specs-section`（初始 `sec-collapsed` 默认收起，符合「点击展开」语义）
+2. `toggleBOMSpecsSection` 改用 `el.closest('.bom-specs-section')` 切换父容器类，箭头与文案随状态同步
+3. combo 下拉为纯 CSS 布局，隐藏容器内初始化安全；展开后组件直接可用
+
+## 版本号
+
+- 五处同步 **v1.0.25**；构建通过
+
+---
+
 ## v1.0.24 · 📝 待发布
 
 > **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
