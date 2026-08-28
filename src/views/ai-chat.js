@@ -471,7 +471,6 @@ async function openAISettings(){
     let kbStat=null;
     try{if(typeof KB!=='undefined'){await KB.init();kbStat=KB.summarize();}}catch(e){kbStat=null;}
     const kbZone=kbrenderZone(kbStat);
-    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版</span> API_KEY 以混淆形式保存在本机浏览器 localStorage（非明文），仅本机可见。';
     let savedKey='';
     try{if(typeof AI.getDeepseekToken==='function')savedKey=await AI.getDeepseekToken();}catch(e){savedKey='';}
     const savedBase=AI.state.baseUrl||AI.DEFAULT_BASE_URL;
@@ -485,16 +484,32 @@ async function openAISettings(){
       {label:'本地 oMLX',base:'http://127.0.0.1:8000/v1',model:'qwen2.5'}
     ];
     window._providerPresets=presets;
-    const presetBtns=presets.map(function(p,i){return '<button type="button" class="btn sm" onclick="applyProviderPreset('+i+')">'+escHtml(p.label)+'</button>';}).join('');
-    const keyPh=savedKey?'已保存 Key，输入新值覆盖；留空保存则删除':'粘贴 API_KEY（本地 Ollama 可留空）';
-    return '<div class="field"><label class="f">运行模式</label><div>'+runtimeInfo+'</div></div>'+
-      '<div class="field"><label class="f">AI 状态</label><div>'+aiStatusLabel()+'</div></div>'+
-      '<div class="field"><label class="f">知识库（本地 RAG）</label><div id="kbZone">'+kbZone+'</div></div>'+
-      '<div class="field"><label class="f">端点预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点选预设自动填入下方 Base URL 与模型；也可手动自定义任意 OpenAI 兼容端点。</div></div>'+
-      '<div class="field"><label class="f" for="aiBaseUrl">Base URL（OpenAI 兼容端点）</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'"><div class="note">需以 /v1 结尾；本地 Ollama 填 http://127.0.0.1:11434/v1（Key 可留空）；本地 oMLX 填 http://127.0.0.1:8000/v1，API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。</div></div>'+
-      '<div class="field"><label class="f" for="aiModel">模型</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"><div class="note">OpenAI 兼容模型名；自定义端点可填该端点支持的任意模型。</div></div>'+
-      '<div class="field"><label class="f" for="aiDeepseekToken">API_KEY</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 API_KEY（仅在编辑弹窗中可见）':'尚未设置 API_KEY')+' · '+(isTauri?'由桌面版保存到本机应用数据目录':'由浏览器保存到本机 localStorage')+'，不会发送给任何第三方；本地模型可留空。</div></div>'+
-      '<button class="btn danger" type="button" onclick="clearAIHistory()">清空本机对话历史</button>';
+    window._presetIndexOf=function(url){
+      const u=String(url||'').replace(/\/+$/,'');
+      return presets.findIndex(function(p){return p.base.replace(/\/+$/,'')===u;});
+    };
+    // 初始选中态：当前 Base URL 命中预设则高亮
+    const presetBtns=presets.map(function(p,i){
+      const active=window._presetIndexOf(savedBase)===i;
+      return '<button type="button" class="ai-preset-chip'+(active?' active':'')+'" data-i="'+i+'" onclick="applyProviderPreset('+i+')">'+escHtml(p.label)+'</button>';
+    }).join('');
+    const keyPh=savedKey?'已保存，输入新值覆盖；留空则删除':'粘贴 API_KEY（本地模型可留空）';
+    const hostText=(function(){try{return new URL(savedBase).host;}catch(e){return savedBase;}})();
+    return '<div class="ai-set-hero">'+
+        '<div class="ai-set-hero-main"><div id="aiStatus" class="ai-set-hero-status">'+aiStatusLabel()+'</div><div class="ai-set-hero-model">'+escHtml(savedModel)+'</div><div class="ai-set-hero-host">'+escHtml(hostText)+'</div></div>'+
+        '<div class="ai-set-hero-side"><span class="tag '+(isTauri?'green':'blue')+'">'+(isTauri?'桌面版':'浏览器版')+'</span><span class="ai-set-hero-note">API_KEY 仅保存在本机，不会发送给任何第三方</span></div>'+
+      '</div>'+
+      '<div class="ai-set-hd">模型服务</div>'+
+      '<div class="ai-set-card">'+
+        '<div class="field"><label class="f">快捷预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点击自动填入下方地址与模型名，也可手动填写任意 OpenAI 兼容端点。</div></div>'+
+        '<div class="field"><label class="f" for="aiBaseUrl">服务地址 Base URL</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'" oninput="aiEndpointHint()"><div class="note" id="aiEndpointHint"></div></div>'+
+        '<div class="field"><label class="f" for="aiModel">模型名称</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"></div>'+
+        '<div class="field" style="margin-bottom:0"><label class="f" for="aiDeepseekToken">API_KEY</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存，仅在编辑时可见':'尚未设置')+'；使用本地 Ollama / oMLX 时可留空。</div></div>'+
+      '</div>'+
+      '<div class="ai-set-hd">知识库 <span class="note">提问时自动查阅本地资料</span></div>'+
+      '<div class="ai-set-card"><div id="kbZone">'+kbZone+'</div></div>'+
+      '<div class="ai-set-hd ai-set-hd-danger">数据</div>'+
+      '<div class="ai-set-danger"><button type="button" class="btn sm danger" onclick="clearAIHistory()">清空对话历史</button><span class="note">删除本机保存的全部 AI 对话记录，不可恢复</span></div>';
   };
   let body='';
   try{body=await bodyBuilder();}
@@ -515,14 +530,32 @@ async function openAISettings(){
       }
     }catch(e){toast('保存 API_KEY 失败：'+(e&&e.message?e.message:e),'error');}
     closeModal();
-  });
+  },true);
+  aiEndpointHint(); // 初始按已保存端点渲染单行动态提示
 }
-/** 应用端点预设到 Base URL / 模型输入框（仅回填，不立即保存） */
+/** 按 Base URL 推断服务商并更新单行动态提示（替代原来一大段固定说明） */
+function aiEndpointHint(){
+  const hint=document.getElementById('aiEndpointHint');
+  if(!hint)return;
+  const url=(document.getElementById('aiBaseUrl')||{value:''}).value.trim().replace(/\/+$/,'');
+  let txt='自定义 OpenAI 兼容端点，地址需以 /v1 结尾，按服务要求填写 API_KEY。';
+  if(/127\.0\.0\.1:\\d+|localhost:\\d+/.test(url)){
+    if(/:11434/.test(url))txt='本地 Ollama：API_KEY 可留空，直接保存即可使用。';
+    else if(/:8000/.test(url))txt='本地 oMLX：API_KEY 需与 oMLX「设置 → Auth & Info」中的值一致。';
+    else txt='本地端点：按该服务的要求填写 API_KEY（允许留空则留空）。';
+  }else if(/deepseek/.test(url))txt='DeepSeek 官方端点：在 platform.deepseek.com 创建 API_KEY 后粘贴到下方。';
+  else if(/openai\.com/.test(url))txt='OpenAI 官方端点：在 platform.openai.com 创建 API_KEY 后粘贴到下方。';
+  else if(/dashscope|aliyuncs/.test(url))txt='通义千问端点：在阿里云百炼控制台创建 API_KEY 后粘贴到下方。';
+  hint.textContent=txt;
+}
+/** 应用端点预设：回填地址与模型 + chips 选中态 + 动态提示刷新 */
 function applyProviderPreset(i){
   const p=window._providerPresets&&window._providerPresets[i];
   if(!p)return;
   const b=document.getElementById('aiBaseUrl');const m=document.getElementById('aiModel');
   if(b)b.value=p.base;if(m)m.value=p.model;
+  document.querySelectorAll('.ai-preset-chip').forEach(function(ch){ch.classList.toggle('active',String(ch.getAttribute('data-i'))===String(i));});
+  aiEndpointHint();
 }
 function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];saveDB();closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
 function deleteAIMessage(id){

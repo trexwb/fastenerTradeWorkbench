@@ -17,9 +17,11 @@
 #   • ⚠️ 中文 productName 处理：tauri.conf.json 中 productName 为中文
 #     「紧固件贸易工作台」，在 CI 中直接使用会导致 WiX/MSI 打包编码错误、
 #     Release 上传中文文件名失败等问题。因此 CI 构建时通过
-#     `tauri build --config` 参数（注意：TAURI_CONFIG 环境变量实测无效）
-#     将 productName 覆盖为 ASCII 的 FastenerTradeWorkbench，产物文件名
-#     全 ASCII；窗口标题（windows[0].title）不受影响，仍为中文。
+#     `tauri build --config src-tauri/tauri.ci.conf.json`（注意：TAURI_CONFIG
+#     环境变量实测无效；必须用文件路径而非内联 JSON —— Windows 下 pwsh→npm→
+#     with-updater-key 链路会剥离内联 JSON 的双引号致解析失败）将 productName
+#     覆盖为 ASCII 的 FastenerTradeWorkbench，产物文件名全 ASCII；
+#     窗口标题（windows[0].title）不受影响，仍为中文。
 #     本地构建（npm run build）不受影响，仍使用中文 productName。
 # 自动更新：
 #   • bundle.createUpdaterArtifacts 生成更新产物与 .sig 签名
@@ -73,9 +75,11 @@ jobs:
 
       # Tauri 自动下载 WiX(msi) / NSIS 工具链；WebView2 走 downloadBootstrapper
       - name: 构建 Tauri 应用
-        # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
-        # 避免中文产物名导致 NSIS/MSI 编码错误
-        run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
+        # --config 指向 CI 覆盖配置文件（src-tauri/tauri.ci.conf.json，仅覆盖 productName），
+        # 避免中文产物名导致 NSIS/MSI 编码错误。
+        # 必须用文件路径而非内联 JSON：Windows 下 pwsh→npm→with-updater-key 链路会
+        # 剥离内联 JSON 中的双引号，导致 tauri 收到 {productName:FastenerTradeWorkbench} 解析失败。
+        run: npm run tauri:build -- --config src-tauri/tauri.ci.conf.json
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -136,9 +140,10 @@ jobs:
         run: npm ci
 
       - name: 构建 Tauri 应用（仅 .app）
-        # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
-        # 产物文件名全 ASCII，避免上传阶段处理中文文件名出错
-        run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
+        # --config 指向 CI 覆盖配置文件（src-tauri/tauri.ci.conf.json，仅覆盖 productName），
+        # 产物文件名全 ASCII，避免上传阶段处理中文文件名出错。
+        # 与 Windows 统一用文件路径，规避 shell 引号转义差异（macOS bash 虽不踩坑，统一更稳）。
+        run: npm run tauri:build -- --config src-tauri/tauri.ci.conf.json
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
