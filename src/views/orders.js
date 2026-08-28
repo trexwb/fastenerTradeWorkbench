@@ -21,7 +21,18 @@ function renderOrderRow(o){
 }
 /** 渲染采购订单列表空状态行 */
 function renderOrderEmptyRow(){
-  return '<tr><td colspan="9"><div class="no-data">'+(orderSearch||orderStatusFilter?'无匹配结果':'暂无采购订单，点击「新建采购订单」开始')+'</div></td></tr>';
+  const hasFilter=orderSearch||orderStatusFilter;
+  return '<tr><td colspan="9">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('doc',28)+'</div>'+
+      '<div class="es-title">'+(hasFilter?'无匹配订单':'暂无采购订单')+'</div>'+
+      '<div class="es-desc">'+(hasFilter?'试试调整搜索关键词或清除筛选条件':'点击下方按钮创建第一个采购订单，管理供应商报价和发货进度')+'</div>'+
+      '<div class="es-action">'+
+        (hasFilter?'<button class="btn ghost" onclick="onOrderSearch(\'\');orderStatusFilter=\'\';onOrderStatusFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="newOrder()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新建采购订单</button>'+
+      '</div>'+
+    '</div>'+
+  '</td></tr>';
 }
 /** 渲染采购订单列表视图（含搜索、筛选、分页） */
 function viewOrders(){

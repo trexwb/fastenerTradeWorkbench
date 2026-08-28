@@ -105,7 +105,14 @@ function viewUnits(){
   roleTabs+
   statsRow+
   '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllUnits(this)" title="全选"></th><th>名称</th><th>角色</th><th>结算账期</th><th>评级</th><th>联系人</th><th></th></tr></thead><tbody id="unitBody">'+
-  (rows||'<tr><td colspan="7"><div class="no-data">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配结果':'暂无关联单位，点击「新建关联单位」开始')+'</div></td></tr>')+
+  (rows||'<tr><td colspan="7">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('users',28)+'</div>'+
+      '<div class="es-title">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配单位':'暂无关联单位')+'</div>'+
+      '<div class="es-desc">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'试试调整筛选条件':'添加供应商和采购商，用于报价、订单和结算管理')+'</div>'+
+      '<div class="es-action"><button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button></div>'+
+    '</div>'+
+  '</td></tr>')+
   '</tbody></table></div>'+pg+'</div>';
 }
 
@@ -121,7 +128,14 @@ function refreshUnitList(){
   if(_unitPage>totalPages)_unitPage=totalPages;
   let pageData=all.slice((_unitPage-1)*PAGE_SIZE,_unitPage*PAGE_SIZE);
   let rows=pageData.map(unitRowHTML).join('');
-  body.innerHTML=rows||'<tr><td colspan="7"><div class="no-data">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配结果':'暂无关联单位，点击「新建关联单位」开始')+'</div></td></tr>';
+  body.innerHTML=rows||'<tr><td colspan="7">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('users',28)+'</div>'+
+      '<div class="es-title">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配单位':'暂无关联单位')+'</div>'+
+      '<div class="es-desc">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'试试调整筛选条件':'添加供应商和采购商，用于报价、订单和结算管理')+'</div>'+
+      '<div class="es-action"><button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button></div>'+
+    '</div>'+
+  '</td></tr>';
   if(paging)paging.innerHTML=totalPages>1?buildPaging(all.length,_unitPage,totalPages,'unitPage',{id:'unitPaging',showCount:false}):'';
   let tag=document.getElementById('unitCountTag');
   if(tag){let total=DB.units.length,matched=all.length;tag.style.display='';tag.textContent=matched+' / '+total;}

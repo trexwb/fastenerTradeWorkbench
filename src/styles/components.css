@@ -102,6 +102,159 @@ input.error,select.error,textarea.error{border-color:var(--red);box-shadow:0 0 0
 input.error:focus,select.error:focus,textarea.error:focus{border-color:var(--red);box-shadow:0 0 0 3px var(--red-l);}
 .muted{color:var(--gray);}
 
+/* SEARCH BOX — 统一搜索框样式 */
+.search-box{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);transition:.15s;overflow:hidden;max-width:280px}
+.search-box:focus-within{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-l)}
+.search-box a{display:flex;align-items:center;justify-content:center;padding:0 10px;color:var(--gray);flex-shrink:0}
+.search-box input{border:none;box-shadow:none;padding:8px 4px 8px 0;width:100%;min-width:0;font-size:14px;background:transparent}
+.search-box input:focus{outline:none;box-shadow:none;border-color:transparent}
+.search-box .clear-btn{padding:0 8px;color:var(--gray);cursor:pointer;font-size:18px;line-height:1;opacity:0;transition:opacity .15s}
+.search-box.has-val .clear-btn{opacity:1}
+.search-box.has-val:focus-within .clear-btn{opacity:1}
+
+/* EMPTY STATE — 统一空状态，带图标 + 文案 + 操作按钮 */
+.empty-state{text-align:center;padding:48px 24px;color:var(--gray)}
+.empty-state .es-icon{width:64px;height:64px;margin:0 auto 16px;background:var(--bg-soft);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--gray)}
+.empty-state .es-icon svg{width:28px;height:28px}
+.empty-state .es-title{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.empty-state .es-desc{font-size:13px;color:var(--gray);margin-bottom:16px;line-height:1.6}
+.empty-state .es-action{display:inline-flex}
+.no-data{text-align:center;padding:32px 16px;color:var(--gray);font-size:14px}
+
+/* TABLE ENHANCEMENTS — 行 hover、操作按钮显隐、分页吸底 */
+tbody tr:hover{background:var(--row-hover) !important}
+tbody tr:hover .td-act .btn{opacity:1}
+.td-act .btn{opacity:.75;transition:opacity .15s}
+.table-wrap{position:relative}
+.card .paging{border-top:1px solid var(--line);padding:14px 0 0;margin-top:0}
+.table-wrap+.paging{margin-top:12px}
+
+/* STATUS TAGS — 实心填充版本，更醒目 */
+.tag{font-weight:600;letter-spacing:.01em}
+.tag.ok-solid{background:var(--green);border-color:var(--green);color:#fff}
+.tag.warn-solid{background:var(--amber);border-color:var(--amber);color:#fff}
+.tag.err-solid{background:var(--red);border-color:var(--red);color:#fff}
+.tag.info-solid{background:var(--pri);border-color:var(--pri);color:#fff}
+
+/* AUTO-SAVE INDICATOR — 订单编辑自动保存提示 */
+.auto-save-indicator{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);padding:4px 10px;border-radius:999px;background:var(--bg-soft);transition:all .3s}
+.auto-save-indicator.saving{color:var(--amber);background:var(--amber-l)}
+.auto-save-indicator.saved{color:var(--green);background:var(--green-l)}
+.auto-save-indicator svg{width:14px;height:14px}
+@keyframes savePulse{0%,100%{opacity:1}50%{opacity:.5}}
+.auto-save-indicator.saving svg{animation:savePulse 1s ease-in-out infinite}
+
+/* SIDEBAR NAV — 优化导航交互 */
+.sidebar nav button{position:relative;transition:all .15s ease}
+.sidebar nav button::after{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);height:0;width:3px;background:var(--accent);border-radius:0 2px 2px 0;transition:height .2s ease}
+.sidebar nav button.active::after{height:60%}
+.sidebar nav button:hover::after{height:30%;background:var(--side-hover-ink)}
+.sidebar nav .nav-child{margin-bottom:1px;position:relative}
+.sidebar nav .nav-child.active{background:var(--side-active-bg);color:var(--side-active-ink)}
+.sidebar nav .nav-child.active::after{display:none}
+.sidebar nav .nav-parent{font-weight:500}
+.sidebar nav .nav-parent .nav-arrow{transition:transform .25s cubic-bezier(.4,0,.2,1)}
+
+/* TOOLBAR — 工具栏统一间距 */
+.toolbar{align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar .count-tag{flex-shrink:0}
+.toolbar .btn{white-space:nowrap}
+.toolbar .search-box{flex-shrink:0}
+
+/* FILTER BAR — 筛选栏优化 */
+.filter-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-soft);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;flex-wrap:wrap}
+.filter-bar-label{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:500;color:var(--gray)}
+.filter-bar .combo{width:auto;min-width:120px}
+.filter-bar .combo input{font-size:13px;padding:6px 8px}
+.filt-clear{margin-left:auto;flex-shrink:0}
+.filter-active-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--pri-l);color:var(--pri);border:1px solid var(--pri-p);border-radius:999px;font-size:12px;cursor:pointer;transition:.15s;flex-shrink:0}
+.filter-active-badge:hover{background:var(--pri);color:#fff}
+
+/* FILTER TABS — 标签页筛选 */
+.filter-tabs{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.ftab{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--gray);font-size:13px;cursor:pointer;transition:.15s;font-family:inherit}
+.ftab:hover{border-color:var(--pri);color:var(--pri)}
+.ftab.active{background:var(--pri);border-color:var(--pri);color:#fff}
+.ftab-count{font-size:11px;opacity:.7}
+.ftab-sep{width:1px;height:20px;background:var(--line);margin:0 6px}
+
+/* SETTLE TABS — 结算子Tab */
+.settle-tabs{display:flex;border-bottom:2px solid var(--line);margin-bottom:16px}
+.settle-tab{padding:10px 18px;font-size:14px;font-weight:500;color:var(--gray);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;font-family:inherit}
+.settle-tab:hover{color:var(--ink)}
+.settle-tab.active{color:var(--pri);border-bottom-color:var(--pri)}
+
+/* PROGRESS BAR — 通用进度条 */
+.settle-progress-bar{display:inline-block;width:80px;height:6px;background:var(--bg-soft);border-radius:999px;overflow:hidden;vertical-align:middle;margin-left:8px}
+.settle-progress-fill{display:block;height:100%;border-radius:999px;transition:width .3s ease}
+
+/* DATA CARDS — 数据管理卡片 */
+.data-count-cards{margin-bottom:20px}
+.data-count-card{display:flex;align-items:center;gap:14px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg)}
+.data-count-card .dcc-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* UNIT STATS ROW — 关联单位统计行 */
+.unit-stats-row{display:flex;align-items:center;gap:8px;padding:8px 0 4px;font-size:13px;color:var(--gray);flex-wrap:wrap}
+.unit-stats-row b{color:var(--ink);font-weight:600}
+.unit-stats-row .sep{color:var(--line)}
+
+/* INLINE ACTIONS — 行内快捷操作 */
+.inline-actions{display:flex;gap:4px;align-items:center}
+
+/* QUICK NAV — 详情页快捷导航 */
+.quick-nav{display:flex;align-items:center;gap:6px;margin-bottom:16px;font-size:13px;color:var(--gray)}
+.quick-nav a{color:var(--pri);text-decoration:none;transition:.15s}
+.quick-nav a:hover{text-decoration:underline}
+.quick-nav .sep{color:var(--line)}
+
+/* CARD HEADER ACTIONS — 卡片头部操作 */
+.card-hd-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+
+/* BADGE — 小圆角徽章 */
+.badge-red{background:var(--red-l);color:var(--red);border:1px solid var(--red-line)}
+.badge-amber{background:var(--amber-l);color:var(--amber);border:1px solid var(--amber-line)}
+
+/* ROW SPEC TAGS — 规格标签 */
+.row-spec-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.spec-tag-pill{display:inline-flex;align-items:center;padding:2px 8px;background:var(--bg-soft);border:1px solid var(--line);border-radius:4px;font-size:11px;color:var(--gray);white-space:nowrap}
+.row-spec{font-family:monospace;font-size:12px;color:var(--ink)}
+.spec-line{font-size:12px;color:var(--gray);margin-top:2px}
+
+/* BOM SKU — BOM SKU 样式 */
+.bom-sku{font-family:monospace;font-weight:600;color:var(--accent)}
+
+/* SYNC BANNER — 同步提醒 */
+.sync-banner{animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* TOPBAR SHORTCUT — 顶栏快捷按钮 */
+.shortcut-btn{background:none;border:none;padding:6px;border-radius:8px;cursor:pointer;color:var(--fg-soft);display:inline-flex;align-items:center;justify-content:center;transition:.15s;position:relative}
+.shortcut-btn:hover{background:var(--bg-soft);color:var(--ink)}
+.shortcut-btn[title]:hover::after{content:attr(title);position:absolute;top:100%;right:0;margin-top:6px;padding:4px 10px;background:var(--ink);color:#fff;font-size:12px;border-radius:6px;white-space:nowrap;z-index:var(--z-toast);pointer-events:none}
+
+/* SCROLLBAR — 美化滚动条 */
+.content::-webkit-scrollbar,.sidebar nav::-webkit-scrollbar,.table-wrap::-webkit-scrollbar{width:8px;height:8px}
+.content::-webkit-scrollbar-thumb,.sidebar nav::-webkit-scrollbar-thumb,.table-wrap::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.content::-webkit-scrollbar-thumb:hover,.sidebar nav::-webkit-scrollbar-thumb:hover{background:var(--gray)}
+.content::-webkit-scrollbar-track,.sidebar nav::-webkit-scrollbar-track,.table-wrap::-webkit-scrollbar-track{background:transparent}
+
+/* RESPONSIVE — 小屏适配增强 */
+@media(max-width:768px){
+  .toolbar{gap:6px}
+  .toolbar .search-box{max-width:100%;flex:1}
+  .filter-bar{flex-direction:column;align-items:stretch}
+  .filter-bar .combo{width:100%}
+  .empty-state{padding:32px 16px}
+  .td-act .btn{opacity:1}
+  .card{padding:14px}
+}
+
+/* REDUCED MOTION */
+@media (prefers-reduced-motion:reduce){
+  .shortcut-btn[title]:hover::after{display:none}
+  .auto-save-indicator.saving svg{animation:none}
+}
+
 /* COMBO SEARCH */
 .combo{position:relative;width:100%;box-sizing:border-box;min-width:0;}
 .combo input{width:100%;box-sizing:border-box;}

@@ -25,19 +25,37 @@ const repo = 'trexwb/fastenerTradeWorkbench'
 const tag = arg('tag') || ('v' + version)
 const base = `https://github.com/${repo}/releases/download/${tag}`
 
+function walkFiles(dir, out) {
+  out = out || []
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) walkFiles(p, out)
+    else out.push(p)
+  }
+  return out
+}
+
 function findUpdaterArtifact(dir, suffix) {
   if (!dir || !existsSync(dir)) return { found: false, reason: '目录不存在', files: [] }
-  const files = readdirSync(dir)
-  const match = files.find((f) => f.endsWith(suffix) && existsSync(path.join(dir, f + '.sig')))
-  if (!match) {
+  // ⚠ upload-artifact 多路径上传会保留「最小公共祖先」下的子目录结构（如 nsis/、msi/），
+  //   download-artifact 解压后产物可能嵌套在子目录中，必须递归扫描而不是只读顶层
+  const abs = walkFiles(dir)
+  const files = abs.map((p) => path.relative(dir, p))
+  const topLevel = readdirSync(dir, { withFileTypes: true }).map((e) => e.isDirectory() ? e.name + '/' : e.name)
+  const hit = abs.find((p) => p.endsWith(suffix) && existsSync(p + '.sig'))
+  if (!hit) {
     const installers = files.filter((f) => f.endsWith(suffix))
     const sigs = files.filter((f) => f.endsWith('.sig'))
-    return { found: false, reason: installers.length ? `找到 ${installers.length} 个安装包但无对应 .sig（签名未生成？）` : '未找到匹配的安装包', files }
+    const reason = installers.length
+      ? `递归找到 ${installers.length} 个安装包但无对应 .sig（签名未生成？）`
+      : '递归扫描后未找到匹配的安装包'
+    return { found: false, reason, files: topLevel.length ? topLevel : files.slice(0, 12) }
   }
   return {
     found: true,
-    name: match,
-    signature: readFileSync(path.join(dir, match + '.sig'), 'utf8').trim(),
+    // Release 资产平铺在根目录，URL 只取文件名（忽略 artifact 内部嵌套路径）
+    name: path.basename(hit),
+    signature: readFileSync(hit + '.sig', 'utf8').trim(),
   }
 }
 

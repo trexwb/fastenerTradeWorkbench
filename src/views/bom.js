@@ -82,7 +82,17 @@ function viewBOM(){
   '</div>'+
   filterRow+
   '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllBOM(this)" title="全选"></th><th>SKU</th><th style="min-width:160px">名称</th><th>规格</th><th>类型</th><th>标准</th><th>直径</th><th>硬度</th><th>表面处理</th><th>材质</th><th></th></tr></thead><tbody id="bomBody">'+
-  (rows||'<tr><td colspan="11"><div class="no-data">'+(isFiltered?'无匹配结果，试试调整筛选条件':'暂无 BOM 记录，点击「新建BOM」开始')+'</div></td></tr>')+
+  (rows||'<tr><td colspan="11">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('package',28)+'</div>'+
+      '<div class="es-title">'+(isFiltered?'无匹配 BOM':'暂无 BOM 记录')+'</div>'+
+      '<div class="es-desc">'+(isFiltered?'试试调整筛选条件或清除筛选':'添加产品规格到 BOM，用于订单寻货和报价管理')+'</div>'+
+      '<div class="es-action">'+
+        (isFiltered?'<button class="btn ghost" onclick="clearBOMFilter()">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="openBOMForm(-1)" style="margin-left:'+(isFiltered?'8px':'0')+'">'+icon('plus')+'新建 BOM</button>'+
+      '</div>'+
+    '</div>'+
+  '</td></tr>')+
   '</tbody></table></div>'+pg+'</div>';
 }
 

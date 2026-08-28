@@ -121,10 +121,26 @@ function viewDashboard(){
       '</div>'+
     '</div>'+
     (totalProfit>0?'<div class="profit-banner"><span class="profit-label">累计完成订单利润</span><span class="profit-val">'+fmt(totalProfit)+'</span><small style="font-size:13px;font-weight:400;opacity:.7"> 元（已完成订单）</small></div>':'')+
+    (DB.orders.length>0?'':'<div class="card">'+
+      '<h2>'+icon('zap','18')+'快速开始</h2>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+        '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button>'+
+        '<button class="btn" onclick="newUnit()">'+icon('users')+'新建关联单位</button>'+
+        '<button class="btn" onclick="openBOMForm(-1)">'+icon('package')+'新建 BOM</button>'+
+        '<button class="btn" onclick="newPrice()">'+icon('tag')+'新增报价</button>'+
+      '</div>'+
+    '</div>')+
     '<div class="card">'+
       '<h2>'+icon('doc','18')+'最近订单'+
         '<a href="javascript:void(0)" onclick="go(\'orders\')" style="font-size:13px;font-weight:400;color:var(--blue);text-decoration:none;margin-left:auto;display:flex;align-items:center;gap:4px">查看全部 '+icon('chevronRight','14')+'</a>'+
       '</h2>'+
-      (rows?'<div class="table-wrap"><table><thead><tr><th>单号</th><th>采购商</th><th>项目</th><th>产品项</th><th>交期</th><th>状态</th><th>预估利润</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="no-data">暂无订单，点击「采购订单」开始创建</div>')+
+      (rows?'<div class="table-wrap"><table><thead><tr><th>单号</th><th>采购商</th><th>项目</th><th>产品项</th><th>交期</th><th>状态</th><th>预估利润</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':
+        '<div class="empty-state">'+
+          '<div class="es-icon">'+icon('doc',28)+'</div>'+
+          '<div class="es-title">暂无订单记录</div>'+
+          '<div class="es-desc">创建采购订单来管理供应商报价、寻货进度和结算</div>'+
+          '<div class="es-action"><button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button></div>'+
+        '</div>'
+      )+
     '</div>';
 }

@@ -323,7 +323,14 @@ function viewInvoices(type){
     '<button class="settle-tab' + (_invSubTab === 'paid' ? ' active' : '') + '" onclick="switchInvSubTab(\'paid\')"><span>'+subPaidLabel+'</span></button>'+
   '</div>'+
   '<div class="card"><div class="table-wrap"><table><thead><tr>'+cols+'</tr></thead><tbody>'+
-    (rows || '<tr><td colspan="'+colSpan+'"><div class="no-data">' + (_invTab==='issue'?'暂无开票记录':'暂无收票记录') + '</div></td></tr>')+
+    (rows || '<tr><td colspan="'+colSpan+'">'+
+      '<div class="empty-state">'+
+        '<div class="es-icon">'+icon('receipt',28)+'</div>'+
+        '<div class="es-title">'+(_invTab==='issue'?'暂无开票记录':'暂无收票记录')+'</div>'+
+        '<div class="es-desc">'+(_invTab==='issue'?'从结算记录生成开票记录，管理开票状态':'从结算记录生成收票记录，跟踪收到的发票')+'</div>'+
+        '<div class="es-action"><button class="btn primary" onclick="openInvEdit(\'\')">'+icon('plus')+'新增发票</button></div>'+
+      '</div>'+
+    '</td></tr>')+
   '</tbody></table></div>' + pg + '</div>';
 }
 
