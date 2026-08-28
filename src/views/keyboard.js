@@ -131,18 +131,18 @@ document.addEventListener('keydown',function(e){
       closeSearchPanel();
       return;
     }
-    // 优先关闭抽屉
+    // 优先关闭弹窗（modal 叠在抽屉之上，z-index 更高）
+    if(document.getElementById('_mask')){
+      if(typeof closeModal==='function')closeModal();
+      return;
+    }
+    // 再关闭抽屉
     if(document.querySelector('.drawer-wrap')){
       if(typeof safeCloseDrawer==='function'){
         safeCloseDrawer();
       } else {
         if(typeof closeDrawer==='function')closeDrawer();
       }
-      return;
-    }
-    // 关闭弹窗
-    if(document.getElementById('_mask')){
-      if(typeof closeModal==='function')closeModal();
       return;
     }
     // 订单详情/编辑页：Esc → 返回列表

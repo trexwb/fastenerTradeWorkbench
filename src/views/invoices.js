@@ -523,4 +523,9 @@ function openInvEdit(invId){
     render();
     toast('发票信息已更新','success');
   },false,false);
+  // 绑定抽屉内容的 input/change 事件，标记未保存状态
+  setTimeout(function(){
+    const bd=document.querySelector('.drawer-panel .drawer-bd');
+    if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
+  },50);
 }

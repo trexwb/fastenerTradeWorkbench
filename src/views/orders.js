@@ -725,6 +725,9 @@ function openItemModal(idx){
   '<div class="field" style="margin-top:12px"><label class="f">备注</label><input id="m_remark" tabindex="16" value="'+escAttr(it.remark||'')+'" placeholder="特殊要求等"></div>';
   openDrawer(idx>=0?'编辑产品':'添加产品',body.innerHTML,()=>saveItemModal(),true);
   setTimeout(()=>{
+    // 绑定抽屉内容的 input/change 事件，标记未保存状态
+    const bd=document.querySelector('.drawer-panel .drawer-bd');
+    if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
     // BOM引用下拉
     const bomOpts=(DB.bom||[]).map(b=>({id:b.sku,label:b.sku+' · '+b.name+' · '+(b.spec||'')}));
     const bomRef=document.getElementById('m_bom_ref');

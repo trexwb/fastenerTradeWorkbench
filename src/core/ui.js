@@ -33,7 +33,7 @@ function modal(title,body,okText,onOk,wide){
   if(body instanceof Element){mb.appendChild(body);}
   else{mb.innerHTML=body||'';}
   document.getElementById('app').appendChild(m);
-  document.getElementById('_modalOk').onclick=onOk;
+  document.getElementById('_modalOk').onclick=()=>{closeModal();if(onOk)onOk();};
   m.scrollIntoView();
 }
 /**
@@ -59,8 +59,8 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
      仅调用方显式传入 html=true 且内容已自行 escHtml 或为可信静态模板时，才按 HTML 渲染 */
   const safeMsg=html?String(msg):escHtml(String(msg));
   document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
-  document.getElementById('_modalOk').onclick=onOk;
-  document.getElementById('_modalCancel').onclick=()=>{if(onCancel)onCancel();closeModal();};
+  document.getElementById('_modalOk').onclick=()=>{closeModal();if(onOk)onOk();};
+  document.getElementById('_modalCancel').onclick=()=>{closeModal();if(onCancel)onCancel();};
 }
 
 let _drawerOnOk=null;
@@ -72,6 +72,8 @@ function markDrawerDirty(){_drawerDirty=true;}
  * @param {boolean} [force=false] - 强制关闭，跳过确认
  */
 function safeCloseDrawer(force){
+  // 如果确认弹窗已打开（如用户在确认关闭对话框中再次点击关闭），不重复弹确认
+  if(document.getElementById('_mask')){return;}
   if(force||!_drawerDirty){_drawerDirty=false;closeDrawer();return;}
   confirmModal('表单有未保存的内容，关闭将丢失。确定要关闭吗？',
     function(){
