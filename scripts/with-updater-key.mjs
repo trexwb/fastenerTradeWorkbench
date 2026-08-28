@@ -16,7 +16,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const KEY_PATH = path.join(os.homedir(), '.tauri', 'fastener-updater.key')
+const KEY_PATH = path.join(os.homedir(), '.tauri', 'fastenerTradeWorkbench-updater.key')
 const ENV_FILES = [
   path.join(ROOT, '.env.local'),                                // 项目根
   path.join(os.homedir(), '.tauri', 'fastener-updater.env'),    // 兼容位置
@@ -46,7 +46,8 @@ ENV_FILES.forEach(loadEnvFile)
 // _PATH 形式仅 tauri signer 子命令支持。因此无论来源（.env.local / 兜底路径），
 // 只要有私钥文件就统一补齐内联变量，避免 build 期报 no private key。
 if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
-  const cand = process.env.TAURI_SIGNING_PRIVATE_KEY_PATH || KEY_PATH
+  let cand = process.env.TAURI_SIGNING_PRIVATE_KEY_PATH || KEY_PATH
+  if (cand && cand.startsWith('~')) cand = path.join(os.homedir(), cand.slice(1)) // ~/.tauri/... 展开
   if (cand && existsSync(cand)) {
     try {
       process.env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(cand, 'utf8')

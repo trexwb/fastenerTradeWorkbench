@@ -483,7 +483,11 @@ function filterOrdersData(){
       if(o.id&&o.id.toLowerCase().includes(q))return true;
       if(o.project&&o.project.toLowerCase().includes(q))return true;
       if(o.buyerContact&&o.buyerContact.toLowerCase().includes(q))return true;
-      if(o.delivery&&o.delivery.toLowerCase().includes(q))return true;
+      if(o.delivery){
+        if(typeof o.delivery==='object'){
+          if([o.delivery.time,o.delivery.address,o.delivery.tracking].some(v=>v&&String(v).toLowerCase().includes(q)))return true;
+        }else if(o.delivery.toLowerCase().includes(q))return true;
+      }
       if(o.status&&o.status.toLowerCase().includes(q))return true;
       const buyer=pName(o.buyerId);
       if(buyer&&buyer.toLowerCase().includes(q))return true;

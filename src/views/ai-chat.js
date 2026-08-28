@@ -1,5 +1,6 @@
 // views/ai-chat.js — AI 助手抽屉（DeepSeek 直连：Tauri 桌面版走 Rust 命令，浏览器版前端直连）
 let _aiCurrentSnapshot='';
+let _aiSendGateAt=0; // 发送防抖门槛：300ms 窗口内的重复触发直接忽略（Enter 连击/快速双击）
 /** 将连续的 markdown 表格行渲染为真 <table>（第二行为 |---| 分隔行时识别表头）
  * @param {string[]} rows - 形如 "|a|b|" 的表格行数组（已 HTML 转义）
  * @param {Function} inline - 行内标记处理函数（code/strong/em）
@@ -44,7 +45,9 @@ function aiStatusLabel(){
 function aiMessageHTML(message){
   const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   const content=isUser?escHtml(message.content):aiRenderCite(renderAIMarkdown(message.content));
-  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+'</article>';
+  // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
+  const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escAttr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
+  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
 }
 /** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
 function aiRenderCite(html){
@@ -83,6 +86,8 @@ function openAIAssistant(){
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
+  // 后台回复仍在进行时（弹窗中途关过再重开）：发送按钮保持「停止」态并标记忙碌，禁止重复提交
+  if(AI.state.chatting)setAISendingUI(true);
 }
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
 function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
@@ -108,7 +113,13 @@ function requestAISend(){
   const input=document.getElementById('aiInput');
   if(!input)return;
   if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;} // 明确反馈：后台回复仍在进行（弹窗重开后同样适用）
-  const message=input.value.trim();if(!message){input.focus();return;}
+  // 发送防抖：300ms 窗口内重复触发直接忽略（Enter 连击/快速双击）
+  const now=Date.now();
+  if(now-(_aiSendGateAt||0)<300)return;
+  _aiSendGateAt=now;
+  const message=input.value.trim();
+  if(!message){input.focus();return;}
+  if(message.length>8000){toast('提问过长（'+message.length+' 字），请精简到 8000 字以内再发送','warning');return;} // 输入长度校验
   if(!AI.state.hasKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
   const extra=_aiExtraContext;_aiExtraContext='';
   _aiCurrentSnapshot=AI.buildPreview(message,extra);
@@ -132,7 +143,7 @@ async function sendAIMessage(message,snapshot){
   if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
   saveDBDebounced(400);
   messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
-  const sendButton=document.getElementById('aiSendBtn');if(sendButton){sendButton.textContent='停止';sendButton.onclick=stopAIMessage;}
+  setAISendingUI(true);
   aiScrollBottom();
   let renderScheduled=false;
   // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
@@ -182,16 +193,40 @@ async function sendAIMessage(message,snapshot){
   }catch(error){
     const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');
     // 中断/出错不再整段丢弃已生成的部分，仅在末尾追加说明并立即落盘
-    const note=error&&error.name==='AbortError'?'已停止生成'+(liveMsg.content?'，以上为已生成部分':'')+'。':'请求失败：'+errMsg+(liveMsg.content?'（以上为已生成部分）':'');
+    const note=error&&error.name==='AbortError'
+      ?((AI.state.abortReason==='timeout'?'请求超时（120 秒未完成）':'已停止生成')+(liveMsg.content?'，以上为已生成部分':'')+'。')
+      :'请求失败：'+errMsg+(liveMsg.content?'（以上为已生成部分）':'');
     liveMsg.content=(liveMsg.content?liveMsg.content+'\n\n':'')+note;
     liveMsg.pending=false;
+    // 失败/超时/停止都保留原始问题与快照，供「重新提交」按钮一键重发
+    liveMsg.retry={text:message,snapshot:snapshot||''};
+    liveMsg.retryError=error&&error.name==='AbortError'?(AI.state.abortReason==='timeout'?'响应超时，可重新提交':'已手动停止，可重新提交'):errMsg;
     saveDB();
     const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
     if(art)art.outerHTML=aiMessageHTML(liveMsg);
-    toast(note,'error');
-  }finally{if(sendButton){sendButton.textContent='发送';sendButton.onclick=requestAISend;}aiScrollBottom();}
+    toast(note,(error&&error.name==='AbortError')?'warning':'error');
+  }finally{setAISendingUI(false);aiScrollBottom();}
 }
 function stopAIMessage(){AI.abort();}
+/** 生成中/结束的 UI 态切换：按钮「停止⇄发送」、composer 忙碌标记；幂等，节点缺失自动跳过 */
+function setAISendingUI(on){
+  const button=document.getElementById('aiSendBtn');const composer=document.querySelector('.ai-composer');
+  if(on){
+    if(button){button.textContent='停止';button.onclick=stopAIMessage;}
+    if(composer)composer.classList.add('ai-busy');
+  }else{
+    if(button){button.textContent='发送';button.onclick=requestAISend;}
+    if(composer)composer.classList.remove('ai-busy');
+  }
+}
+/** 点击失败/超时消息下的「重新提交」：用原始问题与快照重新走完整发送流程 */
+async function retryAIMessage(id){
+  const m=(DB.aiChats||[]).find(x=>x.id===id);
+  if(!m||!m.retry||!m.retry.text){toast('未找到可重试的原始问题','warning');return;}
+  if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;}
+  if(!document.getElementById('aiMessages'))openAIAssistant(); // 弹窗未开时先打开（重开弹窗点击历史按钮场景）
+  await sendAIMessage(m.retry.text,m.retry.snapshot||'');
+}
 /** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
  *  @param {string} batchId - aiOps 批次 ID
  *  @param {Element} btnEl - 触发按钮（撤销后置灰） */
@@ -436,7 +471,7 @@ async function openAISettings(){
     let kbStat=null;
     try{if(typeof KB!=='undefined'){await KB.init();kbStat=KB.summarize();}}catch(e){kbStat=null;}
     const kbZone=kbrenderZone(kbStat);
-    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版</span> API_KEY 保存在本机浏览器 localStorage，仅本机可见。';
+    const runtimeInfo=isTauri?'<span class="tag green">桌面版（Tauri）</span> API_KEY 保存在本机应用数据目录，不会被发送给任何第三方。':'<span class="tag blue">浏览器版</span> API_KEY 以混淆形式保存在本机浏览器 localStorage（非明文），仅本机可见。';
     let savedKey='';
     try{if(typeof AI.getDeepseekToken==='function')savedKey=await AI.getDeepseekToken();}catch(e){savedKey='';}
     const savedBase=AI.state.baseUrl||AI.DEFAULT_BASE_URL;

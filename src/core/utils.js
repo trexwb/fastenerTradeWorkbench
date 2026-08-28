@@ -562,7 +562,10 @@ function roleBadge(roles){return roles.map(r=>'<span class="tag '+(r==='采购�
  * @param {string} s - 日期字符串
  * @returns {Date} 归零时间的 Date 对象
  */
-function toDate(s){return new Date(String(s||'').slice(0,10)+'T00:00:00');}
+function toDate(s){
+  if(s&&typeof s==='object')s=s.time||'';
+  return new Date(String(s||'').slice(0,10)+'T00:00:00');
+}
 /**
  * 判断订单是否逾期（交付日早于今天且状态非完成/取消/未成交）。
  * @param {Object} o - 订单对象
