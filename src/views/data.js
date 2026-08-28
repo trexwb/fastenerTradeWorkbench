@@ -344,13 +344,13 @@ async function _kbRefreshBox(){
       '<button type="button" class="btn sm" onclick="_kbRescan()" '+(s.indexing?'disabled':'')+'>'+icon('refresh','14')+' 重新索引</button>'+
       '<button type="button" class="btn sm" onclick="_kbUnbind()" '+(s.indexing?'disabled':'')+'>'+icon('link','14')+' 断开</button>'+
     '</div>'+
-    '<div style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
-      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)"><input type="checkbox" id="kbSectEnabled" '+(s.enabled?'checked':'')+' onchange="_kbToggle(this.checked)"> 提问时检索知识库</label>'+
-      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)">注入 Top-N '+
-        '<select id="kbSectTopN" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg)" onchange="_kbTopN(this.value)">'+
+    '<div class="ai-kb-opts">'+
+      '<label class="ai-opt"><input type="checkbox" id="kbSectEnabled" '+(s.enabled?'checked':'')+' onchange="_kbToggle(this.checked)"><span>提问时检索知识库</span></label>'+
+      '<label class="ai-opt ai-opt-inline">注入 Top-N '+
+        '<select id="kbSectTopN" onchange="_kbTopN(this.value)">'+
           [3,4,5].map(n=>'<option value="'+n+'"'+(s.topN===n?' selected':'')+'>'+n+' 片段</option>').join('')+
         '</select></label>'+
-      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)"><input type="checkbox" id="kbSectCite" '+(s.cite?'checked':'')+' onchange="_kbCite(this.checked)"> 回答标注来源</label>'+
+      '<label class="ai-opt"><input type="checkbox" id="kbSectCite" '+(s.cite?'checked':'')+' onchange="_kbCite(this.checked)"><span>回答标注来源</span></label>'+
     '</div>'+
     (s.error?'<div class="note" style="color:var(--red);margin-top:8px;margin-bottom:0">'+escHtml(s.error)+'</div>':'');
   box.innerHTML=inner;

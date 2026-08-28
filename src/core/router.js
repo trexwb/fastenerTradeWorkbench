@@ -316,22 +316,33 @@ function openSettingsModal(){
   const isDesktop=!!upd;
   const envText=IS_TAURI_RUNTIME?'桌面版（Tauri）':'网页版';
   let html='';
-  html+='<div style="margin-bottom:18px"><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">关于</div>'+
-    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">应用</span><b>紧固件贸易工作台</b></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">版本</span><b>'+APP_VERSION+'</b></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">运行环境</span><b>'+envText+'</b></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:var(--gray)">下载中心</span><a href="https://wiki.edtib.com/%E4%B8%8B%E8%BD%BD%E4%B8%AD%E5%BF%83/%E7%B4%A7%E5%9B%BA%E4%BB%B6%E8%B4%B8%E6%98%93%E4%B8%AA%E4%BA%BA%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80.html" target="_blank" style="color:var(--pri)">前往下载地址</a></div>'+
+  /* Hero 卡片：应用品牌 + 版本信息 */
+  html+='<div class="set-hero">'+
+    '<div class="set-hero-icon">'+icon('package',22)+'</div>'+
+    '<div class="set-hero-body">'+
+      '<div class="set-hero-name">紧固件贸易工作台</div>'+
+      '<div class="set-hero-version">版本 <span class="tag">'+APP_VERSION+'</span></div>'+
+    '</div>'+
+  '</div>';
+  /* 关于：应用元信息列表 */
+  html+='<div class="set-section-hd">'+icon('info',16)+'<span>关于</span></div>'+
+    '<div class="set-info-list">'+
+      '<div class="set-info-row"><span class="set-label">应用</span><span class="set-value">紧固件贸易工作台</span></div>'+
+      '<div class="set-info-row"><span class="set-label">版本</span><span class="set-value">'+APP_VERSION+'</span></div>'+
+      '<div class="set-info-row"><span class="set-label">运行环境</span><span class="set-value">'+envText+'</span></div>'+
+      '<div class="set-info-row"><span class="set-label">下载中心</span><span class="set-value"><a href="https://wiki.edtib.com/%E4%B8%8B%E8%BD%BD%E4%B8%AD%E5%BF%83/%E7%B4%A7%E5%9B%BA%E4%BB%B6%E8%B4%B8%E6%98%93%E4%B8%AA%E4%BA%BA%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80.html" target="_blank">前往下载地址 →</a></span></div>'+
     '</div>';
   if(!isDesktop){
-    html+='<div><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">版本更新</div>'+
-      '<div style="color:var(--gray);font-size:13px;line-height:1.7">网页版不支持自动更新，请使用桌面版（Tauri）以获取在线升级能力。</div></div>';
+    html+='<div class="set-section-hd">'+icon('refresh',16)+'<span>版本更新</span></div>'+
+      '<div class="set-web-note">网页版不支持自动更新，请使用桌面版（Tauri）以获取在线升级能力。</div>';
   }else{
-    html+='<div><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">版本更新</div>'+
-      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px">'+
-        '<input type="checkbox" id="setAutoUpdate"'+(upd.autoEnabled()?' checked':'')+' style="accent-color:var(--pri)"/>'+
-        '<span>自动检查并后台下载新版本（更新完成后重启应用生效）</span>'+
-      '</label>'+
-      '<div id="setStatusBox"></div>'+
+    html+='<div class="set-section-hd">'+icon('refresh',16)+'<span>版本更新</span></div>'+
+      '<div class="set-update-card">'+
+        '<label class="set-auto-check">'+
+          '<input type="checkbox" id="setAutoUpdate"'+(upd.autoEnabled()?' checked':'')+'/>'+
+          '<span>自动检查并后台下载新版本<small style="color:var(--gray);display:block;margin-top:2px">更新完成后重启应用生效</small></span>'+
+        '</label>'+
+        '<div id="setStatusBox"></div>'+
       '</div>';
   }
   modal('设置',html,'关闭',function(){closeModal();},true);
@@ -357,24 +368,24 @@ function renderSetStatus(){
   const cur=APP_VERSION;
   let h='';
   if(st.status==='downloading'){
-    h+='<div style="font-size:13px;margin-bottom:8px">正在下载 v'+(st.version||'')+'… '+st.progress+'%</div>'+
-      '<div style="height:8px;background:var(--bg-soft);border-radius:5px;overflow:hidden;margin-bottom:12px"><i style="display:block;height:100%;width:'+st.progress+'%;background:var(--pri);transition:width .3s"></i></div>';
+    h+='<div class="set-status-text">正在下载 v'+(st.version||'')+'… '+st.progress+'%</div>'+
+      '<div class="set-status-bar"><i style="width:'+st.progress+'%"></i></div>';
   }else if(st.status==='ready'){
-    h+='<div style="font-size:13px;color:var(--green);margin-bottom:10px">更新已就绪（v'+st.version+'），重启应用完成更新</div>'+
-      '<button type="button" class="btn primary" id="setRelaunchBtn" style="margin-right:8px">立即重启</button>';
+    h+='<div class="set-status-text ok">'+icon('check',14)+' 更新已就绪（v'+st.version+'），重启应用完成更新</div>'+
+      '<div class="set-status-actions"><button type="button" class="btn primary" id="setRelaunchBtn">立即重启</button></div>';
   }else if(st.status==='available'){
-    h+='<div style="font-size:13px;color:var(--amber);margin-bottom:10px">发现新版本 v'+st.version+'（当前 '+cur+'）'+(st.notes?'<br><span style="color:var(--gray)">'+escHtml(st.notes).slice(0,120)+'</span>':'')+'</div>'+
-      '<button type="button" class="btn primary" id="setDownloadBtn" style="margin-right:8px">下载并安装</button>';
+    h+='<div class="set-status-text warn">'+icon('alertCircle',14)+' 发现新版本 v'+st.version+'（当前 '+cur+'）'+(st.notes?'<br><span style="color:var(--gray)">'+escHtml(st.notes).slice(0,120)+'</span>':'')+'</div>'+
+      '<div class="set-status-actions"><button type="button" class="btn primary" id="setDownloadBtn">下载并安装</button></div>';
   }else if(st.status==='checking'){
-    h+='<div style="font-size:13px;color:var(--gray);margin-bottom:10px">正在检查更新…</div>';
+    h+='<div class="set-status-text">'+icon('clock',14)+' 正在检查更新…</div>';
   }else if(st.status==='uptodate'){
-    h+='<div style="font-size:13px;color:var(--green);margin-bottom:10px">已是最新版本（'+cur+'）</div>';
+    h+='<div class="set-status-text ok">'+icon('check',14)+' 已是最新版本（'+cur+'）</div>';
   }else if(st.status==='error'){
-    h+='<div style="font-size:13px;color:var(--red);margin-bottom:10px">检查更新失败：'+escHtml(st.error)+'</div>';
+    h+='<div class="set-status-text err">'+icon('alertCircle',14)+' 检查更新失败：'+escHtml(st.error)+'</div>';
   }else{
-    h+='<div style="font-size:13px;color:var(--gray);margin-bottom:10px">当前版本 '+cur+'</div>';
+    h+='<div class="set-status-text">当前版本 '+cur+'</div>';
   }
-  h+='<button type="button" class="btn ghost" id="setCheckBtn">检查更新</button>';
+  h+='<div class="set-status-actions"><button type="button" class="btn ghost" id="setCheckBtn">'+icon('refresh',14)+' 检查更新</button></div>';
   box.innerHTML=h;
   const cb=document.getElementById('setCheckBtn');
   if(cb)cb.onclick=function(){window.Updater.check(false);renderSetStatus();};

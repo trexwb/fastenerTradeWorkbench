@@ -10,7 +10,7 @@
      3) 都没有 → 原样透传（由 Tauri 给出明确的缺钥报错）
    ═══════════════════════════════════════════════════════════════════ */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -82,6 +82,15 @@ if (!cmd.length) {
   console.error('[with-updater-key] 用法: node scripts/with-updater-key.mjs <命令…>')
   process.exit(1)
 }
+
+// CI 环境：中文 productName 会导致 Windows WiX/MSI 编码错误与 Release 上传中文文件名失败。
+// 写临时配置文件覆盖为 ASCII（不经过命令行，规避 cmd.exe 剥离双引号问题）。
+if (process.env.CI === 'true' && !cmd.includes('--config')) {
+  const tmpConf = path.join(os.tmpdir(), 'ftw-ci-config.json')
+  writeFileSync(tmpConf, JSON.stringify({ productName: 'FastenerTradeWorkbench' }))
+  cmd.push('--config', tmpConf)
+}
+
 const result = spawnSync(cmd[0], cmd.slice(1), {
   stdio: 'inherit',
   env: process.env,

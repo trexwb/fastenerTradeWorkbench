@@ -407,20 +407,24 @@ function kbrenderZone(stat){
   const s=stat;
   let head='';
   if(s.bound){
-    head+='<div style="margin:6px 0 2px"><span class="tag green">已绑定</span> <strong>'+escHtml(s.dirName)+'</strong>'+(s.indexing?' <span class="ai-status warning">● 索引中…</span>':'')+(s.enabled?' <span class="tag blue">检索开启（Top '+s.topN+'）</span>':' <span class="tag">检索关闭</span>')+'</div>'+
+    head+='<div class="ai-kb-head"><span class="tag green">已绑定</span> <strong>'+escHtml(s.dirName)+'</strong>'+(s.indexing?' <span class="ai-status warning">● 索引中…</span>':'')+(s.enabled?' <span class="tag blue">检索开启（Top '+s.topN+'）</span>':' <span class="tag">检索关闭</span>')+'</div>'+
       '<div class="note">'+s.files+' 个文件 · '+s.blocks+' 个分块 · 约 '+Math.round(s.chars/1000)+'K 字'+(s.indexedAt?(' · 索引于 '+new Date(s.indexedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):'')+'</div>';
     if(s.error)head+='<div class="ai-status warning">⚠ '+escHtml(s.error)+'</div>';
   }else{
-    head='<div style="margin:6px 0 2px"><span class="ai-status warning">● 未绑定知识库目录</span></div><div class="note">绑定一个本地文件夹作为知识库（支持 md/txt/pdf/docx，PDF/Word 需联网首次加载解析内核），正文留在原目录不动，解析后的分块全文与索引写入独立的 wb_fastener_kb 库，与业务数据分离。</div>';
+    head='<div class="ai-kb-head"><span class="ai-status warning">● 未绑定知识库目录</span></div><div class="note">绑定一个本地文件夹作为知识库（支持 md/txt/pdf/docx），提问时自动查阅其中的资料；正文留在原目录不动。</div>';
   }
   const actions=s.bound
-    ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+((s.indexing)?' disabled':'')+'>断开</button>'
+    ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+(s.indexing?' disabled':'')+'>断开</button>'
     :'<button type="button" class="btn sm primary" onclick="kbBindDir()">选择目录并索引</button>';
-  const enableRow='<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetEnabled(this.checked)"> 提问时检索知识库</label>'+
-    (s.bound?'<label style="display:flex;align-items:center;gap:4px;font-size:13px">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" style="width:54px;padding:2px 6px" onchange="kbSetTopN(this.value)"></label>':'')+
-    '<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbCite" '+(s.cite?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetCite(this.checked)"> 回答标注来源</label></div>';
-  const aiRow='<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)"><div class="note" style="margin-bottom:4px">AI 主动检索（推荐）：开启后不再自动注入片段，由 AI 在对话中按需调用检索工具，命中更准、省 token。</div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbActiveRetrieval" '+(s.activeRetrieval!==false?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetActiveRetrieval(this.checked)"> AI 主动检索</label><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbAutoInjectFallback" '+(s.autoInjectFallback?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetAutoInjectFallback(this.checked)"> 自动注入兜底</label></div></div>';
-  return head+'<div style="margin-top:6px">'+actions+'</div>'+enableRow+aiRow;
+  const dis=(s.bound?'':' disabled');
+  const enableRow='<div class="ai-kb-opts">'+
+    '<label class="ai-opt"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+dis+' onchange="kbSetEnabled(this.checked)"><span>提问时检索知识库</span></label>'+
+    (s.bound?'<label class="ai-opt ai-opt-inline">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" onchange="kbSetTopN(this.value)"></label>':'')+
+    '<label class="ai-opt"><input type="checkbox" id="kbCite" '+(s.cite?'checked':'')+dis+' onchange="kbSetCite(this.checked)"><span>回答标注来源</span></label></div>';
+  const aiRow='<div class="ai-kb-ai"><div class="note ai-kb-ai-note">AI 主动检索（推荐）：开启后不再自动注入片段，由 AI 在对话中按需调用检索工具，命中更准、省 token。</div><div class="ai-kb-opts">'+
+    '<label class="ai-opt"><input type="checkbox" id="kbActiveRetrieval" '+(s.activeRetrieval!==false?'checked':'')+dis+' onchange="kbSetActiveRetrieval(this.checked)"><span>AI 主动检索</span></label>'+
+    '<label class="ai-opt"><input type="checkbox" id="kbAutoInjectFallback" '+(s.autoInjectFallback?'checked':'')+dis+' onchange="kbSetAutoInjectFallback(this.checked)"><span>自动注入兜底</span></label></div></div>';
+  return head+'<div class="ai-kb-actions">'+actions+'</div>'+enableRow+aiRow;
 }
 /** 刷新设置弹窗内的知识库区块（每次操作后重渲染） */
 function kbRefreshZone(){
