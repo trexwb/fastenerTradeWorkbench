@@ -1,8 +1,8 @@
 # 代码文档覆盖率报告
 
-> 生成时间: 2026-08-16  
-> 项目版本: v1.1.174  
-> 覆盖率: **272/272 函数 (100.0%)**
+> 生成时间: 2026-08-28
+> 项目版本: v1.0.31（结构：`src/core/` 数据/工具/UI 层 + `src/views/` 视图层 + `src/styles/` 设计体系）
+> 覆盖率: **533/632 函数 (84%)**（口径：顶层与模块内 `function` 声明数 vs `/** */` JSDoc 块数，脚本自动扫描）
 
 ---
 
@@ -10,88 +10,36 @@
 
 | 文件 | 函数数 | JSDoc | 覆盖率 | 状态 |
 |------|-------|-------|--------|------|
-| `src/js/app.js` | 1 | 1 | 100% | 🟢 完整 |
-| `src/js/store.js` | 9 | 9 | 100% | 🟢 完整 |
-| `src/js/utils.js` | 48 | 48 | 100% | 🟢 完整 |
-| `src/js/ui.js` | 6 | 6 | 100% | 🟢 完整 |
-| `src/js/router.js` | 17 | 17 | 100% | 🟢 完整 |
-| `src/js/seed.js` | 1 | 1 | 100% | 🟢 完整 |
-| `src/js/exporter.js` | 8 | 8 | 100% | 🟢 完整 |
-| `src/js/views/dashboard.js` | 2 | 2 | 100% | 🟢 完整 |
-| `src/js/views/specs.js` | 10 | 10 | 100% | 🟢 完整 |
-| `src/js/views/prices.js` | 18 | 18 | 100% | 🟢 完整 |
-| `src/js/views/orders.js` | 72 | 72 | 100% | 🟢 完整 |
-| `src/js/views/settlements.js` | 20 | 20 | 100% | 🟢 完整 |
-| `src/js/views/invoices.js` | 9 | 9 | 100% | 🟢 完整 |
-| `src/js/views/bom.js` | 22 | 22 | 100% | 🟢 完整 |
-| `src/js/views/units.js` | 21 | 21 | 100% | 🟢 完整 |
-| `src/js/views/data.js` | 8 | 8 | 100% | 🟢 完整 |
-| **合计** | **272** | **272** | **100%** | 🟢 **完美** |
+| `src/core/ai-tools.js` | 9 | 18 | 200% | 🟢 完整 |
+| `src/core/ai.js` | 39 | 18 | 46% | 🔴 待补 |
+| `src/core/app.js` | 2 | 3 | 150% | 🟢 完整 |
+| `src/core/exporter.js` | 67 | 15 | 22% | 🔴 待补 |
+| `src/core/guide.js` | 2 | 2 | 100% | 🟢 完整 |
+| `src/core/help-knowledge.js` | 1 | 2 | 200% | 🟢 完整 |
+| `src/core/kb.js` | 34 | 8 | 24% | 🔴 待补 |
+| `src/core/router.js` | 24 | 26 | 108% | 🟢 完整 |
+| `src/core/seed.js` | 1 | 1 | 100% | 🟢 完整 |
+| `src/core/store.js` | 70 | 80 | 114% | 🟢 完整 |
+| `src/core/ui.js` | 8 | 11 | 138% | 🟢 完整 |
+| `src/core/updater.js` | 6 | 0 | 0% | 🔴 待补 |
+| `src/core/utils.js` | 58 | 68 | 117% | 🟢 完整 |
+| `src/core/validators.js` | 3 | 4 | 133% | 🟢 完整 |
+| `src/views/ai-chat.js` | 41 | 16 | 39% | 🔴 待补 |
+| `src/views/bom.js` | 25 | 29 | 116% | 🟢 完整 |
+| `src/views/dashboard.js` | 4 | 2 | 50% | 🟡 部分 |
+| `src/views/data.js` | 39 | 27 | 69% | 🟡 部分 |
+| `src/views/invoices.js` | 9 | 11 | 122% | 🟢 完整 |
+| `src/views/keyboard.js` | 6 | 0 | 0% | 🔴 待补 |
+| `src/views/orders.js` | 82 | 91 | 111% | 🟢 完整 |
+| `src/views/prices.js` | 30 | 36 | 120% | 🟢 完整 |
+| `src/views/search-panel.js` | 16 | 5 | 31% | 🔴 待补 |
+| `src/views/settlements.js` | 20 | 22 | 110% | 🟢 完整 |
+| `src/views/specs.js` | 13 | 14 | 108% | 🟢 完整 |
+| `src/views/units.js` | 23 | 24 | 104% | 🟢 完整 |
+| **合计** | **632** | **533** | **84%** | — |
 
----
+## 2. 说明
 
-## 2. 验收结果
-
-| 指标 | 目标 | 实际 | 状态 |
-|------|------|------|------|
-| 公共函数整体覆盖率 | ≥ 95% | **100%** | ✅ 超出 |
-| 核心基础设施覆盖率 | 100% | **100%** | ✅ |
-| `@description` 完整率 | 100% | **100%** | ✅ |
-| `@param` 标注率 | ≥ 80% | **~90%** | ✅ |
-| 语法检查 | 0 错误 | **全部通过** | ✅ |
-
----
-
-## 3. 各模块函数清单
-
-### 核心基础设施
-
-**`src/js/store.js`**（9 函数）— IndexedDB / FSA API / 数据迁移
-`idbOpen` · `idbSave` · `idbLoad` · `initApp` · `saveDB` · `saveDBDebounced` · `fsaSupported` · `migrateItems` · `storageEstimate`
-
-**`src/js/utils.js`**（48 函数）— 工具函数库
-`escHtml` · `escAttr` · `fmt` · `fmtN` · `today` · `now` · `toDate` · `daysUntil` · `uid` · `icon` · `combo` · `comboFilter` · `getComboVal` · `buildPaging` · `toast` · `isOverdue` · `isApproaching` · `pName` · `pRating` · `roleBadge` · `specLabel` · `specTags` · `specMatch` · `itemOpts` · `itemAllocSum` · `isItemSourced` · `itemSourcingStatus` · `itemProfit` · `orderProfit` · `orderSales` · `orderCost` · `_getBom` · `priceBomSku` · `priceSpec` · `priceAttrCol` · `_buildUnitCache` · `saveDraft` · `loadDraft` · `clearDraft` · `hasDraft` · `collectUnitDraft` · `restoreUnitDraft` · `collectOrderDraft` · `restoreOrderDraft` · `collectBOMDraft` · `restoreBOMDraft` · `collectPriceDraft` · `restorePriceDraft` · `bindDraftSave` · `checkDraftRestore`
-
-**`src/js/ui.js`**（6 函数）— 弹层组件
-`modal` · `closeModal` · `confirmModal` · `openDrawer` · `closeDrawer` · `drawerOk`
-
-**`src/js/router.js`**（17 函数）— 路由与全局状态
-`go` · `render` · `bindView` · `toggleSidebar` · `toggleNavParent` · `switchTheme` · `filterUnitsData` · `filterOrdersData` · `onUnitSearch` · `onOrderSearch` · `onOrderStatusFilter` · `unitPage` · `orderPage` · `goOrderView` · `goOrder`
-
-**`src/js/exporter.js`**（8 函数）— Excel 导出引擎
-`loadXLSX` · `ev` · `downloadWorkbook` · `exportOrder` · `_autoFitCols` · `_normColor` · `_toStyleObj` · `_wc`
-
-**`src/js/app.js`**（1 函数）— 入口
-`initApp`
-
-**`src/js/seed.js`**（1 函数）— 种子数据
-`_seedData`
-
-### 视图模块
-
-**`src/js/views/orders.js`**（72 函数）— 采购订单（核心模块）
-`fmtDelivery` · `renderOrderRow` · `renderOrderEmptyRow` · `viewOrders` · `refreshOrderList` · `viewOrderDetail` · `changeOrderStatus` · `nextStepButton` · `nextStepStartSourcing` · `nextStepFinishSourcing` · `nextStepConfirmSign` · `nextStepEnterDelivery` · `prevStepButton` · `prevStepOrder` · `cancelOrderConfirm` · `saveDeliveryInfo` · `enterEditDelivery` · `cancelEditDelivery` · `newOrder` · `goOrderEdit` · `sourceItemFromDetail` · `persistSourcingFromDetail` · `persistOrderItems` · `bindOrderDraftSave` · `saveOrderDraftFromItems` · `renderItemHTML` · `refreshProductList` · `viewOrderEdit` · `addItem` · `editItem` · `delItem` · `openItemModal` · `saveItemModal` · `buildSourceDrawerBody` · `buildPriceMatchModalBody` · `openPriceMatchModal` · `submitPriceMatch` · `filterPriceMatch` · `buildManualSupplierModalBody` · `openManualSupplierModal` · `initSourceModalCombo` · `refreshSourceDrawer` · `updateDetailRow` · `sourceItem` · `addMatchSupplier` · `manualSupplier` · `removeOption` · `saveOrder` · `toggleOrderItemDropdown` · `closeOrderItemDropdown` · `openOrderBatchAdd` · `parseOrderBatch` · `removeOrderBatchRow` · `submitOrderBatch` · `quoteSupplierComboOptions` · `openSupplierQuoteImport` · `parseSupplierQuote` · `renderSupplierQuotePreview` · `initQuoteSupplierCombos` · `removeQuoteRow` · `findQuoteItemIndex` · `submitSupplierQuote` · `openGenerateQuote` · `saveGeneratedQuote` · `receiveManageSection` · `updateReceiveField` · `deleteOrder` · `contactTooltip` · `renderInspectionSection` · `confirmOrderComplete` · `toggleAllOrders` · `updateOrderBatchBtn` · `batchDeleteOrders`
-
-**`src/js/views/settlements.js`**（20 函数）— 对账结算
-`settleOrders` · `settleReceiptData` · `settlePaymentData` · `settleUnitOrderDetails` · `settleRecords` · `viewSettlements` · `drillSettleTab` · `switchSettleSubTab` · `onSettleUnitFilter` · `onSettleSearch` · `settlePage` · `settleProductRows` · `openSettleDetail` · `delSettlement` · `openNewSettlement` · `onSettleTypeChange` · `refreshSettleOrderList` · `autoSumSettleAmount` · `submitSettlement` · `toggleDrawerSection`
-
-**`src/js/views/bom.js`**（22 函数）— BOM 物料
-`viewBOM` · `filterBOMData` · `hasBOMFilter` · `refreshBOMTable` · `bomPage` · `onBOMSearch` · `clearBOMFilter` · `confirmBOMDel` · `openBOMForm` · `_openBOMDrawer` · `bomValidateField` · `toggleBOMSpecsSection` · `saveBOMForm` · `deleteBOM` · `openBOMBatchAdd` · `parseBOMBatch` · `removeBatchRow` · `submitBOMBatch` · `toggleAllBOM` · `updateBOMBatchBtn` · `batchDeleteBOM` · `fillSpecFromBOM`
-
-**`src/js/views/units.js`**（21 函数）— 关联单位
-`unitCounts` · `viewUnits` · `refreshUnitList` · `setUnitRoleFilter` · `setUnitRatingFilter` · `refreshUnitTabs` · `validateAndCollectUnitForm` · `unitForm` · `toggleInvoiceSection` · `newUnit` · `editUnit` · `delUnit` · `contactRow` · `addCRow` · `delCRow` · `updateContactSides` · `readContacts` · `contactOpts` · `toggleAllUnits` · `updateUnitBatchBtn` · `batchDeleteUnits`
-
-**`src/js/views/prices.js`**（18 函数）— 报价管理
-`viewPrices` · `refreshPricesTable` · `pricePage` · `doPriceSearch` · `filterPrices` · `clearPriceFilter` · `hasPriceFilter` · `newPrice` · `isPriceDuplicate` · `editPrice` · `delPrice` · `priceFormHTML` · `bindPriceFormCombos` · `savePriceDrawer` · `toggleAllPrices` · `updatePriceBatchBtn` · `batchDeletePrices`
-
-**`src/js/views/invoices.js`**（9 函数）— 发票管理
-`syncInvoices` · `invoiceIssueData` · `invoiceReceiveData` · `viewInvoices` · `switchInvSubTab` · `onInvUnitFilter` · `onInvSearch` · `invPage` · `openInvEdit`
-
-**`src/js/views/data.js`**（8 函数）— 数据管理
-`renderStorageStatus` · `renderBackupSection` · `renderFileSyncSection` · `renderDangerZone` · `viewData` · `exportJSON` · `importJSON` · `clearAllData`
-
-**`src/js/views/specs.js`**（10 函数）— 属性规格
-`countSpecUsage` · `batchImportSpecHTML` · `renderSpecGroup` · `viewSpecs` · `toggleSpecGroup` · `filterSpecVals` · `clearSpecFilter` · `delSpecVal` · `openBatchImportSpec` · `exportAllSpecs`
-
-**`src/js/views/dashboard.js`**（2 函数）— 概览看板
-`gotoPendingOrders` · `viewDashboard`
+- 本文件由脚本按当前 `src/core/` + `src/views/` 实际代码自动扫描生成（v1.0.31 结构），替代 8-16 基于 `src/js/` 旧结构的版本。
+- AI 工具清单（47 个）见 `docs/API.md` §7.4；状态机说明见 `docs/操作手册.md` §7.4。
+- 版本历史见 `docs/version/RELEASE-v1.0.md`。

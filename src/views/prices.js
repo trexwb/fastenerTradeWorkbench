@@ -19,11 +19,11 @@ function priceRowHTML(p){
     '<td><input type="checkbox" class="price-check" data-id="'+escAttr(p.id)+'" onchange="updatePriceBatchBtn()"></td>'+
     '<td><b>'+escHtml(pName(p.unitId))+'</b><br><span class="muted" style="font-size:12px">'+escHtml(pRating(p.unitId))+'</span></td>'+
     '<td>'+priceBomSku(p)+'</td>'+
-    '<td>'+priceSpec(p)+'</td>'+
-    '<td><div class="spec-line">'+priceAttrCol(p)+'</div></td>'+
+    '<td class="m-hide-s2">'+priceSpec(p)+'</td>'+
+    '<td class="m-hide-s2"><div class="spec-line">'+priceAttrCol(p)+'</div></td>'+
     '<td><b style="color:var(--green)">'+fmt(p.price)+'</b></td>'+
-    '<td>'+escHtml(p.contact||'-')+'</td>'+
-    '<td>'+escHtml(p.validFrom)+'</td>'+
+    '<td class="m-hide-s1">'+escHtml(p.contact||'-')+'</td>'+
+    '<td class="m-hide-s1">'+escHtml(p.validFrom)+'</td>'+
     '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')">'+icon('trash')+'删除</button></td>'+
   '</tr>';
 }
@@ -79,7 +79,7 @@ function viewPrices(){
     specFilt+
     '<button class="btn sm ghost filt-clear" onclick="clearPriceFilter()">清除筛选</button>'+
   '</div>'+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllPrices(this)" title="全选"></th><th>供应商</th><th>BOM SKU</th><th>规格</th><th>属性</th><th>单价(元/千支)</th><th>联系人</th><th>有效期起</th><th></th></tr></thead><tbody id="priceBody">'+
+  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllPrices(this)" title="全选"></th><th>供应商</th><th>BOM SKU</th><th class="m-hide-s2">规格</th><th class="m-hide-s2">属性</th><th>单价(元/千支)</th><th class="m-hide-s1">联系人</th><th class="m-hide-s1">有效期起</th><th></th></tr></thead><tbody id="priceBody">'+
   (rows||priceEmptyRowHTML())+
   '</tbody></table></div>'+pg+'</div>';
 }

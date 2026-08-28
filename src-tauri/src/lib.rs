@@ -11,7 +11,8 @@ use tokio::io::AsyncBufReadExt;
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 const DEEPSEEK_TOKEN_FILENAME: &str = "deepseek_token";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
-const MAX_MESSAGES: usize = 20;
+// P2/O4 修复：评估上限 20→40，保证多轮工具调用时上下文窗口足够（每条消息含 role/content/工具结果）
+const MAX_MESSAGES: usize = 40;
 const MAX_MESSAGE_BYTES: usize = 30_000;
 const MAX_TOOL_MESSAGE_BYTES: usize = 200_000; // tool 消息（查询结果 JSON）上限
 const MAX_TOKENS: u32 = 4096;
@@ -173,7 +174,8 @@ fn backup_create(app: tauri::AppHandle, name: String) -> Result<String, String> 
         return Err("备份文件名不合法".into());
     }
     let root = backup_root(&app)?;
-    let src = root.join(DATA_FILENAME);
+    // P2/C1 修复：备份源应为应用数据根目录下的主数据文件 data.json，而非 backups 子目录内的同名文件
+    let src = data_root(&app)?.join(DATA_FILENAME);
     if !src.exists() {
         return Err("主数据文件不存在，无法备份".into());
     }

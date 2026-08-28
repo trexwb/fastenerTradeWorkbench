@@ -284,10 +284,10 @@ function viewInvoices(type){
       let actBtns='<button class="btn xs" onclick="openInvEdit(\''+inv.id+'\')">'+icon('edit')+'编辑</button>';
       let gap=_invTab==='issue'?(inv.receivable||0)-(inv.amount||0):(inv.payable||0)-(inv.amount||0);
       return '<tr>'+
-        '<td style="font-size:12px;color:var(--gray)">结算 '+escHtml(inv.settleDate)+'</td>'+
+        '<td class="m-hide-s2" style="font-size:12px;color:var(--gray)">结算 '+escHtml(inv.settleDate)+'</td>'+
         '<td>'+escHtml(inv.unitName)+'</td>'+
-        '<td>'+fmt(_invTab==='issue'?inv.receivable:inv.payable)+'</td>'+
-        '<td style="color:'+(inv.amount>0?'var(--green)':'var(--gray)')+'">'+fmt(inv.amount)+'</td>'+
+        '<td class="m-hide-s2">'+fmt(_invTab==='issue'?inv.receivable:inv.payable)+'</td>'+
+        '<td class="m-hide-s1" style="color:'+(inv.amount>0?'var(--green)':'var(--gray)')+'">'+fmt(inv.amount)+'</td>'+
         '<td style="color:'+(gap>0?'var(--red)':'var(--gray)')+'">'+fmt(gap)+'</td>'+
         '<td>'+statusTag+'</td>'+
         '<td class="td-act">'+actBtns+'</td>'+
@@ -298,8 +298,8 @@ function viewInvoices(type){
   let pg='<div id="invPaging">'+(totalPages>1?'<div style="display:flex;align-items:center;gap:6px;padding:10px 0;font-size:14px">'+icon('chevronLeft','14')+' <a href="javascript:void(0)" onclick="invPage('+(_invPage-1)+')" style="color:var(--blue);text-decoration:none'+( _invPage<=1?';visibility:hidden':'')+'">上一页</a><span style="padding:2px 10px;background:var(--bg-soft);border-radius:4px">'+_invPage+' / '+totalPages+'</span><a href="javascript:void(0)" onclick="invPage('+(_invPage+1)+')" style="color:var(--blue);text-decoration:none'+( _invPage>=totalPages?';visibility:hidden':'')+'">下一页</a> '+icon('chevronRight','14')+'</div>':'')+'</div>';
 
   let cols=_invTab==='issue'?
-    '<th>结算日期</th><th>公司名称</th><th>应收金额</th><th>已收金额</th><th>未收金额</th><th>开票状态</th><th>操作</th>':
-    '<th>结算日期</th><th>公司名称</th><th>应付金额</th><th>已付金额</th><th>未付金额</th><th>收票状态</th><th>操作</th>';
+    '<th class="m-hide-s2">结算日期</th><th>公司名称</th><th class="m-hide-s2">应收金额</th><th class="m-hide-s1">已收金额</th><th>未收金额</th><th>开票状态</th><th>操作</th>':
+    '<th class="m-hide-s2">结算日期</th><th>公司名称</th><th class="m-hide-s2">应付金额</th><th class="m-hide-s1">已付金额</th><th>未付金额</th><th>收票状态</th><th>操作</th>';
   let colSpan=7;
 
   tabUndone=Math.max(0,tabTotal-tabDone);

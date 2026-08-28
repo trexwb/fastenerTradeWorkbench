@@ -12,15 +12,27 @@ const DRAWER_CLOSE_DELAY=320;
    Modal / Drawer
    ========================================================= */
 /**
- * 弹出模态对话框。
+ * 弹出通用模态对话框（标题 + 内容 + 底部按钮）。
+ * 支持最多 3 个按钮：取消（次）+ 确定（主）+ 额外按钮（extra，位于确定按钮左侧，用于"第三选择"如导入/重置）。
  * @param {string} title - 弹窗标题
- * @param {string|Element} body - 弹窗内容（HTML 字符串或 DOM 元素）
- * @param {string} [okText='确定'] - 确认按钮文字
- * @param {Function} [onOk] - 点击确认按钮的回调
- * @param {boolean} [wide] - 是否使用宽版样式
+ * @param {string|HTMLElement} body - 弹窗主体（HTML 字符串或 DOM 元素）
+ * @param {string} okText - 主按钮（primary）文字
+ * @param {Function} onOk - 主按钮点击回调（自动先关闭弹窗再执行）
+ * @param {boolean|string} [wideOrExtra] - 兼容旧签名：boolean 时视为 wide（宽版）；string 时视为 extraBtn 文案
+ * @param {Function|boolean} [extraOnOkOrWide] - 兼容旧签名：Function 时视为 extraBtn 回调；boolean 时视为 wide
+ * @param {boolean} [_wide] - 兜底：显式 wide 标志
  * @returns {void} 无返回值
  */
-function modal(title,body,okText,onOk,wide){
+function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
+  /* 兼容旧签名 5 参数：modal(title,body,okText,onOk,wide) */
+  let extraBtn='',extraOnOk=null,wide=false;
+  if(typeof wideOrExtra==='boolean'){wide=wideOrExtra;}
+  else if(typeof wideOrExtra==='string'){
+    extraBtn=wideOrExtra;
+    if(typeof extraOnOkOrWide==='function'){extraOnOk=extraOnOkOrWide;}
+    if(typeof extraOnOkOrWide==='boolean'){wide=extraOnOkOrWide;}
+    if(typeof _wide==='boolean'){wide=_wide;}
+  }
   const w=wide?'wide':'';
   /* 先移除已存在的旧弹窗，避免重复打开时 getElementById 命中旧元素 */
   const oldMask=document.getElementById('_mask');
@@ -28,12 +40,20 @@ function modal(title,body,okText,onOk,wide){
   const m=document.createElement('div');
   m.className='mask';m.id='_mask';
   m.onclick=function(e){if(e.target===m)closeModal();};
-  m.innerHTML='<div class="modal '+w+'"><div class="mh">'+escHtml(title||'')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"></div><div class="mf"><button type="button" class="btn" onclick="closeModal()">取消</button><button type="button" class="btn primary" id="_modalOk">'+escHtml(okText||'确定')+'</button></div></div>';
+  const extraHtml=(extraBtn&&extraOnOk)?'<button type="button" class="btn extra" id="_modalExtra">'+escHtml(extraBtn)+'</button>':'';
+  /* v1.0.28：主按钮为「关闭」语义时（纯关弹窗无副作用，如设置弹窗、知识库原文）不渲染取消按钮，避免冗余双按钮 */
+  const cancelHtml=(okText==='关闭')?'':'<button type="button" class="btn" id="_modalCancel">取消</button>';
+  m.innerHTML='<div class="modal '+w+'"><div class="mh">'+escHtml(title||'')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"></div><div class="mf">'+cancelHtml+extraHtml+'<button type="button" class="btn primary" id="_modalOk">'+escHtml(okText||'确定')+'</button></div></div>';
   const mb=m.querySelector('.mb');
   if(body instanceof Element){mb.appendChild(body);}
   else{mb.innerHTML=body||'';}
   document.getElementById('app').appendChild(m);
   document.getElementById('_modalOk').onclick=()=>{closeModal();if(onOk)onOk();};
+  /* v1.0.28 修复：取消按钮未绑 onclick，导致设置等弹窗点"取消"无反应。modal() 无 onCancel 形参，取消即关闭弹窗（与 confirmModal 行为一致） */
+  const cn=document.getElementById('_modalCancel');
+  if(cn)cn.onclick=()=>{closeModal();};
+  const ex=document.getElementById('_modalExtra');
+  if(ex&&extraOnOk){ex.onclick=()=>{closeModal();extraOnOk();};}
   m.scrollIntoView();
 }
 /**

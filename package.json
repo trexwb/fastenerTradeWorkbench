@@ -1,6 +1,6 @@
 {
   "name": "fastener-trade-workbench",
-  "version": "1.0.26",
+  "version": "1.0.28",
   "private": true,
   "type": "module",
   "description": "紧固件贸易工作台 (Vue3 + Vite 开发，Tauri 桌面封装)",

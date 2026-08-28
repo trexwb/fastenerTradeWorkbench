@@ -43,10 +43,10 @@ function aiStatusLabel(){
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
-  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escAttr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
+  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   const content=isUser?escHtml(message.content):aiRenderCite(renderAIMarkdown(message.content));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
-  const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escAttr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
+  const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
   return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
 }
 /** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
@@ -55,7 +55,7 @@ function aiRenderCite(html){
   return String(html).replace(/【依据：([^】]+)】/g,function(m,name){
     const trimmed=(name||'').trim();
     if(!trimmed)return m;
-    return '<button type="button" class="ai-cite" onclick="kbShowFile(\''+escAttr(trimmed)+'\')" title="查看原文：'+escAttr(trimmed)+'">'+escHtml(trimmed)+'</button>';
+    return '<button type="button" class="ai-cite" onclick="kbShowFile(\''+escJsStr(trimmed)+'\')" title="查看原文：'+escAttr(trimmed)+'">'+escHtml(trimmed)+'</button>';
   });
 }
 /** 查看知识库某文件的原文（弹窗展示其全部分块，用于核对引用来源） */

@@ -5,9 +5,10 @@
   --green:#5d7a3a;--green-l:#f4f8ef;--amber:#b45309;--amber-l:#fef9f1;
   --red:#c44e3d;--red-l:#fdf6f5;--gray:#78716c;--ink:#2c2826;
   --line:#e7e3dd;--bg:#f3f0eb;--card:#fefdfb;--side:#1c1b1a;--side2:#2d2a26;
-  --radius:6px;--radius-sm:4px;--radius-lg:10px;--content-max:1400px;
+  --radius:6px;--radius-sm:4px;--radius-md:8px;--radius-lg:10px;--content-max:1400px;
   --shadow:0 0 0 1px rgba(0,0,0,.04),0 1px 4px rgba(0,0,0,.05);
   --shadow-md:0 0 0 1px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.08);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.08);
   --side-ink:#c8d3e0;--side-ink-dim:#a8b8cc;--side-brand:#fff;
   --side-brand-sub:#8b8178;--side-hover-bg:rgba(255,255,255,.05);
   --side-hover-ink:#dde6f0;--side-active-bg:var(--pri);--side-active-ink:#fff;
@@ -32,9 +33,10 @@
   --green:#7ec8a0;--green-l:#f2faf6;--amber:#e8a860;--amber-l:#fef9f2;
   --red:#e09085;--red-l:#fef6f5;--gray:#9e9b95;--ink:#423f3a;
   --line:#ebe7df;--bg:#fbf9f4;--card:#fffefc;--side:#edf2f8;--side2:#e0e8f2;
-  --radius:10px;--radius-sm:6px;--radius-lg:14px;--content-max:1400px;
+  --radius:10px;--radius-sm:6px;--radius-md:12px;--radius-lg:14px;--content-max:1400px;
   --shadow:0 0 0 1px rgba(0,0,0,.025),0 2px 4px rgba(0,0,0,.03);
   --shadow-md:0 0 0 1px rgba(0,0,0,.03),0 4px 16px rgba(0,0,0,.05);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.04);
   --side-ink:var(--ink);--side-ink-dim:var(--gray);--side-brand:var(--pri);
   --side-brand-sub:var(--gray);--side-hover-bg:rgba(0,0,0,.04);
   --side-hover-ink:var(--ink);--side-active-bg:var(--pri-l);--side-active-ink:var(--pri);
@@ -49,4 +51,34 @@
   --green-line:#d4f0e2;--amber-line:#f8e3c8;--red-line:#f8dcd8;
   --purple:#8b5cf6;--purple-l:#f3f0ff;--purple-line:#ddd6fe;
   --tooltip-bg:#334155;
+}
+/* ===== THEME: 暗色（夜间模式·护眼） ===== */
+/* 第三套主题：深炭灰背景 + 浅色文字，长时间夜间使用护眼。
+   主色对 default 提亮（铜→亮琥珀、深蓝→亮蓝、橄榄绿→亮绿），保证暗底可读性。
+   z-index 与 default 一致，不随主题变化。 */
+[data-theme="dark"]{
+  --accent:#f59e0b;--accent-d:#d97706;--accent-l:#422006;--accent-p:#78350f;
+  --pri:#60a5fa;--pri-d:#3b82f6;--pri-l:#1e293b;--pri-p:#334155;
+  --green:#84cc16;--green-l:#1a2e05;--amber:#f59e0b;--amber-l:#422006;
+  --red:#f87171;--red-l:#3b0d0d;--gray:#9ca3af;--ink:#e5e7eb;
+  --line:#2d2d33;--bg:#161618;--card:#1f1f23;--side:#0f0f10;--side2:#1a1a1c;
+  --radius:6px;--radius-sm:4px;--radius-md:8px;--radius-lg:10px;--content-max:1400px;
+  --shadow:0 0 0 1px rgba(0,0,0,.3),0 1px 4px rgba(0,0,0,.4);
+  --shadow-md:0 0 0 1px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.5);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.4);
+  --side-ink:#e5e7eb;--side-ink-dim:#9ca3af;--side-brand:#f59e0b;
+  --side-brand-sub:#6b7280;--side-hover-bg:rgba(255,255,255,.06);
+  --side-hover-ink:#f3f4f6;--side-active-bg:var(--pri);--side-active-ink:#fff;
+  --side-border:rgba(255,255,255,.08);--side-ft-border:rgba(255,255,255,.06);
+  --side-ft-btn-bg:rgba(255,255,255,.06);--side-ft-btn-border:rgba(255,255,255,.08);
+  --side-ft-btn-ink:#e5e7eb;--side-ft-btn-hover:rgba(255,255,255,.1);
+  --topbar-bg:#1f1f23;
+  /* 语义别名（与 default/cream 同名，值随本主题基础变量切换） */
+  --blue:var(--pri);--warn:var(--amber);--text:var(--ink);--fg-soft:var(--gray);--pri-bg:var(--pri-l);
+  /* 状态边框/浅底（暗色协调） */
+  --bg-soft:#1a1a1c;--bg-tint:#1f1f23;--row-alt:#1a1a1c;--row-hover:#262629;
+  --green-line:#2d3b0f;--amber-line:#3b2806;--red-line:#3b1414;
+  --purple:#a78bfa;--purple-l:#1e1b2e;--purple-line:#3b2f5e;
+  --tooltip-bg:#0f0f10;
+  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-toast:2000;
 }

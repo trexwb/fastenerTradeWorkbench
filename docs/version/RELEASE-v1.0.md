@@ -2,108 +2,179 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.28**。
 
 ---
 
-## v1.0.26 · 📝 待发布
+## v1.0.28 · 📝 待发布
 
-> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
-> **发布日期**: 2026-08-28
-> **上一版本**: v1.0.25
-> **版本范围**: 交互体验全面审查 — 修复「AI 操作提案弹窗关闭路径不回填导致 AI 发送永久锁死」
-
----
-
-## 审查范围与方法
-
-对全部用户操作路径做系统性审查：① 全局核对 `onclick/onchange/oninput` 引用与函数定义（防「点击无效」）；② 全部 `classList.toggle` 折叠/显隐切换点的类挂载模式；③ modal / drawer / combo 的全部关闭路径（X / 遮罩点击 / Esc / 取消按钮 / blur）；④ 状态文案与实际状态同步；⑤ 全部表单保存防重锁覆盖。
-
-## 审查结论
-
-| 审查项 | 结论 |
-|--------|------|
-| onclick 引用完整性 | ✅ 无缺失（filterPriceMatch / filterSpecVals 为 debounce const 定义，误报排除） |
-| 折叠类挂载模式 | ✅ BOM 已修（v1.0.25）、units.js 祖先模式正确、侧栏/菜单切换正常 |
-| 箭头/文案状态同步 | ✅ units 与 BOM 均随状态切换 |
-| 保存防重锁 | ✅ units / bom / prices / settlements / invoices / orders 全覆盖 |
-| modal 关闭路径 | ❌ **发现严重缺陷：AI 操作提案弹窗（Promise 型）的 X / 遮罩点击 / Esc 关闭不回填 Promise** |
-| combo 关闭 | ✅ blur 关闭正常 |
-
-## 变更
-
-### 修复：AI 操作提案弹窗关闭导致 AI 发送永久锁死（src/views/ai-chat.js confirmOpsModal）
-
-- **场景**：模型发起写入提案弹出确认窗后，用户点击右上角 × / 遮罩空白处 / 按 Esc——这三条路径只调 `closeModal()` 移除弹窗，**不会 resolve 等待中的 Promise**；`aiWriteLoop` 永久 `await onConfirm`，`AI.state.chatting` 锁死为 true，之后所有 AI 发送被「正在生成回复」拦截，只能刷新页面恢复
-- **修复**：`settle` 唯一出口 + `settled` 防双回填；取消按钮 / X / 遮罩点击统一接管为「取消并回填」；全局 Esc（keyboard.js 调 `closeModal()` 直接移除弹窗）用 MutationObserver 监听弹窗移除后兑底取消——四条关闭路径全部闭环
-- 附带收益：任何未来新增的关闭路径（如快捷键）也自动被兑底覆盖
-
-## 版本号
-
-- 五处同步 **v1.0.26**；构建通过（settle/MutationObserver 逻辑入产物）
-
----
-
-## v1.0.25 · 📝 待发布
-
-> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **状态**: 📝 待发布（**合并 v1.0.25–v1.0.31 七个碎片版本**，并吸收原 v1.0.7 / v1.0.9 中重复记述的交付内容，构建验证后改为 ✅ 已发布）
 > **发布日期**: 2026-08-28
 > **上一版本**: v1.0.24
-> **版本范围**: BOM 表单「其他属性」折叠修复 — 折叠类挂在祖先容器，点击展开/收起恢复生效
+> **版本范围**: 全局 AI 搜索 + 多模型接入 + 工具撤销回滚 + 本地模型认证 + 状态机统一 + 交互与安全修复 + 样式纪律化 + 文档校准
 
 ---
 
-## 问题背景
+## 交互全面审查与关键修复（原 v1.0.25 / v1.0.26）
 
-新建/编辑 BOM 表单中「其他属性」折叠条点击无效：内容始终展开，箭头与文案（▼ 点击展开）与实际状态不符。根因是折叠类 `sec-collapsed` 被切在 `.sec-body` 自身，而 CSS 规则 `.sec-collapsed .sec-body{display:none}` 以祖先选择器命中——自身带类永不匹配，折叠从未生效过；单位表单（units.js）的同机制因正确挂在父容器上而正常。
+### 修复：BOM 表单「其他属性」折叠失效（原 v1.0.25）
+
+折叠类 `sec-collapsed` 被切在 `.sec-body` 自身，CSS 祖先选择器永不命中 → 修复为挂在父容器 `.bom-specs-section` 并用 `closest()` 切换；combo 在隐藏容器内初始化安全。
+
+### 交互全面审查（原 v1.0.26）
+
+onclick 引用完整性 / 折叠类挂载 / 箭头文案同步 / 保存防重锁 / combo 关闭全部核查通过。
+
+### 修复：AI 操作提案弹窗关闭导致 AI 发送永久锁死（原 v1.0.26，严重缺陷）
+
+写入提案确认窗的 × / 遮罩 / Esc 三条关闭路径不回填 Promise → `aiWriteLoop` 永久锁死。修复为 `settle` 唯一出口 + `settled` 防双回填 + MutationObserver 兜底，四条关闭路径全部闭环。
+
+---
 
 ## 变更
 
-1. 折叠类移到父容器 `.bom-specs-section`（初始 `sec-collapsed` 默认收起，符合「点击展开」语义）
-2. `toggleBOMSpecsSection` 改用 `el.closest('.bom-specs-section')` 切换父容器类，箭头与文案随状态同步
-3. combo 下拉为纯 CSS 布局，隐藏容器内初始化安全；展开后组件直接可用
+### 1. 全局 AI 搜索（⌘K 命令面板）
+
+- ⌘K / topbar 搜索按钮唤起，六源搜索（订单 / 客户 / 报价 / BOM / 结算 / 发票），直达详情或对应视图
+- 键盘导航：↑↓ 循环、Enter 打开、Tab 问 AI、Esc 关闭；`?`/`？` 前缀强制问 AI；空态一键问 AI
+- 选中条目可注入 AI 快照；输入防抖 + 40 条上限 + 高亮（原文定位分段转义）；样式与全站表单统一
+- 审查修复 9 项（原 v1.0.9 迭代完善）：全角问号触发、高亮实体错位、↑↓ 循环选择、订单金额搜索、遍历提前终止、多批次撤销、Base URL 格式校验、错误兜底显示等
+
+### 2. 多模型接入（OpenAI 兼容格式）
+
+| 项目 | 之前 | 现在 |
+|------|------|------|
+| 模型端点 | 硬编码 DeepSeek | 设置可配置 Base URL + 模型名（含格式校验、防重复拼接），任意 OpenAI 兼容端点 |
+| 预置模型 | deepseek-v4-flash / pro | + gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + 自定义模型名 |
+| 端点预设 | — | 一键按钮：DeepSeek / OpenAI / 通义千问 / 本地 Ollama（11434）/ 本地 oMLX（8000） |
+| 本地模型 Key | — | Ollama 可留空（占位 token）；oMLX 需与 oMLX「设置 → Auth & Info」一致 |
+| 端点显示 | 固定"DeepSeek" | providerLabel 按域名自动识别 |
+
+### 3. 工具执行撤销 / 回滚（持久化批次撤销）
+
+按 aiOps 审计反向回滚（创建→删除、修改→还原旧值、删除→恢复），刷新不失效、不误伤手动改动；消息下方「撤销本轮改动」按钮（支持一轮多批次）；操作历史单条回滚 + 整批回滚 + AI 统计报表。
+
+### 4. 本地模型认证适配（Ollama / oMLX）
+
+- Ollama：本地端点无 Key 时发送占位 `Bearer ollama`（其兼容层要求 Authorization 非空，空值 401）
+- oMLX：**已保存的真实 Key 优先**（oMLX 校验 Key 与自身配置逐字一致）；修复"本地端点一律用占位导致 401 Invalid API key"
+
+### 5. 状态机统一（消除双轨维护）
+
+新增共享校验模块 **`src/core/validators.js`**（FTValidators）：9 态合法流转表由视图层与 AI 工具层统一引用；「标记异常」补齐人工入口（报价中/签约完成/送货中三态，**异常为终态**）；上一步回退含结算关联时弹窗确认；订单列表批量全选/删除。
+
+### 6. 模块级首次引导（guide.js 新增）
+
+各功能模块首次进入时显示一次性引导横幅（localStorage 去重）；结算/发票二级子路由归并主模块。
+
+### 7. 样式体系纪律化
+
+圆角变量化 58 处（新增 `--radius-md`，四档：sm//md/lg/999px）；浮层阴影收敛 `--shadow-lg/--shadow-md` 两级（modal/drawer/⌘K 面板/toast/combo-drop/tooltip）；双主题圆角尺度完全联动。
+
+### 8. 多维审计修复（设计/流程/UX/安全/工程 6 维）
+
+- 数据安全 P0：initApp 对损坏/部分数据不再自动写空库（防数据湮灭防线）
+- 操作流程：发票空态死按钮修复、收票日期校验对称、⌘K 五源命中直达增强
+- AI：`update_order_item` 白名单收紧、本地模型 tool_calls 静默降级提示、RAG 桌面端存储适配
+- 工程：CI 补版本一致性门禁、pages.yml 锁 demote 降级、两主题补 `--err` 变量、cream 激活页码对比度修复
+
+### 9. AI 体验修复与打磨
+
+- 欢迎区（"开始一段新对话"）发送消息后残留 → 发送时自动移除
+- 发送确认弹窗只弹一次（localStorage 记忆；原 v1.0.7 引入，此处统一记述）
+- 错误显示增强：连接失败显示 URL+原因、HTTP 错误附服务端原始响应、未知错误 JSON 兜底（不再"请求失败：undefined"）
+- AI 输入框快捷键：Enter 直接发送；Ctrl/⌘/Shift+Enter 换行
+
+### 10. 同日继续修复（2026-08-28，**不推进版本号**；基准版本保持 v1.0.29）
+
+> 🔧 修复范围：首次引导 11 模块"只提示一次"闭环、会话级 Toast 去重、面包屑 HTML 渲染、`file://` 双击安全告警消除；涉及 `src/core/router.js` / `src/core/utils.js` / `src/styles/components.css`。同类问题多轮跟进 **按 AGENTS.md §0 不推进版本号**，发布日志只增不改。
+
+#### 10.1 会话级 Toast 去重（src/core/utils.js `toast()`）
+
+新增内存 `Set<type|text>` 作为会话级白名单。同一会话内相同消息（相同 `type + text` 组合）**最多显示一次**，后续重复调用静默 return，避免数据异步恢复 / 多 render 并发触发"操作成功"连闪三四次。
+
+#### 10.2 面包屑返回链接 HTML 渲染修复（src/core/router.js `render()`）
+
+`crumb` 变量为预拼接的 `<a onclick="go('orders')">` 返回链接；`render()` 末尾错误地再次用 `escHtml(crumb)` 包裹，导致 HTML 被当成纯文本展示出 `<a href=...` 标签字面量。修复为直接渲染 `crumb`（内部用户相关字段如订单号本身已经过 `escHtml`）。
+
+#### 10.3 `file://` 双击运行消除 Chrome 安全告警（src/core/router.js hash 路由）
+
+`file://` 协议下 `history.replaceState()` 与 `hashchange` 监听器触发 Chrome 唯一来源 (unique-origin) 安全策略，控制台报错：
+```
+Unsafe attempt to load URL file:///…/dist/index.html#/units from frame with URL file:///…/dist/index.html#/units. 'file:' URLs are treated as unique security origins.
+```
+修复：`window.location.protocol === 'file:'` 时**无条件跳过** `updateHash()` 内的 `replaceState` 与全局 `hashchange` 注册。`file://` 无前进/后退深链接需求，直接用内存 `view` 变量渲染；HTTP(S) 环境继续保留完整 hash 路由能力。
+
+#### 10.4 首次引导（Coach Marks）"只显示一次、永不复现" — 连续三轮结构化修复（src/core/router.js Coach IIFE）
+
+**用户诉求**：所有功能模块首次进入才弹出引导；用户点击「跳过 / × / Esc / 点遮罩关闭」或**切换模块隐式跳过**后，无论刷新页面、重启应用、再次切回该模块，**引导都绝对不再出现**。修复过程中用户两次反馈仍然复现，进行了三轮递进修复，累计新增 6 道防线如下：
+
+| 防线 | 位置 | 作用 |
+|------|------|------|
+| ① `__maybeShowModuleGuide(view)` 全局去抖 | render 末尾钩子 | 同 view 500ms 内被多次 render 触发时，`clearTimeout` 取消上一颗 200ms 定时器，仅留最后一颗。杜绝「冷启动 bootApp + initApp 两处先后 render → 多颗 setTimeout 排队」导致同一引导 show 两次 |
+| ② `Coach.show(view, force)` 幂等门闩 | show 入口 | `!force && state.view===view && document.querySelector('.coach-overlay')` → 直接 return；即使 ① 被极端竞态击穿也不重新铺 overlay |
+| ③ 切换模块 → 旧引导写 seen | `_ensureOverlay(view)` 前置判断 | 当 `state.view && state.view !== view`（确实是切换到别的模块）→ `_markSeen(state.view)` 写旧模块 localStorage；**仅切模块才触发**，避免同 view 清场时把即将展示的新引导误标记"已看过" |
+| ④ `_ensureOverlay` 同 view 复用而非重铺 | overlay 创建前 | DOM 已存在 overlay 且 `state.view===view` → 直接 return 已有引用复用，不做 dismiss+新建的无谓翻页闪烁 |
+| ⑤ `dismiss()` 清空 body 下所有残留 overlay（防多层堆叠）| `dismiss(silent)` 主体 | 以 `document.querySelectorAll('body > .coach-overlay')` 遍历**所有**漏网 overlay 逐个启动淡出 + 180ms 后 remove；**不再依赖单一 `state.el` 引用**。彻底修复「旧 dismiss(true) 只删了 state.el，异步动画期间 state.el 被新 overlay 覆盖 → 旧 overlay 永远残留在 DOM → 用户视觉上点跳过要两次」 |
+| ⑥ dismiss 任何模式同步清 state | `dismiss(silent)` 尾部 | 无论 `silent===true/false`，`state.el/view/step` 全部同步置 `null/0`；`silent===true` 只跳过「写 localStorage」那一步。避免 dismiss(true) 后 `state.view` 还挂着旧 view → 下一轮 show 的幂等 / 切模块判断错乱 |
+
+**额外配置对齐（src/styles/components.css）**：11 功能模块新增 `.coach-overlay` / `.coach-hole` / `.coach-card` 样式，含手机小屏断点（≤640px / ≤420px）自适应；Coach 引擎以 `CFG` 对象维护每个模块的 2–3 条引导步骤，与目标 `data-coach` 锚点一一匹配。`Coach.reset(view?)` / `Coach.resetAll()` 暴露到 window，供测试时按需重新看引导。
+
+#### 10.5 致命根因闭环：两套独立引导系统并存（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户现象**：首次进入任一模块 → **先跳过 Coach 全屏蒙层 → 内容区顶部又还有一条横幅型引导要「知道了」** → 共需关闭两次；刷新后若两套 localStorage 不同步，还可能出现"以为关了横幅却又弹出来"的错觉。
+
+**根因**：`src/App.vue SCRIPTS` 顺序中**同时加载了两套完全独立的引导系统**，两者各写各的 localStorage 去重键、各挂各的 `window.__maybeShowModuleGuide`：
+
+| 系统 | 文件 | 挂载的 window | localStorage 键前缀 | DOM 元素 | 注入延迟 |
+|------|------|--------------|--------------------|---------|---------|
+| 旧 横幅型 | `src/core/guide.js` | `__maybeShowModuleGuide = maybeShowModuleGuide` + `dismissModuleGuide` | `wb_fastener_guide_*` | `.module-guide` (content 顶部横幅) | 420ms |
+| 新 Coach 全屏型 | `src/core/router.js` IIFE | `Coach.show/dismiss/…` + `__maybeShowModuleGuide` (覆盖上一个) | `wb_fastener_coach_seen_*` | `.coach-overlay` (全屏固定遮罩 + 洞 + 卡片) | 200ms |
+
+脚本拼接顺序是 guide.js 在前、router.js 在后 → 后者 `window.__maybeShowModuleGuide` 确实覆盖了前者，`render()` 末尾每次都只调 Coach 版。但**横幅版仍可能通过两条路生效**：① 老用户浏览器已分发的单文件 HTML 中有独立的 guide.js `<script>` 标签直接执行；② App.vue 启动链中若有子 render 在 `scripts 尚未全部 eval` 的中间窗口触发，会调用到 guide.js 版本挂的 `__maybeShowModuleGuide`。
+
+**修复（3 处结构性修改，彻底收敛为一套）**：
+
+1. **`src/App.vue` SCRIPTS 数组移除 `'core/guide.js'` 行**（不再间接 eval 执行 guide.js 本体），并在位置留了整段注释：今后加回去也会命中 guide.js 的新空壳保护。
+2. **`src/core/guide.js` 重写为空壳适配器**：不再执行任何横幅注入，保留 3 个兼容点：
+   - `window.dismissModuleGuide(key, runAction)` 全局函数仍可用 → 兼容历史 onclick、旧单文件 HTML 中遗留的按钮引用，不再报 `dismissModuleGuide is not defined`
+   - 调用时仍写入 `wb_fastener_guide_<key>` → 与用户"已关过"的历史意图一致
+   - `window.__maybeShowModuleGuide = function(){}` → 即便某处误挂了旧入口也被空函数短路吞掉；同时写 `__MAYBE_SHOW_MODULE_GUIDE_DISABLED__ = true` 哨兵供 loader 检测
+3. **`src/core/router.js` Coach 新增旧命名空间双向清理**：
+   - `Coach.reset(view)` / `Coach.resetAll()` 同步删除 **两套** localStorage key：`wb_fastener_coach_seen_*`（现行）+ `wb_fastener_guide_*`（旧横幅含子路由归并），确保 reset 后横幅也不会复现 → 再无「关两次」的可能
+
+**最终承诺**：所有 11 个模块首次进入只显示 1 次 Coach 引导；用户任意一条关闭路径（跳过 / × / Esc / 点遮罩 / 切模块隐式跳过）→ `Coach.dismiss` 写一次 `wb_fastener_coach_seen_<view>` 即可，刷新 / 切模块永不复现；旧横幅引导**不会再被注入**。
+
+---
+
+## 文档校准
+
+- `docs/COVERAGE.md` 重生成（v1.0.28 结构，632 函数全量扫描，84% JSDoc 覆盖）
+- `docs/API.md` 工具清单 36 → **47**（补知识库 4 工具与功能层明细）
+- `docs/操作手册.md` §7.4.1 状态流转矩阵与校验规则对齐 v1.0.28 实现
+
+---
 
 ## 版本号
 
-- 五处同步 **v1.0.25**；构建通过
-
----
+v1.0.24 → **v1.0.28**（合并 v1.0.25–v1.0.31 碎片版本；`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js` 同步）
 
 ## v1.0.24 · 📝 待发布
 
 > **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
 > **发布日期**: 2026-08-28
-> **上一版本**: v1.0.23
-> **版本范围**: 数据管理页知识库区块排版对齐 — 开关行接入 ai-kb 样式体系，与 AI 设置弹窗统一
-
----
-
-## 变更
-
-- 数据管理页 `_kbRefreshBox` 的开关行（提问时检索知识库 / 注入 Top-N / 回答标注来源）从内联样式迁移到 `ai-opt`/`ai-kb-opts` 类体系：标签 `white-space:nowrap` 防逐字碎行，Top-N 下拉统一规格与 focus 主色
-- 样式与 AI 设置弹窗完全同源（v1.0.23 已建），两处共用一套 CSS
-- CI 工具修复（不改运行时版本）：`scripts/gen-latest-json.mjs` 改为递归扫描 artifact 目录——`actions/upload-artifact` 多路径上传保留「最小公共祖先」下的子目录结构（Windows 产物在 `nsis/`/`msi/` 子目录、macOS 产物嵌套在 `src-tauri/target/...` 深层），原顶层平铺扫描找不到带 .sig 的更新产物导致 `update-manifest` 失败；URL 一律取文件名平铺指向 Release 资产根；已用模拟 CI 布局端到端验证双平台 latest.json 生成正确
-- 版本号五处同步 v1.0.24；构建通过
-
----
-
-## v1.0.23 · 📝 待发布
-
-> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
-> **发布日期**: 2026-08-28
 > **上一版本**: v1.0.22
-> **版本范围**: AI 设置弹窗知识库区块排版重构 — 修复开关标签被 flex 挤压逐字碎行的问题
+> **版本范围**: 知识库开关行排版统一（**合并原 v1.0.23**：同一「标签逐字碎行」问题在 AI 设置弹窗与数据管理页两处的修复）+ CI 产物清单修复
 
 ---
 
-## 问题背景
-
-v1.0.22 重设计后，知识库区块内的开关行（提问时检索知识库 / AI 主动检索 / 自动注入兑底等）被 flex 容器压缩，中文标签无断词规则逐字折行，出现「AI 主 / 动检 / 索」孤字碎行。
-
 ## 变更
 
-1. `kbrenderZone` 开关行重构为语义化栅格（`ai-kb-opts` / `ai-opt` 类）：标签统一 `white-space:nowrap`——空间不足时整项换行到下一行，标签内部永不逐字碎行
-2. Top-N 数字输入纳入统一样式（宽度/边框/focus 主色）；KB 状态行、操作行、主动检索子分区全部去内联样式，改用类体系并支持深浅主题
-3. 版本号五处同步 v1.0.23；构建通过
+- **问题**：知识库区块内的开关行（提问时检索知识库 / AI 主动检索 / 自动注入兜底等）被 flex 容器压缩，中文标签无断词规则逐字折行，出现「AI 主 / 动检 / 索」孤字碎行
+- **AI 设置弹窗（原 v1.0.23）**：`kbrenderZone` 开关行重构为语义化栅格（`ai-kb-opts` / `ai-opt` 类）：标签统一 `white-space:nowrap`——空间不足时整项换行到下一行，标签内部永不逐字碎行；Top-N 数字输入纳入统一样式（宽度/边框/focus 主色）；KB 状态行、操作行、主动检索子分区全部去内联样式，改用类体系并支持深浅主题
+- **数据管理页（原 v1.0.24）**：`_kbRefreshBox` 的开关行（提问时检索知识库 / 注入 Top-N / 回答标注来源）迁移到同一 `ai-opt`/`ai-kb-opts` 类体系，两处共用一套 CSS
+- **CI 工具修复（不改运行时版本）**：`scripts/gen-latest-json.mjs` 改为递归扫描 artifact 目录——`actions/upload-artifact` 多路径上传保留「最小公共祖先」下的子目录结构（Windows 产物在 `nsis/`/`msi/` 子目录、macOS 产物嵌套在 `src-tauri/target/...` 深层），原顶层平铺扫描找不到带 .sig 的更新产物导致 `update-manifest` 失败；URL 一律取文件名平铺指向 Release 资产根；已用模拟 CI 布局端到端验证双平台 latest.json 生成正确
+- 版本号五处同步；构建通过
 
 ---
 
@@ -142,7 +213,7 @@ AI 设置弹窗将「系统诊断 / 知识库 RAG / 检索策略 / 端点配置�
 > **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
 > **发布日期**: 2026-08-28
 > **上一版本**: v1.0.20
-> **版本范围**: 知识库工具链修复 — 只读 KB 工具不再弹确认窗、未绑定知识库时工具不携带给模型、未知工具兑底不再打扰用户
+> **版本范围**: 知识库工具链修复 — 只读 KB 工具不再弹确认窗、未绑定知识库时工具不携带给模型、未知工具兜底不再打扰用户
 
 ---
 
@@ -164,11 +235,11 @@ AI 设置弹窗将「系统诊断 / 知识库 RAG / 检索策略 / 端点配置�
 1. **KB 只读工具白名单**（core/ai-tools.js）：新增 `KB_TOOL_NAMES`（query_knowledge / list_kb_files / get_kb_file / search_kb_detail），`validateOp` 对其直接放行（无副作用）；随导出暴露
 2. **分类修正**（core/ai.js aiWriteLoop）：KB 只读工具与 `query_` 前缀同路——立即执行回填模型，不经确认弹窗
 3. **工具动态携带**（core/ai.js）：KB 未绑定或未启用时，KB 工具 schema 从请求的 tools 数组中剔除——模型无从发起，不产生任何提案；同时 system prompt 的 KB 指引段同步条件化（`kbReady` 判定）
-4. **未知工具兑底**（core/ai.js）：模型发起校验器不认识的调用时，不弹确认窗，直接回填错误 tool 消息让模型自我纠正，全流程不打扰用户
+4. **未知工具兜底**（core/ai.js）：模型发起校验器不认识的调用时，不弹确认窗，直接回填错误 tool 消息让模型自我纠正，全流程不打扰用户
 
 ## 版本号
 
-- 五处同步 **v1.0.21**（package.json / package-lock.json / tauri.conf.json / Cargo.toml / AGENTS.md 基准版本 + store.js 兑底值）
+- 五处同步 **v1.0.21**（package.json / package-lock.json / tauri.conf.json / Cargo.toml / AGENTS.md 基准版本 + store.js 兜底值）
 - 构建验证：`npm run vite:build` 通过
 
 ---
@@ -313,7 +384,7 @@ pdfjs-dist v6 的 `PDFDocumentProxy` 已移除 `destroy()`（仅保留 `cleanup(
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）
 > **发布日期**: 2026-08-27
 > **上一版本**: v1.0.12
-> **版本范围**: 知识库可用性修复 — PDF 在 file:// 下解析失败兑底 + BM25 词频修正 + 定时增量更新 + 失败明细可见
+> **版本范围**: 知识库可用性修复 — PDF 在 file:// 下解析失败兜底 + BM25 词频修正 + 定时增量更新 + 失败明细可见
 
 ---
 
@@ -330,7 +401,7 @@ pdfjs-dist v6 的 `PDFDocumentProxy` 已移除 `destroy()`（仅保留 `cleanup(
 
 ## 变更
 
-### 1. PDF file:// 兑底（src/main.js + core/kb.js）
+### 1. PDF file:// 兜底（src/main.js + core/kb.js）
 
 - main.js 新增 `import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs'` 并挂到 `globalThis.pdfjsWorker`：真环境仍走独立 Worker 加速，file:// 下自动降级为主线程解析（pdf.js 官方 bundler 集成钩子）
 - parseFile 对 PDF/docx 解析器缺失与失败给出明确中文报错
@@ -353,7 +424,7 @@ pdfjs-dist v6 的 `PDFDocumentProxy` 已移除 `destroy()`（仅保留 `cleanup(
 ## 版本号
 
 - `package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` 基准版本同步递增至 **v1.0.13**
-- AGENTS.md 豁免段更新：「唯一豁免」改为豁免清单，第 2 项登记 pdfjs-dist / mammoth 及其打包挂载方式与 pdfjsWorker 兑底钩子约束
+- AGENTS.md 豁免段更新：「唯一豁免」改为豁免清单，第 2 项登记 pdfjs-dist / mammoth 及其打包挂载方式与 pdfjsWorker 兜底钩子约束
 - 构建验证：`npm run vite:build` 通过；kb.js 通过 node VM 单测（词频修复/BM25 排序/分块尺寸/归一化兼容）
 
 ---
@@ -495,99 +566,10 @@ AI 使用过程中，如果没有等接口返回（或接口没完全返回）�
 
 ---
 
-## v1.0.9 · 📝 待发布
+## v1.0.9 · ✅ 已并入 v1.0.28
 
-> **状态**: 📝 待发布（构建验证后改为 ✅ 已发布）
-> **发布日期**: 2026-08-26
-> **上一版本**: v1.0.7
-> **版本范围**: 全局 AI 搜索 + 多模型接入 + 工具撤销回滚 + 本地模型认证适配 + AI 体验修复
-
----
-
-## 变更
-
-### 1. 全局 AI 搜索（⌘K 命令面板）
-
-- ⌘K / topbar 搜索按钮唤起命令面板，六源搜索（订单 / 客户 / 报价 / BOM / 结算 / 发票），直达详情或对应视图
-- 键盘导航：↑↓ 循环选择、Enter 打开、Tab 问 AI、Esc 关闭；`?`/`？` 前缀强制问 AI；空态一键问 AI
-- 选中条目可作为上下文注入 AI 快照（askAIOnItem）
-- 输入防抖 150ms + 结果 40 条上限 + 关键字高亮（原文定位，实体不错位）；样式与全站表单统一
-
-**变更文件**：`src/views/search-panel.js`（新增）、`src/views/keyboard.js`（⌘K + Esc 优先级 + 快捷键说明）、`src/core/router.js`（topbar 按钮）、`src/App.vue`（SCRIPTS 注册）、`src/styles/components.css`（.cmd-* 样式）
-
-### 2. 多模型接入（OpenAI 兼容格式）
-
-| 项目 | 之前 | 现在 |
-|------|------|------|
-| 模型端点 | 硬编码 DeepSeek（api.deepseek.com/v1） | **设置中可配置 Base URL + 模型名**，任意 OpenAI 兼容端点（含 Base URL 格式校验） |
-| 预置模型 | deepseek-v4-flash / pro | + gpt-4o-mini / gpt-4o / qwen-plus / glm-4-flash / llama3 / qwen2.5 + 自定义模型名 |
-| 端点预设 | — | 一键按钮：DeepSeek / OpenAI / 通义千问 / 本地 Ollama / 本地 oMLX |
-| 本地 Ollama | 不支持 | 支持（http://127.0.0.1:11434/v1，API_KEY 可留空） |
-| 本地 oMLX | 不支持 | 支持（http://127.0.0.1:8000/v1，API_KEY 需与 oMLX 设置一致） |
-| 端点显示 | 固定"DeepSeek" | providerLabel 按域名自动识别（DeepSeek/OpenAI/通义/智谱/本地模型） |
-
-**变更文件**：`src/core/ai.js`（PRESET_MODELS / DEFAULT_BASE_URL / setProvider / apiChatUrl / webChat 动态端点 / probeProxy 本地免 Key）、`src-tauri/src/lib.rs`（base_url 参数 + URL 组装 + 模型校验放宽）、`src/views/ai-chat.js`（设置弹窗 + 端点预设 + 回显）
-
-### 3. 工具执行撤销 / 回滚
-
-| 项目 | 之前 | 现在 |
-|------|------|------|
-| 工具改动 | 确认弹窗 + diff 预览，执行后不可撤销 | **持久化批次撤销**：按 aiOps 审计反向回滚（创建→删除、修改→还原旧值、删除→恢复），刷新不失效、不误伤手动改动 |
-| 撤销入口 | — | 消息下方「撤销本轮改动」按钮（支持一轮多批次，逗号分隔批量撤销）；数据管理-操作历史可追溯 |
-
-**变更文件**：`src/core/ai.js`（lastBatchIds / undoLastBatch）、`src/views/ai-chat.js`（undoAIBatch + 撤销条）、aiOps 审计（undoBatch 持久化回滚）
-
-### 4. 本地模型认证适配（Ollama / oMLX）
-
-- **Ollama**：本地端点无 Key 时发送占位 `Bearer ollama`（其 OpenAI 兼容层要求 Authorization 头非空，空值 401 "API key required"）
-- **oMLX**：**已保存的真实 Key 优先**（oMLX 校验 Key 与自身配置逐字一致，占位会被拒 "Invalid API key"）；修复此前"本地端点一律用占位导致 401"
-- 错误显示增强：连接失败显示 URL + 原因；HTTP 错误附服务端原始响应；未知错误 JSON 兜底——不再出现"请求失败：undefined"
-
-**变更文件**：`src/core/ai.js`（authKey 优先级 / fetch 网络错误包装 / SSE 兼容非 data: 行 / HTTP 原始响应）、`src-tauri/src/lib.rs`（Token 优先级修正：真实 Key > 本地占位 > 报错 / 文案通用化）、`src/views/ai-chat.js`（错误兜底 / oMLX 预设与提示）
-
-### 5. AI 体验修复与打磨
-
-- 欢迎区（"开始一段新对话"）发送消息后残留 → **发送时自动移除**
-- 全局搜索审查修复（9 项）：全角问号触发、高亮实体错位、↑↓ 循环、订单金额搜索、遍历提前终止、多批次撤销、Base URL 格式校验、错误兜底显示
-- 发送确认弹窗只弹一次（localStorage 记忆，延续 v1.0.7）
-
-**变更文件**：`src/views/ai-chat.js`、`src/views/search-panel.js`、`src/core/ai.js`
-
-### 6. AI 输入框快捷键调整
-
-| 按键 | 之前 | 现在 |
-|------|------|------|
-| `Enter` | 换行 | **直接发送** |
-| `⌘ / Ctrl + Enter` | 发送 | 换行 |
-| `Shift + Enter` | 换行 | 换行（不变） |
-
-**变更文件**：`src/views/ai-chat.js`（handleAIInputKey + 输入框提示文案）
-
----
-
-## 版本号
-
-v1.0.7 → v1.0.9（`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` / `src/core/store.js` 四处同步）
-
-## 📝 规划中 · AI 能力升级（待排期）
-
-> **状态**: ✅ 三项已全部落地（v1.0.9，2026-08-26）；本分节保留作为计划历史
-> **计划来源**: 2026-08-26 AI 升级路线评审
-
-### 1. 全局 AI 搜索（⌘K 命令面板）
-
-- 快捷键 ⌘K 唤起命令面板，搜索订单 / 客户 / 报价等业务数据
-- 搜索结果可直接进入 AI 问答（选中条目作为上下文提问）
-
-### 2. 多模型接入（OpenAI 兼容格式）
-
-- 现状：模型与端点硬编码 DeepSeek（ALLOWED_MODELS / WEB_API_URL）
-- 目标：支持任意 OpenAI 兼容端点（其他云模型 / 本地 Ollama），设置中可配置 Base URL + 模型列表
-
-### 3. 工具执行撤销 / 回滚
-
-- 现状：工具改动有确认弹窗 + diff 预览，但执行后不可撤销
-- 目标：工具执行后提供一键还原（快照式撤销，含批量操作）
+> **发布日期**: 2026-08-26 · **上一版本**: v1.0.7
+> ⌘K 全局搜索、多模型接入、工具执行撤销回滚、本地模型认证适配、AI 体验修复与输入框快捷键调整——全部内容已与后续碎片版本（v1.0.25–v1.0.31）的迭代完善合并，**统一记述于 v1.0.28**（含全局搜索审查修复 9 项的明细），本节不再重复正文。
 
 ---
 
@@ -612,13 +594,7 @@ v1.0.7 → v1.0.9（`package.json` / `src-tauri/tauri.conf.json` / `AGENTS.md` /
 
 **变更文件**：`src/views/ai-chat.js`（openAIAssistant 条件渲染 + clearAIHistory/deleteAIMessage 恢复逻辑）、`src/styles/components.css`（ai-actions 单行滚动布局）
 
-### AI 发送确认提示只弹一次（不递增版本号）
-
-| 项目 | 之前 | 现在 |
-|------|------|------|
-| 发送确认弹窗 | 每次发送 AI 消息都弹出「确认发送数据」 | **仅首次发送弹出**，确认后记住（localStorage），后续发送直接进行，不再重复提醒 |
-
-**变更文件**：`src/views/ai-chat.js`（requestAISend）
+> 「AI 发送确认提示只弹一次」（原不递增版本号条目）已合并至 v1.0.28「AI 体验修复与打磨」统一记述。
 
 ---
 
@@ -749,7 +725,7 @@ aiWriteLoop 三分流确认策略完善（功能层工具自动执行，导出�
 - **阶段 1**（数据模型 + 回收站 + 操作历史）→ v1.0.1
 - **阶段 2**（Function Calling 协议）→ v1.0.2
 - **阶段 3**（全量工具 + 订单复杂操作）→ v1.0.3
-- **阶段 4**（功能层 + 打磨）→ v1.0.4
+- **阶段 4**（功能层 + 打磨）→ v1.0.4（功能记述统一并入本节）
 - **全面审查与修复**（P0/P1/P2/P3 共 12 项）→ **v1.0.5**
 
 AI 现可对单位、属性、BOM、报价、订单、结算、发票数据进行增删改查（删除走回收站软删除），并支持视图导航、Excel 导出、打开抽屉等功能层动作。所有写入操作均生成操作日志，支持单条/整批回滚。
@@ -951,46 +927,14 @@ npm run tauri:build  ✅ 通过（紧固件贸易工作台.app 生成）
 
 「AI 数据操控升级方案」阶段 4：功能层工具（纯系统动作）、并发脏读检测、自检脚本；同时 v1.0.1-v1.0.3 的本地迭代代码在此提交合并落库（36 个工具全量）。
 
-## 二、新增功能
+## 二、功能记述说明
 
-### 2.1 功能层工具（4 个，自动执行不经弹窗）
-
-| 工具 | 用途 | 触发动作 |
-|------|------|---------|
-| navigate_view | 视图导航 | go(view) / goOrderView(orderId)，离开订单编辑模式先关弹窗/抽屉 |
-| export_order_excel | 导出 Excel | 异步 exportOrder + toast 容错，回填「触发成功」语义 |
-| open_settlement_drawer | 打开结算抽屉 | openSettleDetail(unitId, tabType) |
-| open_invoice_drawer | 打开发票抽屉 | openInvEdit(invoiceId) |
-
-`AIT.FLOW_TOOL_NAMES`（Set）识别功能层；aiWriteLoop 三路分流：query 自动 / flow 自动 / write 确认弹窗。
-
-### 2.2 并发脏读检测
-
-- 确认弹窗为每条 op 注入 `__beforeFingerprint`（before 快照 JSON）
-- `_checkDirty` 执行前重新校验对比；不一致拒绝「数据已被修改，请刷新后重试」
-- 批量入口先整体检测，通过后批量内顺序执行不再检测（防前序修改误报）
-
-### 2.3 错误处理边界
-
-- `_friendlyError` 错误分类器：网络失败/流中断/tauri 异常 → 友好中文提示
-- 操作历史筛选器：操作类型 / 操作者 / 批次三维筛选
-
-### 2.4 AI 操控系统自检
-
-`_aiOpsSelftest()`：aiOps 结构、记录字段、关键函数可用性、AIT 模块、trash 结构——11 项检查，modal 展示结果
-
-### 2.5 文档
-
-- README「AI 助手」章节；API.md「前端 AI 工具协议」章节；方案/开发计划文档落库
-
----
+功能层工具 4 个、并发脏读检测、错误处理边界（_friendlyError）、操作历史筛选器、AI 操控系统自检——与 v1.0.5（全面审查修复后的最终形态）为同一批功能，**统一记述于 v1.0.5 分节**，本节不再重复。
 
 ## 三、验证
 
 - 工具执行器测试 39/39 + 阶段 1 测试 30/30
 - vite build / cargo check / tauri build 三构建通过
-
----
 
 ## 四、变更文件
 

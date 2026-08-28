@@ -411,11 +411,24 @@ const fmtN=n=>Number(n||0).toLocaleString('zh-CN');
  */
 function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 /**
- * HTML属性值转义：将双引号替换为 &quot;，用于安全拼接 HTML 属性。
+ * HTML属性值转义：将 & < 单引号 双引号 替换为实体字符，用于安全拼接 HTML 属性。
+ * 顺序关键：先转义 &，避免已生成的实体被二次转义。
  * @param {*} s - 待转义的值
  * @returns {string} 转义后的安全字符串
  */
-function escAttr(s){return String(s==null?'':s).replace(/"/g,'&quot;');}
+function escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+/**
+ * JS 字符串转义（用于 onclick="fn('...')" 这类把值嵌入单引号 JS 字符串的属性场景）。
+ * 注意：此处不能用 escAttr 的 &#39; 实体——HTML 属性值解码后实体变回裸单引号，仍会闭合 JS 字符串。
+ * 顺序关键：先转义反斜杠与单引号（JS 层），再转义 & 与双引号（HTML 属性层）。
+ * - \ → \\     防止用户输入中的反斜杠吞掉后续转义符
+ * - ' → \'     防止闭合 JS 单引号字符串
+ * - 换行 → \r / \n / \u2028 / \u2029   防止 JS 字符串跨行导致语法错误
+ * - & → &amp;、" → &quot;   保证外层双引号包裹的 HTML 属性不被破坏
+ * @param {*} s - 待转义的值
+ * @returns {string} 转义后的安全字符串
+ */
+function escJsStr(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
 let _unitNameCache=null;
 /**
  * 重建单位名称缓存 Map（id → {name, rating}），在数据变更后由 saveDB 触发失效并重建。
@@ -595,8 +608,13 @@ function daysUntil(date){const d=toDate(date);const t=toDate(today());return Mat
  * @param {string} [type='info'] - 提示类型（success/error/warning/info）
  * @returns {void} 无返回值
  */
+/** 同一会话内 toast 去重：相同 (text,type) 组合只弹一次，刷新页面后重置 */
+const _TOAST_SHOWN = new Set();
 function toast(text,type){
   type=type||'info';
+  const _k = type+'|'+text;
+  if(_TOAST_SHOWN.has(_k)) return;
+  _TOAST_SHOWN.add(_k);
   let w=document.querySelector('.msg-wrap');
   if(!w){w=document.createElement('div');w.className='msg-wrap';document.body.appendChild(w);}
   const icons={success:'✓',error:'✕',warning:'!',info:'i'};
@@ -781,7 +799,7 @@ function buildPaging(total,page,totalPages,onPage,opts){
   }
   let pageBtns=pages.map(function(p){
     if(p==='…')return'<span style="padding:0 4px;color:var(--gray)">…</span>';
-    let cur=p===page?' style="background:var(--accent);color:#fff;border-color:var(--accent)"':' style="color:var(--accent)"';
+    let cur=p===page?' style="background:var(--accent);color:var(--card);border-color:var(--accent)"':' style="color:var(--accent)"';
     return'<button class="pg-btn"'+cur+' onclick="'+fn+'('+p+')">'+p+'</button>';
   }).join('');
   let prevBtn='<button class="pg-btn'+(page<=1?' pg-disabled':'')+'" onclick="'+fn+'('+(page-1)+')" title="上一页"'+(page<=1?' disabled':'')+'>'+icon('chevronLeft','13')+' 上一页</button>';

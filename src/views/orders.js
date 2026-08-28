@@ -11,9 +11,9 @@ function renderOrderRow(o){
     '<td><input type="checkbox" class="order-check" data-id="'+o.id+'" onchange="updateOrderBatchBtn()"></td>'+
     '<td><b>'+escHtml(o.id)+'</b></td>'+
     '<td>'+escHtml(pName(o.buyerId))+'</td>'+
-    '<td>'+escHtml(o.buyerContact||'-')+'</td>'+
-    '<td>'+escHtml(o.project||'-')+'</td>'+
-    '<td>'+o.items.length+' 项</td>'+
+    '<td class="m-hide-s1">'+escHtml(o.buyerContact||'-')+'</td>'+
+    '<td class="m-hide-s2">'+escHtml(o.project||'-')+'</td>'+
+    '<td class="m-hide-s2">'+o.items.length+' 项</td>'+
     '<td>'+escHtml(fmtDelivery(o.delivery))+'</td>'+
     '<td><span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span></td>'+
     '<td class="td-act"><button class="btn sm" onclick="goOrderView(\''+o.id+'\')">'+icon('fileText')+'查看</button><button class="btn sm" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑</button></td>'+
@@ -60,7 +60,7 @@ function viewOrders(){
     '<button id="orderBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteOrders()">'+icon('trash')+'批量删除(<span id="orderBatchCount">0</span>)</button>'+
     '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button>'+
   '</div>'+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th>对接人</th><th>项目</th><th>产品项</th><th>交期</th><th>状态</th><th></th></tr></thead><tbody id="orderBody">'+
+  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th></th></tr></thead><tbody id="orderBody">'+
   (rows||renderOrderEmptyRow())+
   '</tbody></table></div>'+pg+'</div>';
 }
@@ -146,6 +146,7 @@ function viewOrderDetail(){
   const nextBtnHTML=nextStepButton(o);
   const prevBtnHTML=prevStepButton(o);
   const cancelBtnHTML=['待确认','寻货中','报价中'].includes(o.status)?'<button class="btn danger" title="将订单标记为「取消」状态，不可恢复正常流程" onclick="cancelOrderConfirm(\''+o.id+'\')">'+icon('x','16')+' 取消订单</button>':'';
+  const markAbnormalBtnHTML=['报价中','签约完成','送货中'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+o.id+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
     '<button class="btn sm" onclick="exportOrder(\''+o.id+'\')">'+icon('download','16')+'导出Excel</button>'+
@@ -160,6 +161,7 @@ function viewOrderDetail(){
       return '<button class="btn primary" title="进入「送货中」状态。未全部收货会弹窗提醒，仍可强行进入后补录。" onclick="nextStepEnterDelivery(\''+o.id+'\')">'+icon('package','16')+' 进入送货</button>';
     }())+
     (locked?'':cancelBtnHTML)+
+    markAbnormalBtnHTML+
     (locked?'':nextBtnHTML)+
   '</div>'+
   '<div class="card">'+
@@ -356,9 +358,34 @@ function prevStepButton(o){
   const prev=STATUS_FLOW[idx-1];
   return '<button class="btn" title="返回上一步：'+escAttr(prev)+'" onclick="prevStepOrder(\''+o.id+'\',\''+prev+'\')">'+icon('arrowLeft','16')+' 上一步（'+prev+'）</button>';
 }
-/** 返回上一步。直接切换状态不需校验 */
+/** 检查订单是否被结算记录引用（用于回退前校验，防孤儿结算/发票）
+ * @param {string} id - 订单 ID
+ * @returns {Array} 引用该订单的结算记录数组 */
+function _orderLinkedSettlements(id){
+  return (DB.settlements||[]).filter(function(s){return (s.orders||[]).some(function(oe){return oe.orderId===id;});});
+}
+/** 返回上一步。v1.0.27 起：从「签约完成/送货中/完成」回退到非结算关联状态时，
+ * 校验结算关联，有则弹窗警告防孤儿数据；其余情况直接切换。
+ * @param {string} id - 订单 ID
+ * @param {string} target - 目标状态（STATUS_FLOW 上一态） */
 function prevStepOrder(id,target){
   const o=DB.orders.find(x=>x.id===id);if(!o)return;
+  const FROM_SETTLE=['签约完成','送货中','完成'];
+  const TO_NON_SETTLE=['待确认','寻货中','报价中','未成交'];
+  if(FROM_SETTLE.includes(o.status)&&TO_NON_SETTLE.includes(target)){
+    const linked=_orderLinkedSettlements(id);
+    if(linked.length){
+      const ids=linked.map(function(s){return s.id;}).join('、');
+      confirmModal(
+        '该订单已关联 <b>'+linked.length+' 笔结算记录</b>（'+escHtml(ids)+'）。<br>'+
+        '<span class="muted" style="font-size:12px">回退到「'+escHtml(target)+'」后，结算列表将不再显示该订单，但结算记录仍引用它，可能造成数据不一致。建议先在结算管理处理关联记录。</span>',
+        function(){changeOrderStatus(id,target);},
+        '仍然回退','返回',
+        null,true
+      );
+      return;
+    }
+  }
   changeOrderStatus(id,target);
 }
 /** 「待确认 → 取消」：确认弹窗 */
@@ -369,6 +396,16 @@ function cancelOrderConfirm(id){
     '确认取消',
     null,null,
     true
+  );
+}
+/** 「报价中/签约完成/送货中 → 异常」：人工标记异常（终态），确认弹窗后切换。
+ * v1.0.27 起：补齐异常状态的人工入口，此前仅 AI flow_order_status 可进入。 */
+function markOrderAbnormal(id){
+  confirmModal(
+    '确认将此订单标记为「异常」？<br><span class="muted" style="font-size:12px">异常为终态，标记后不可恢复正常流程。适用于质量问题、客户纠纷等需重点关注的情况；可在订单备注中记录异常原因。</span>',
+    function(){changeOrderStatus(id,'异常');},
+    '确认标记异常','取消',
+    null,true
   );
 }
 /** 保存送货信息并更新订单状态为"送货中" */
@@ -493,32 +530,56 @@ function copyOrder(id){
     true
   );
 }
-/** 从订单详情页进入指定产品行的寻货流程 */
+/** 从订单详情页进入指定产品行的寻货流程
+ *  B1 修复：不再把详情模式的数据偷偷写入 _fOrderId + _fMode='edit'，改为显式 ctx 模式，
+ *  避免与编辑模式变量冲突、避免后续"保存订单"按钮把详情页里临时 _fItems 误当编辑草稿。
+ */
 function sourceItemFromDetail(itemIdx){
   const o=DB.orders.find(x=>x.id===curOrderView);
   if(!o)return;
-  _fMode='edit';_fOrderId=o.id;
-  _fItems=o.items.map(it=>({...it}));
-  sourceItem(itemIdx);
+  sourceItem(itemIdx,'detail');
 }
-/** 将寻货结果从临时状态持久化到订单详情数据 */
+/**
+ *  B1 修复：寻货结果统一写回（单入口）。
+ *  - 详情模式（sourceItem(mode='detail')）：把 _fItems 深拷贝写回 DB 中该订单详情，即时 saveDB；
+ *  - 编辑模式（mode==='edit' 或 缺省兼容）：更新 _fOrderId 指向的编辑订单行，防抖写入 DB。
+ *  无论哪种模式，草稿缓存都同步清理或更新；UI 刷新也由本函数统一触发，防止 4 处调用点各自少调一项。
+ * @param {{refreshEdit?:boolean}} [opts] refreshEdit=true 时即使不是编辑模式，也再调一次 refreshProductList（兜底）
+ */
+function persistSourcingChange(opts){
+  opts=opts||{};
+  // 详情模式：_fItems 已被 sourceItem 设为 DB 订单的浅拷贝。一次性落库。
+  const isDetailMode=(_sourcingCtx&&_sourcingCtx.mode==='detail')||(curOrderView&&(!_fMode||_fMode==='__detail__'));
+  const isEditMode=!isDetailMode&&_fMode==='edit'&&_fOrderId;
+  if(isDetailMode){
+    const o=DB.orders.find(x=>x.id===curOrderView);
+    if(o){
+      o.items=_fItems.map(it=>({...it,options:(it.options||[]).map(x=>({...x}))}));
+      o.updatedAt=now();
+      clearDraft(DRAFT_TYPES.order);
+      saveDB();
+    }
+  }else if(isEditMode){
+    const o=DB.orders.find(x=>x.id===_fOrderId);
+    if(o){
+      o.items=_fItems;
+      o.updatedAt=now();
+      saveDBDebounced();
+      saveOrderDraftFromItems();
+    }
+  }
+  // 统一 UI 刷新：详情侧行 + 汇总；编辑侧产品卡；抽屉内容
+  if(curOrderView){updateDetailRow(_sourcingCtx?_sourcingCtx.lastIdx:undefined);refreshDetailStats();}
+  if(_fMode==='edit')refreshProductList();
+  if(typeof refreshSourceDrawer==='function'&&opts.idx!==undefined)refreshSourceDrawer(opts.idx);
+}
+/** 将寻货结果从临时状态持久化到订单详情数据（B1 修复：兼容遗留调用，单测 / 老扩展可继续调用） */
 function persistSourcingFromDetail(){
-  if(!_fOrderId) return;
-  const o=DB.orders.find(x=>x.id===curOrderView);
-  if(!o)return;
-  o.items=_fItems.map(it=>({...it}));
-  o.updatedAt=now();
-  clearDraft(DRAFT_TYPES.order);
-  saveDB();
+  persistSourcingChange();
 }
-/** 将当前编辑中的产品明细防抖写入 DB */
+/** 将当前编辑中的产品明细防抖写入 DB（兼容遗留调用） */
 function persistOrderItems(){
-  if(_fMode!=='edit'||!_fOrderId)return;
-  const o=DB.orders.find(x=>x.id===_fOrderId);
-  if(!o)return;
-  o.items=_fItems; // 引用赋值，idbSave 使用结构化克隆，防抖保证合并写入
-  o.updatedAt=now();
-  saveDBDebounced();
+  persistSourcingChange();
 }
 /* 订单表单草稿自动保存 */
 /** 为订单编辑表单绑定自动草稿保存事件 */
@@ -569,7 +630,7 @@ function renderItemHTML(){
           ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
           ' · 总金额: '+fmt((o.price||0)*(o.allocQty||0))+
           (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-          '<span class="ir-src-del" onclick="removeOption('+i+',\''+o.id+'\')">×</span>'+
+          '<span class="ir-src-del" onclick="removeOption('+i+',\''+escJsStr(o.id)+'\')">×</span>'+
         '</div>';
       }).join('')+
     '</div>':'<div class="ir-unsourced">尚未匹配供应商，点击「寻货」从价格库选择或手动录入</div>';
@@ -766,7 +827,8 @@ function saveItemModal(){
     remark:document.getElementById('m_remark').value.trim(),
     bomSku:document.getElementById('m_bom_ref').dataset.val||'',
   };
-  if(!(d.qty>0)){toast('请填写有效数量','warning');return;}
+  // P3/R3 修复：数量校验统一走共享模块 FTValidators.isPositiveNumber（语义与原判定等价）
+  if(!FTValidators.isPositiveNumber(d.qty)){toast('请填写有效数量','warning');return;}
   if(_fEditIdx>=0){
     const old=_fItems[_fEditIdx];
     _fItems[_fEditIdx]={...old,...d};
@@ -793,7 +855,7 @@ function buildSourceDrawerBody(idx){
       ' · 采购价 '+fmt(o.price)+' · 分配 <b>'+fmtN(o.allocQty)+'千支</b>'+
       ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
       (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-      '<span class="sc-del" onclick="removeOption('+idx+',\''+o.id+'\')">×</span>'+
+      '<span class="sc-del" onclick="removeOption('+idx+',\''+escJsStr(o.id)+'\')">×</span>'+
     '</div>';
   }).join('');
   return '<div style="margin-bottom:16px;padding:14px;background:var(--bg-tint);border-radius:8px;border:1px solid var(--line)">'+
@@ -839,10 +901,25 @@ function buildPriceMatchModalBody(idx,q){
       '</div>'+
     '</div>';
   }).join(''):'<div class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
-  return '<div class="field" style="margin-bottom:12px"><input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人..." oninput="filterPriceMatch('+idx+',this.value)" autocomplete="off"></div>'+
+  return '<div class="search-box pm-search-box" style="max-width:100%;margin-bottom:12px">'+
+    '<a href="javascript:void(0)" onclick="runPriceMatchFilter('+idx+')" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+    '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\')runPriceMatchFilter('+idx+')" autocomplete="off">'+
+    '<span class="clear-btn" onclick="clearPriceMatchFilter('+idx+')">×</span>'+
+  '</div>'+
     '<div style="font-size:14px;color:var(--gray);margin-bottom:8px">共 '+availMatched.length+' 条匹配</div>'+
     '<div id="pmList">'+listHTML+'</div>'+
     '<div id="pmEmpty" style="display:none" class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
+}
+/** 价格库匹配弹窗：执行搜索（§8 合规：Enter / 🔍 点击触发） */
+function runPriceMatchFilter(idx){
+  const el=document.getElementById('pmSearch');
+  filterPriceMatchNow(idx,el?el.value:'');
+}
+/** 价格库匹配弹窗：清除搜索并恢复全部列表 */
+function clearPriceMatchFilter(idx){
+  const el=document.getElementById('pmSearch');
+  if(el)el.value='';
+  filterPriceMatchNow(idx,'');
 }
 /** 打开价格库匹配弹窗 */
 function openPriceMatchModal(idx){
@@ -992,24 +1069,38 @@ function refreshDetailStats(){
   setStat('st_cost',orderCost(o));
   setStat('st_profit',orderProfit(o));
 }
-/** 打开指定产品的寻货抽屉 */
 /**
- * 打开寻货抽屉（核心业务函数）
- * 流程：
- * 1. 从价格库匹配符合规格的报价（specMatch过滤）
- * 2. 按供应商分组，排除已选供应商
- * 3. 渲染可选列表 + 已选列表
- * 4. 用户选择后调用 selectSource(itemIdx, priceId, qty)
- * 
+ *  B1 修复：打开寻货抽屉（统一入口，不再依赖"详情页先改 _fMode 为 edit"的隐性副作用）。
+ *  显式接收 mode 参数：
+ *    - 'edit'   ：编辑/新建订单（_fMode='edit'|'new' 已在 viewOrderEdit 中设置，缺省兼容此路径）
+ *    - 'detail' ：订单详情只读页（curOrderView 指定订单；_fItems 使用临时拷贝；写回通过 persistSourcingChange() 走 DB 直接更新）
+ *  ctx 写入 _sourcingCtx 供后续 addMatchSupplier / manualSupplier / removeOption 决策持久化路径。
  * @param {number} idx - _fItems 数组索引
+ * @param {'edit'|'detail'} [mode] - 选填：默认按现有 _fMode 推断；详情页 MUST 显式传 'detail'（sourceItemFromDetail 已处理）
  */
-function sourceItem(idx){
+function sourceItem(idx,mode){
+  // mode 推断 + ctx 持久化
+  const inferred=(curOrderView&&_fMode!=='edit'&&_fMode!=='new')?'detail':'edit';
+  const realMode=mode||inferred;
+  const orderId=(realMode==='detail')?curOrderView:_fOrderId;
+  if(realMode==='detail'){
+    const o=DB.orders.find(x=>x.id===orderId);
+    if(!o)return;
+    // 详情模式：_fItems / _fMode 暂借使用，但显式标记 __detail__ 防止 persistSourcingChange 误判成编辑模式
+    _fItems=o.items.map(it=>({...it,options:(it.options||[]).map(x=>({...x}))}));
+    _fMode='__detail__';_fOrderId=null; // 清空 _fOrderId，避免任何"编辑模式写回"路径误命中
+  }
+  _sourcingCtx={mode:realMode,orderId:orderId||null,lastIdx:idx};
   const it=_fItems[idx];
+  if(!it)return;
   const remain=it.qty-itemAllocSum(it);
   const body=buildSourceDrawerBody(idx);
   openDrawer('寻货 · '+escHtml(it.diameter||'')+' '+escHtml(it.type||'')+(remain>0?'（剩余 '+fmtN(remain)+' 待寻）':'（已满量）'),body,null,true,true);
 }
-/** 从价格库添加匹配的供应商到产品选项 */
+/** 从价格库添加匹配的供应商到产品选项
+ *  B1 修复：末尾调用统一的 persistSourcingChange({idx}) 替代双 persist + UI 刷新散列，
+ *  保持 DB 操作时序：先本地内存变更（_fItems）→ 再统一写回 → 再重绘 UI。
+ */
 function addMatchSupplier(idx,priceId,q){
   const it=_fItems[idx];
   const p=DB.prices.find(x=>x.id===priceId);
@@ -1018,16 +1109,14 @@ function addMatchSupplier(idx,priceId,q){
   if(q===undefined) q=+document.getElementById('alloc_'+priceId).value;
   const allocSum=itemAllocSum(it);
   const remain=it.qty-allocSum;
-  if(!(q>0)){toast('请输入有效分配数量','warning');return;}
+  if(!FTValidators.isPositiveNumber(q)){toast('请输入有效分配数量','warning');return;}
   if(q>remain){toast('分配数量超出剩余量 '+fmtN(remain),'warning');return;}
   // 检查是否已存在该供应商
   if(itemOpts(it).some(o=>o.supplierId===p.unitId)){toast('供应商 '+pName(p.unitId)+' 已添加，若需更多数量请直接调整原分配数量，已跳过重复添加','warning');return;}
   it.options=it.options||[];
   it.options.push({id:uid('Q'),supplierId:p.unitId,contact:p.contact||'',price:p.price,allocQty:q,stockNote:'有效期:'+p.validFrom,source:'priceLibrary',status:'已选'});
   saveOrderDraftFromItems();
-  persistSourcingFromDetail();
-  persistOrderItems();
-  refreshSourceDrawer(idx);updateDetailRow(idx);refreshDetailStats();if(_fMode==='edit')refreshProductList();
+  persistSourcingChange({idx});
   toast('已添加供应商：'+pName(p.unitId)+' · 分配 '+fmtN(q),'success');
 }
 /** 提交手动录入的供应商数据（自动创建关联单位、同步价格库） */
@@ -1046,8 +1135,8 @@ function manualSupplier(idx){
   const stock=document.getElementById('ms_stock').value.trim();
   const errEl=document.getElementById('msErr');
   if(!name){errEl.style.display='block';errEl.textContent='请输入供应商名称';return;}
-  if(!(price>0)){errEl.style.display='block';errEl.textContent='请输入有效采购单价';return;}
-  if(!(q>0)){errEl.style.display='block';errEl.textContent='请输入有效分配数量';return;}
+  if(!FTValidators.isPositiveNumber(price)){errEl.style.display='block';errEl.textContent='请输入有效采购单价';return;}
+  if(!FTValidators.isPositiveNumber(q)){errEl.style.display='block';errEl.textContent='请输入有效分配数量';return;}
   const allocSum=itemAllocSum(it);
   if(allocSum+q>it.qty){errEl.style.display='block';errEl.textContent='累计分配数量超出需求 '+fmtN(it.qty)+'（已分配 '+fmtN(allocSum)+'）';return;}
   // 检查是否已存在该供应商
@@ -1105,9 +1194,8 @@ function manualSupplier(idx){
   it.options=it.options||[];
   it.options.push({id:uid('Q'),supplierId:unit.id,contact:contact||'',price,allocQty:q,stockNote:stock,source:'manual',status:'已选'});
   saveOrderDraftFromItems();
-  persistSourcingFromDetail();
-  persistOrderItems();
-  refreshSourceDrawer(idx);closeModal();updateDetailRow(idx);refreshDetailStats();if(_fMode==='edit')refreshProductList();
+  persistSourcingChange({idx});
+  closeModal();
   toast(msgs.join('、'),'success');
 }
 /** 移除产品行中指定供应商的分配 */
@@ -1115,9 +1203,7 @@ function removeOption(idx,optId){
   const it=_fItems[idx];
   it.options=(it.options||[]).filter(o=>o.id!==optId);
   saveOrderDraftFromItems();
-  persistSourcingFromDetail();
-  persistOrderItems();
-  refreshSourceDrawer(idx);updateDetailRow(idx);refreshDetailStats();if(_fMode==='edit')refreshProductList();
+  persistSourcingChange({idx});
   toast('已移除该供应商分配','info');
 }
 /* ---- 保存订单 ---- */
@@ -1139,8 +1225,11 @@ async function saveOrder(){
   _orderSaving=true;
   try{
     const buyerId=document.getElementById('tf_buyer').dataset.val;
-    if(!buyerId){toast('请选择采购商','warning');return;}
-    if(!_fItems.length){toast('请至少添加一条产品明细','warning');return;}
+    const delivery=document.getElementById('tf_delivery').value;
+    // P3/R3 修复：订单必填校验统一走共享模块 FTValidators.validateOrderInput
+    // （buyerId → items → delivery 顺序与原实现一致，checkItem=false 维持视图层现状；消息文案不变）
+    const _vr=FTValidators.validateOrderInput({buyerId:buyerId,delivery:delivery,items:_fItems},{checkItem:false});
+    if(!_vr.ok){toast(_vr.error,'warning');return;}
     // 重复 SKU+规格 校验（仅警示不阻塞）
     const keyMap=new Map();
     _fItems.forEach((it,idx)=>{
@@ -1156,8 +1245,6 @@ async function saveOrder(){
       let dupCount=0;dupGroups.forEach(rows=>dupCount+=rows.length);
       toast('⚠ 检测到 '+dupCount+' 条相同 SKU+规格 的产品行（'+rowDescs.join('；')+'），建议合并后再保存','warn');
     }
-    const delivery=document.getElementById('tf_delivery').value;
-    if(!delivery){toast('请选择交货期','warning');return;}
     const buyerContact=document.getElementById('tf_contact').value;
     const project=document.getElementById('tf_project').value;
     const status=document.getElementById('tf_status').value;
@@ -1167,6 +1254,7 @@ async function saveOrder(){
       const o=DB.orders.find(x=>x.id===_fOrderId);
       if(o){
         if(status==='未成交'&&o.status!=='报价中'){
+          // P3/R3 修复：视图层状态流转特判语义与共享模块 NEXT_STATUS['报价中'] 含 '未成交' 对齐（保持原提示文案）
           toast('未成交仅可从「报价中」订单进入，请先回到详情页标记','warning');return;
         }
         o.buyerId=buyerId;o.buyerContact=buyerContact;o.project=project;
@@ -1564,7 +1652,7 @@ function submitSupplierQuote(){
     if(itemOpts(it).some(opt=>opt.supplierId===u.id)){skipped++;continue;}
     const remain=it.qty-itemAllocSum(it);
     let q=r.qty;
-    if(!(q>0)){skipped++;continue;}
+    if(!FTValidators.isPositiveNumber(q)){skipped++;continue;}
     if(q>remain){q=remain;}
     if(q<=0){skipped++;continue;}
     const contact=(u.contacts&&u.contacts.length)?(u.contacts[0].name||''):'';

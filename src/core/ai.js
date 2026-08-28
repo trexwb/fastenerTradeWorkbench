@@ -32,7 +32,10 @@ const AI=(function(){
     return keyBytes;
   }
 
-  /** 混淆明文 → 'obf1:Base64' 格式字符串 */
+  /** 混淆明文 → 'obf1:Base64' 格式字符串
+   * P2/F2 局限说明：Web 形态下 API Key 仅做异或+Base64 的弱混淆后存入 localStorage，属"防明文直读"级别，
+   * 无法抵御有 JS 调试/读存储能力的攻击者（密钥派生逻辑同包可见）；Tauri 形态优先走系统文件存储（0600 权限），
+   * 且 Tauri 下本函数不会被调用。不要将本实现当作安全加密方案使用。 */
   function _obfuscate(plain){
     if(!plain)return '';
     const key=_obfDeriveKey();
@@ -614,7 +617,6 @@ const AI=(function(){
   }
   function abort(){state.abortReason='manual';if(state.abortController)state.abortController.abort();}
 
-  /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage 混淆存储（空串删除） */
   /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage 混淆存储（空串删除）
    *  多模型接入：放开 sk- 前缀校验，自定义端点 Key 非空即可；仅限长度防滥用 */
   async function setDeepseekToken(raw){

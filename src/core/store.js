@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.26';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.28';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -231,20 +231,25 @@ async function _doBindDirectory(){
     dirHandle=await window.showDirectoryPicker({mode:'readwrite'});
   }catch(e){
     if(e.name==='AbortError'){
-      // 用户取消选择或因「系统文件夹安全限制」被拒：用项目统一 modal 给「重试 / 放弃」选项，
-      // 不弹任何系统对话框。确定按钮=再试一次，取消按钮=放弃绑定
+      // 用户取消选择或因「系统文件夹安全限制」被拒：给三选项 —— 再试 / 单 JSON 导入兜底 / 放弃
+      // 单文件导入不绑定句柄、不开同步，仅一次性把文件数据合并入 IndexedDB（满足用户"我已有备份JSON只想导入"场景）
       const body=document.createElement('div');
       body.style.fontSize='14px';body.style.lineHeight='1.8';
       body.innerHTML=
         '<p>刚才您取消了选择，或选择了「下载/桌面/文档」等系统文件夹触发了浏览器安全限制。</p>'+
-        '<p style="color:var(--gray);font-size:13px">建议：专门新建一个空文件夹（如「'+escHtml('~/Documents/紧固件数据/')+'」）来存放数据文件。</p>';
+        '<p style="color:var(--gray);font-size:13px">建议：专门新建一个空文件夹（如「'+escHtml('~/Documents/紧固件数据/')+'」）来存放数据文件。</p>'+
+        '<p style="margin-top:10px;padding:10px 12px;background:var(--pri-bg);border:1px solid var(--pri-p);border-radius:var(--radius);font-size:13px">'+
+          '<b>备选方案：单次导入 JSON 备份</b><br>'+
+          '<span style="color:var(--gray)">如果您已有「'+escHtml(BIND_FILE_NAME)+'」导出备份，可直接选择该 .json 文件一次性导入数据（不会开启自动同步，之后仍可随时重新绑定目录）。</span>'+
+        '</p>';
       const onRetry=()=>{closeModal();_doBindDirectory();};
+      const onImportSingle=()=>{closeModal();_importSingleJSONAsFallback();};
       const onGiveUp=()=>{closeModal();toast('已取消绑定','info');};
-      modal('未绑定成功',body,'再试一次',onRetry);
-      // modal 默认取消按钮是 closeModal()，覆写它为「放弃绑定」
+      modal('未绑定成功',body,'再试一次',onRetry,'导入 JSON 备份',onImportSingle);
+      // modal 的次按钮（cancel）改为「放弃绑定」，第三按钮（extra）为「导入 JSON 备份」
       const mask=document.getElementById('_mask');
       if(mask){
-        const cancelBtn=mask.querySelector('.mf .btn:not(.primary)');
+        const cancelBtn=mask.querySelector('.mf .btn:not(.primary):not(.extra)');
         if(cancelBtn){cancelBtn.textContent='放弃绑定';cancelBtn.onclick=onGiveUp;}
       }
     }else{
@@ -341,6 +346,66 @@ async function unbindFile(){
     closeModal();render();
     toast('已解绑本地文件','info');
   },'确认解绑');
+}
+
+/* 单 JSON 文件导入（目录绑定失败兜底） */
+/**
+ * 当目录绑定被用户取消/拒绝时，使用 showOpenFilePicker 让用户选择单个 JSON 备份文件。
+ * 只做**一次性导入**（不绑定句柄、不开 fileSync），合并规则与目录绑定时完全一致：
+ *   - IndexedDB 空 + 文件有数据 → 导入为默认
+ *   - 两边都有 → IndexedDB 优先 mergeFileData()
+ *   - 文件非法 → 仅 toast 提示，不改动 DB
+ * @returns {Promise<void>} 完成（无返回值）
+ */
+async function _importSingleJSONAsFallback(){
+  if(!('showOpenFilePicker' in window)){
+    toast('当前浏览器不支持单文件选择，请使用 Chrome 或 Edge','error');return;
+  }
+  let handle;
+  try{
+    [handle]=await window.showOpenFilePicker({
+      multiple:false,
+      types:[{description:'紧固件工作台数据备份（JSON）',accept:{'application/json':['.json'],'text/plain':['.json']}}],
+      excludeAcceptAllOption:false
+    });
+  }catch(e){
+    if(e&&e.name!=='AbortError')toast('选择文件失败：'+e.message,'error');
+    return;
+  }
+  if(!handle)return;
+  let fileData=null,fileHasAny=false;
+  try{
+    const f=await handle.getFile();
+    const txt=await f.text();
+    if(txt){
+      const d=JSON.parse(txt);
+      if(d&&typeof d==='object'&&!Array.isArray(d)){fileData=d;fileHasAny=true;}
+      else fileHasAny=true;
+    }
+  }catch(e){fileHasAny=true;}
+  if(fileHasAny&&!fileData){
+    toast('文件解析失败，未导入。请确认是合法的 JSON 数据备份','error');
+    return;
+  }
+  if(!fileData){
+    toast('文件为空，未导入','warning');
+    return;
+  }
+  // 合并规则（与 _doBindDirectory 保持一致）
+  const dbEmpty=!(DB.units&&DB.units.length)&&!(DB.prices&&DB.prices.length)&&!(DB.orders&&DB.orders.length)&&!(DB.settlements&&DB.settlements.length)&&!(DB.invoices&&DB.invoices.length);
+  let merged=false;
+  if(dbEmpty){
+    DB=fileData;ensureDBFields();
+  }else{
+    mergeFileData(fileData);merged=true;
+  }
+  migrateItems();
+  DB._savedAt=Date.now();
+  await idbSave();
+  // 单文件导入不绑定句柄、不开 fileSync：用户随时可后续"重新绑定目录"
+  const tip=merged?'（已合并：IndexedDB 现有数据保留，文件独有条目追加）':'（已导入文件数据）';
+  toast('导入成功 '+tip+'（未开启自动同步，可随时重新绑定目录）','success');
+  render();
 }
 
 /* 重新授权（刷新后权限失效时点击） */
@@ -706,6 +771,12 @@ function migrateItems(){
   (DB.bom||[]).forEach(b=>{
     if(!b.id){b.id=uid('B');migrated=true;}
   });
+  // 订单明细 id 迁移：给无 id 的 item 注入 uid('OI')（N4：从 runQuery 只读查询收敛到启动初始化，避免查询产生写副作用）
+  DB.orders.forEach(o=>{
+    (o.items||[]).forEach(it=>{
+      if(!it.id){it.id=uid('OI');migrated=true;}
+    });
+  });
   return migrated;
 }
 /**
@@ -715,11 +786,11 @@ function migrateItems(){
 function saveDB(){
   _unitNameCache=null; _bomCache=null; // 数据变更，失效缓存
   DB._savedAt=Date.now();
-  // IndexedDB 主力存储（异步）
+  // IndexedDB 主力存储（异步，保持原逻辑立即写）
   const p=idbSave();
   p.finally(()=>_checkIdbErrorToast());
-  // 本地文件（如果已绑定）
-  if(fileSync===true)saveToFile();
+  // 本地文件（如果已绑定）：P3/R5 修复，改为 300ms 防抖合并写盘，避免高频变更频繁写文件
+  if(fileSync===true)_scheduleFileSave();
   return p;
 }
 let _saveTimer=0;
@@ -731,6 +802,33 @@ let _saveTimer=0;
 function saveDBDebounced(ms){
   if(_saveTimer)clearTimeout(_saveTimer);
   _saveTimer=setTimeout(function(){_saveTimer=0;saveDB();},ms||300);
+}
+let _fileSaveTimer=0;
+/**
+ * 文件写入防抖调度：合并 300ms 内的多次文件写请求，仅最后一次触发时执行（P3/R5 修复）。
+ * saveToFile 内部的 bindingInProgress 防护保持不变，竞态语义与原逻辑一致。
+ * @param {number} [ms=300] - 防抖延迟毫秒数
+ * @returns {void} 无返回值
+ */
+function _scheduleFileSave(ms){
+  if(_fileSaveTimer)clearTimeout(_fileSaveTimer);
+  _fileSaveTimer=setTimeout(function(){_fileSaveTimer=0;saveToFile();},ms||300);
+}
+/**
+ * 立即执行挂起的文件写入（页面可见性变化/卸载时 flush，保证防抖窗口内数据不丢）。
+ * @returns {void} 无返回值
+ */
+function flushFileSave(){
+  if(!_fileSaveTimer)return;
+  clearTimeout(_fileSaveTimer);
+  _fileSaveTimer=0;
+  saveToFile();
+}
+// P3/R5 修复：页面隐藏/卸载时 flush 最后一次文件写入，避免防抖窗口内数据丢失
+if(typeof window!=='undefined'){
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flushFileSave();});
+  window.addEventListener('pagehide',flushFileSave);
+  window.addEventListener('beforeunload',flushFileSave);
 }
 let _idbErrorShown=false;
 /** 检查 IndexedDB 写入状态，首次错误时弹出存储故障提示（全局仅弹一次） */

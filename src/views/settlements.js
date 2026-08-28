@@ -239,10 +239,10 @@ function viewSettlements(type){
       (pct>0?'<span class="tag info">部分结算</span>':'<span class="tag err">未结算</span>');
     return '<tr>'+
       '<td><b>'+escHtml(d.unitName)+'</b></td>'+
-      '<td style="font-weight:600">'+fmt(_settleTab==='receipt'?d.totalReceivable:d.totalPayable)+'</td>'+
-      '<td style="color:var(--green);font-weight:600">'+fmt(_settleTab==='receipt'?d.totalReceived:d.totalPaid)+'</td>'+
+      '<td class="m-hide-s2" style="font-weight:600">'+fmt(_settleTab==='receipt'?d.totalReceivable:d.totalPayable)+'</td>'+
+      '<td class="m-hide-s1" style="color:var(--green);font-weight:600">'+fmt(_settleTab==='receipt'?d.totalReceived:d.totalPaid)+'</td>'+
       '<td style="color:'+(gap>0?'var(--red)':'var(--gray)')+'">'+fmt(gap)+'</td>'+
-      '<td>'+statusTag+'<div class="settle-progress-bar"><div class="settle-progress-fill" style="width:'+pct+'%;background:'+(pct>=100?'var(--green)':pct>0?'var(--pri)':'var(--red)')+'"></div></div></td>'+
+      '<td class="m-hide-s2">'+statusTag+'<div class="settle-progress-bar"><div class="settle-progress-fill" style="width:'+pct+'%;background:'+(pct>=100?'var(--green)':pct>0?'var(--pri)':'var(--red)')+'"></div></div></td>'+
       '<td class="td-act">'+
         '<button class="btn xs" onclick="openSettleDetail(\''+d.unitId+'\',\''+type+'\')">'+icon('fileText')+'明细</button>'+
         '<button class="btn xs primary" onclick="openNewSettlement(\''+d.unitId+'\',\''+type+'\')">'+icon('plus')+'新增结算</button>'+
@@ -276,10 +276,10 @@ function viewSettlements(type){
   // 表格
   '<div class="card"><div class="table-wrap"><table><thead><tr>'+
     '<th>' + (_settleTab === 'receipt' ? '采购商' : '供应商') + '</th>'+
-    '<th>' + (_settleTab === 'receipt' ? '应收款' : '应付款') + '</th>'+
-    '<th>' + (_settleTab === 'receipt' ? '实收款' : '实付款') + '</th>'+
+    '<th class="m-hide-s2">' + (_settleTab === 'receipt' ? '应收款' : '应付款') + '</th>'+
+    '<th class="m-hide-s1">' + (_settleTab === 'receipt' ? '实收款' : '实付款') + '</th>'+
     '<th>' + (_settleTab === 'receipt' ? '未收款' : '未付款') + '</th>'+
-    '<th>结算状态</th>'+
+    '<th class="m-hide-s2">结算状态</th>'+
     '<th>操作</th>'+
   '</tr></thead><tbody>'+
     (rows || '<tr><td colspan="6">'+
