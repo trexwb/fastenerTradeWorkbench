@@ -175,9 +175,13 @@ function render(){
     }
   });
   
-  // 面包屑
+  // 面包屑（详情页/编辑页支持返回链接）
   let crumb='';
-  if(view==='settle-receipt')crumb='对账结算 / 收款记录';
+  if(curOrder&&view==='orders'){
+    crumb='<a href="javascript:void(0)" onclick="go(\'orders\')" style="color:var(--pri);text-decoration:none">采购订单</a>'+
+      '<span style="color:var(--line);margin:0 6px">/</span>'+
+      '<span>'+(curOrderView?'查看订单':'编辑订单')+' · '+escHtml(DB.orders.find(function(o){return o.id===curOrder})?.id||'')+'</span>';
+  }else if(view==='settle-receipt')crumb='对账结算 / 收款记录';
   else if(view==='settle-payment')crumb='对账结算 / 付款记录';
   else if(view==='inv-issue')crumb='发票管理 / 开票记录';
   else if(view==='inv-receive')crumb='发票管理 / 收票记录';

@@ -30,7 +30,18 @@ function priceRowHTML(p){
 
 /** 报价表空态行 HTML（无数据/无匹配共用） */
 function priceEmptyRowHTML(){
-  return '<tr><td colspan="9"><div class="no-data">'+(hasPriceFilter()?'无匹配结果':'暂无报价记录，点击「新增报价」开始')+'</div></td></tr>';
+  const hasFilter=hasPriceFilter();
+  return '<tr><td colspan="9">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('tag',28)+'</div>'+
+      '<div class="es-title">'+(hasFilter?'无匹配报价':'暂无报价记录')+'</div>'+
+      '<div class="es-desc">'+(hasFilter?'试试调整搜索关键词或清除筛选条件':'为 BOM 中的规格添加供应商报价，支持订单寻货和利润核算')+'</div>'+
+      '<div class="es-action">'+
+        (hasFilter?'<button class="btn ghost" onclick="clearPriceFilter()">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="newPrice()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新增报价</button>'+
+      '</div>'+
+    '</div>'+
+  '</td></tr>';
 }
 
 /**
@@ -50,9 +61,10 @@ function viewPrices(){
   const specFilt=SPEC_FIELDS.map(k=>'<div id="pf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val=""></div>').join('');
 
   return '<div class="toolbar">'+
-    '<div class="search-box" style="width:160px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="SKU..." onkeydown="if(event.key===\'Enter\')doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box" style="max-width:200px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\')doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
+    '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+
     '<button id="priceBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeletePrices()">'+icon('trash')+'批量删除(<span id="priceBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
       '<button class="btn primary" onclick="newPrice()">'+icon('plus')+'新增报价</button>'+

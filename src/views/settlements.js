@@ -282,7 +282,14 @@ function viewSettlements(type){
     '<th>结算状态</th>'+
     '<th>操作</th>'+
   '</tr></thead><tbody>'+
-    (rows || '<tr><td colspan="6"><div class="no-data">' + (_settleSearch?'未找到匹配"'+escHtml(_settleSearch)+'"的'+tabSearchLabel+'记录':(_settleTab==='receipt'?'暂无收款记录，点击「新建结算」开始':'暂无付款记录，点击「新建结算」开始')) + '</div></td></tr>')+
+    (rows || '<tr><td colspan="6">'+
+      '<div class="empty-state">'+
+        '<div class="es-icon">'+icon('wallet',28)+'</div>'+
+        '<div class="es-title">'+(_settleSearch?'未找到匹配记录':(_settleTab==='receipt'?'暂无收款记录':'暂无付款记录'))+'</div>'+
+        '<div class="es-desc">'+(_settleSearch?'试试调整搜索关键词':(_settleTab==='receipt'?'创建收款结算记录，跟踪采购商付款进度':'创建付款结算记录，管理供应商应付账款'))+'</div>'+
+        '<div class="es-action"><button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')">'+icon('plus')+'新建结算</button></div>'+
+      '</div>'+
+    '</td></tr>')+
   '</tbody></table></div>' + pg + '</div>';
 }
 

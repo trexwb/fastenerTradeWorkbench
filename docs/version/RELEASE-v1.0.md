@@ -18,6 +18,7 @@
 
 - 数据管理页 `_kbRefreshBox` 的开关行（提问时检索知识库 / 注入 Top-N / 回答标注来源）从内联样式迁移到 `ai-opt`/`ai-kb-opts` 类体系：标签 `white-space:nowrap` 防逐字碎行，Top-N 下拉统一规格与 focus 主色
 - 样式与 AI 设置弹窗完全同源（v1.0.23 已建），两处共用一套 CSS
+- CI 工具修复（不改运行时版本）：`scripts/gen-latest-json.mjs` 改为递归扫描 artifact 目录——`actions/upload-artifact` 多路径上传保留「最小公共祖先」下的子目录结构（Windows 产物在 `nsis/`/`msi/` 子目录、macOS 产物嵌套在 `src-tauri/target/...` 深层），原顶层平铺扫描找不到带 .sig 的更新产物导致 `update-manifest` 失败；URL 一律取文件名平铺指向 Release 资产根；已用模拟 CI 布局端到端验证双平台 latest.json 生成正确
 - 版本号五处同步 v1.0.24；构建通过
 
 ---
