@@ -767,7 +767,7 @@ document.addEventListener('click', function (e) {
   /** 子路由归并到所属主模块（与旧 guide.js 保持一致，防止 reset('settle-receipt') 漏清理） */
   const _GUIDE_PARENT={'settle-receipt':'settlements','settle-payment':'settlements','inv-issue':'invoices','inv-receive':'invoices'};
   const CFG={
-    dashboard:{label:'概览',icon:'layout',steps:[
+    dashboard:{label:'概览',icon:'grid',steps:[
       {title:'欢迎来到紧固件贸易工作台',body:'这里是你的每日指挥中心：<b>4 张核心指标卡</b>一眼掌握订单数、总金额、寻货中、待确认，下方「今日待办」列出需要你处理的紧急事项。'},
       {target:'.stats',pos:'bottom',title:'4 张关键指标卡',body:'按「订单 / 金额 / 寻货中 / 待确认」四大维度展示，点击进入对应的模块查看详细列表。左侧彩色色条表示数据分类。'},
       {target:'.today-box',pos:'top',title:'今日待办 = 工作清单',body:'每一条都是<b>需要你决策的项</b>：待签约报价、寻货不足、未结清款。点击右侧「处理」按钮即可直达对应页面，处理完会自动从列表中消失。'},
@@ -785,7 +785,7 @@ document.addEventListener('click', function (e) {
       {target:'.specs-toolbar',pos:'bottom',title:'① 批量导入导出',body:'「批量导入全部维度」支持从其他系统复制粘贴属性集合；「导出全部」用于给同事或备份。'},
       {title:'② 删除：<span style="color:var(--warn);">灰色</span>标签可安全清理',body:'每个可选值都标注 <b>未使用样式</b>（灰色）——表示任何 BOM / 报价 / 订单都没引用过，可直接删除。常用值保持彩色，不用操心。'}
     ]},
-    bom:{label:'BOM 管理',icon:'layers',steps:[
+    bom:{label:'BOM 管理',icon:'package',steps:[
       {title:'BOM = 物料清单（产品数据库）',body:'BOM 是你所有螺栓/螺母的「字典」：每条记录定义一个<b>SKU</b>，包含规格、尺寸、材质、强度、表面处理等技术属性。后续报价/寻货/订单都从 BOM 中选。'},
       {target:'.toolbar .btn.primary',pos:'bottom',title:'① 新建 BOM：一条一条或批量',body:'「新建 BOM」单条新增；「批量导入」支持从 Excel / 表格粘贴多行属性。新入的 SKU 立刻可被报价和订单引用。'},
       {target:'#bomBody tr:nth-child(1) .td-act',pos:'left',title:'② 编辑 / 删除一条',body:'删除时会检查该 SKU 是否被报价 / 订单引用，被引用时会<b>提示不可删</b>，避免数据断裂。'},
@@ -804,7 +804,7 @@ document.addEventListener('click', function (e) {
       {target:'#orderBody tr:nth-child(1) .td-act',pos:'left',title:'③ 查看 vs 编辑',body:'<b>查看</b>：只读详情，寻货入口在这里的「寻源状态」列（不足量才显示按钮）。<b>编辑</b>：改表单字段或产品明细。§8 约定——寻货只能在详情页操作。'},
       {title:'④ 5 种状态对应 5 种 Excel 导出模板',body:'点击「导出 Excel」时系统根据当前状态选择模板：<b>待确认→产品确认单 / 寻货中→寻源进度单 / 报价中→报价单 / 签约→结算单 / 送货→送货单</b>，不用再手动挑模板。'}
     ]},
-    settlements:{label:'结算管理',icon:'dollarSign',steps:[
+    settlements:{label:'结算管理',icon:'wallet',steps:[
       {title:'结算管理 = 对帐中心',body:'按「应收（向客户收钱）/ 应付（向供应商付钱）」两条线管理，每个单位显示：<b>总额 · 已收/已付 · 未收/未付</b> + 进度条与状态标签，一清二楚。'},
       {target:'.settle-tabs',pos:'bottom',title:'① 切换：应收 / 应付 / 未结',body:'顶部三个主 Tab 分别是「应收账款 · 应付账款 · 全部」；每个主 Tab 还有「未结清 / 已结清」子 Tab，非常适合做月度对帐。'},
       {target:'table tbody tr:nth-child(1) .td-act',pos:'left',title:'② 看明细 / 新增结算记录',body:'点「明细」打开右侧抽屉：展示每个订单的应收/已收明细；点「新增结算」录入一笔收款或付款，金额自动累计到进度条。'},
@@ -822,11 +822,11 @@ document.addEventListener('click', function (e) {
       {target:'.btn.primary[data-action="bind-dir"]',pos:'top',title:'② 进阶：绑定本地文件夹 = 自动同步',body:'绑定一个文件夹后，系统会把所有数据写入「紧固件贸易工作台_数据.json」；换电脑、换浏览器只要打开这同一个文件夹就能拿到最新数据，这是<b>最佳实践</b>。'},
       {title:'③ 重置示例数据 / 清空：有保护机制',body:'重置和清空会经过二次确认（显示影响条目数），绑定了文件也不会清空目标文件，放心使用。'}
     ]},
-    keyboard:{label:'快捷键',icon:'command',steps:[
+    keyboard:{label:'快捷键',icon:'keyboard',steps:[
       {title:'快捷键 = 效率倍增开关',body:'把高频操作全部集中到键盘，尤其是全局命令面板 <span class="kbd">⌘K</span>。这里可以看到完整的快捷键列表，并能切换启用/禁用。'},
       {title:'⌘K 能做什么？',body:'① 搜索订单 / 报价 / BOM SKU 并直接跳转；② 输入自然语言问题让 AI 助手分析数据；③ 快速新建单位/订单/报价。真正的全局入口。'}
     ]},
-    'ai-chat':{label:'AI 助手',icon:'sparkles',steps:[
+    'ai-chat':{label:'AI 助手',icon:'zap',steps:[
       {title:'AI 助手 = 你的业务数据分析师',body:'这里可以用自然语言向 AI 提问，AI 使用<b>当前数据库的脱敏快照</b>回答（金额、余额、排名都以本地数据为准），不会编造单位名或订单号，放心用。'},
       {target:'.ai-input-area .ai-send',pos:'top',title:'① 输入问题后发送',body:'试试问：「本月有哪些订单还没确认？」「供应商 X 最近 3 个月平均单价？」—— 支持中文。'},
       {target:'.ai-key-btn',pos:'bottom',title:'② 需要先设置 API Key（浏览器版）',body:'浏览器版本用户点右上角「AI 🔑」输入你的 DeepSeek API Key 后存 localStorage；密钥只保存在<b>你这台设备上</b>，我们不收集。'},

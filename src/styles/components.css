@@ -644,24 +644,8 @@ input.alloc-input{width:90px;}
 @keyframes aiBlink{50%{opacity:0;}}
 @media (max-width:560px){.ai-message{max-width:96%;}}
 
-/* =========================================================
-   模块首次进入引导横幅（guide.js）
-   ========================================================= */
-.module-guide{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--pri-l),transparent 55%),var(--card);border:1px solid var(--pri-p);border-left:3px solid var(--pri);border-radius:var(--radius-lg);padding:10px 14px;margin-bottom:14px;animation:mg-in .4s cubic-bezier(.16,1,.3,1) both;}
-@keyframes mg-in{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:none;}}
-.module-guide .mg-ico{flex:none;width:36px;height:36px;border-radius:var(--radius-md);background:var(--card);color:var(--pri);display:flex;align-items:center;justify-content:center;}
-.module-guide .mg-ico svg{width:18px;height:18px;}
-.module-guide .mg-body{flex:1;min-width:0;}
-.module-guide .mg-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px;}
-.module-guide .mg-text{font-size:12.5px;color:var(--gray);line-height:1.6;}
-.module-guide .mg-actions{display:flex;align-items:center;gap:8px;flex:none;}
-.module-guide .mg-act{padding:5px 12px;font-size:12px;border-radius:var(--radius);white-space:nowrap;}
-.module-guide .mg-close{background:none;border:none;color:var(--gray);font-size:12px;padding:6px 8px;cursor:pointer;border-radius:var(--radius);font-family:inherit;}
-.module-guide .mg-close:hover{background:var(--bg-soft);color:var(--ink);}
-@media (max-width:640px){
-  .module-guide{flex-wrap:wrap;gap:8px 10px;padding:12px;}
-  .module-guide .mg-actions{width:100%;justify-content:flex-end;padding-top:2px;}
-}
+/* （原「模块首次进入引导横幅」样式已于 2026-08-29 随 guide.js 横幅系统废弃移除，
+   首次引导统一由 router.js Coach 全屏蒙层承担，样式见 .coach-* 系列） */
 
 /* REDUCED MOTION */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important;}}
