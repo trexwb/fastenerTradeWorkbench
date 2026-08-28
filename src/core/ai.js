@@ -150,6 +150,8 @@ const AI=(function(){
     return [base,extractPageContext(),extractByKeywords(message,overview),extra].filter(Boolean).join('\n\n');
   }
   function buildSystemPrompt(snapshot){
+      // 知识库工具仅在已绑定且启用时向模型开放（未绑定时连同 system prompt 指引一并省略，模型无从发起 KB 调用）
+      const kbReady=(typeof KB!=='undefined'&&KB.state.bound&&KB.state.enabled);
     return '你是紧固件贸易工作台的助手，既是数据助理也是系统操作顾问。可调用写入工具起草对单位/报价/订单等数据的修改，可调用查询工具（query_*）读取脱敏数据，可调用功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer/open_unit_form/open_order_form/open_price_form/open_bom_form）触发视图导航、Excel 导出、打开抽屉、打开业务表单等 UI 动作，也可基于脱敏快照做只读分析与建议。\n\n'+
       '【系统操作指引】（用户询问"怎么操作/怎么做/不会操作"等问题时，优先用功能层工具直接代做；无法代做的给出简明步骤）\n'+
       'A. 关联单位：侧栏「关联单位」→ 搜索/筛选/新建（右上角按钮）→ 表单填名称/角色/账期/联系人/开票信息 → 保存。可用 open_unit_form 代开新建表单。\n'+
@@ -171,13 +173,15 @@ const AI=(function(){
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
       '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n'+
       '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n\n'+
+      (kbReady?
       '【知识库主动检索工具】（用户已绑定本地知识库目录时可用的工具，未绑定时工具返回 ok:false）\n'+
       '- query_knowledge(query, topN?, fileFilter?)：检索本地知识库（md/txt/pdf/docx），返回命中片段（含文件名/章节/页码/片段/得分）。\n'+
       '- list_kb_files(keyword?)：列出知识库内全部/筛选文件元数据，先了解资料范围再检索。\n'+
       '- get_kb_file(nameOrRel, range?)：取某文件分块全文（单次约 4000 字符上限，超限标 truncated，用 range 翻页）。\n'+
       '- search_kb_detail(query, topN?, fileFilter?)：与 query_knowledge 类似但返回更长片段+相邻上下文，仅在需要完整依据时使用。\n'+
       '使用时机：用户问及「资料/文档/合同/规格书/历史记录/供应商文件/有没有说过…」等需要查阅本地资料的问题时，先调用 query_knowledge；若不确定 KB 有什么资料先 list_kb_files；需要核对命中片段的完整上下文用 get_kb_file；常规检索不要用 search_kb_detail（省 token）。\n'+
-      '硬约束：当 KB 命中且用于回答时，句末必须标注【依据：文件名】（文件名取自命中结果的 file 字段）；可在同一对话中多次调用 query_knowledge 精炼关键词；未命中（count:0）时明确说「未在知识库中找到」，禁止编造文件名或内容；KB 命中与业务数据快照冲突时，以业务快照为准并说明。\n\n'+
+      '硬约束：当 KB 命中且用于回答时，句末必须标注【依据：文件名】（文件名取自命中结果的 file 字段）；可在同一对话中多次调用 query_knowledge 精炼关键词；未命中（count:0）时明确说「未在知识库中找到」，禁止编造文件名或内容；KB 命中与业务数据快照冲突时，以业务快照为准并说明。\n\n'
+:'')+
       snapshot;
   }
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
@@ -513,7 +517,14 @@ const AI=(function(){
           }
         }
       }
-      const res=await chat(messages,onChunk,{tools:typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]});
+      // 工具可用性动态过滤：知识库未绑定/未启用时，不把 KB 工具带给模型（模型无从发起 → 无提案弹窗）
+      const kbSet=(typeof AIT!=='undefined'&&AIT.KB_TOOL_NAMES)?AIT.KB_TOOL_NAMES:null;
+      const kbAvailable=(typeof KB!=='undefined'&&KB.state.bound&&KB.state.enabled);
+      const toolsDef=(typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]).filter(function(t){
+        if(!(kbSet&&kbSet.has(t.function&&t.function.name)))return true;
+        return kbAvailable;
+      });
+      const res=await chat(messages,onChunk,{tools:toolsDef});
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
         return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};
@@ -529,8 +540,9 @@ const AI=(function(){
       // P0 修复：flowSet 防护 AIT 未加载或 FLOW_TOOL_NAMES 为 undefined 的场景
       const flowSet=(typeof AIT!=='undefined'&&AIT.FLOW_TOOL_NAMES)?AIT.FLOW_TOOL_NAMES:null;
       const flowOps=calls.filter(tc=>flowSet&&flowSet.has(tc.name));
-      const queryOps=calls.filter(tc=>tc.name.indexOf('query_')===0);
-      const writeOps=calls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name)));
+      // 知识库只读工具（query_knowledge/list_kb_files/get_kb_file/search_kb_detail）与 query_ 前缀同路：立即执行不经弹窗
+      const queryOps=calls.filter(tc=>tc.name.indexOf('query_')===0||(kbSet&&kbSet.has(tc.name)));
+      const writeOps=calls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name))&&!(kbSet&&kbSet.has(tc.name)));
 
       // 1) 查询类立即执行（无副作用，结果直接回填给模型）
       const queryResults=queryOps.map(tc=>{
@@ -552,13 +564,20 @@ const AI=(function(){
         return {toolCallId:tc.id,content:content};
       });
 
+      // 未知工具兑底：校验器不认识的调用（模型幻觉/定义不同步）不进确认弹窗打扰用户，直接回填错误让模型自纠
+      const unknownResults=[];const knownWriteOps=[];
+      writeOps.forEach(tc=>{
+        const v=(typeof AIT!=='undefined')?AIT.validateOp({name:tc.name,args:tc.args||{}}):{ok:false,error:'AIT 未加载'};
+        if(!v.ok&&/未知工具/.test(v.error||''))unknownResults.push({toolCallId:tc.id,content:JSON.stringify({ok:false,error:v.error+'，请改用系统提供的工具'})});
+        else knownWriteOps.push(tc);
+      });
       // 2) 写入类走确认弹窗（仅当有 writeOps 时才弹窗）
       let writeResults=[];
-      if(writeOps.length){
-        const confirmed=await onConfirm(writeOps);
+      if(knownWriteOps.length){
+        const confirmed=await onConfirm(knownWriteOps);
         if(confirmed.cancelled){
           // 用户取消：所有 writeOps 回填「用户取消」
-          writeResults=writeOps.map(tc=>({toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户取消了本次操作'})}));
+          writeResults=knownWriteOps.map(tc=>({toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户取消了本次操作'})}));
           messages.push({role:'user',content:'用户取消了操作提案，请不要再次起草相同操作。'});
         }else{
           // 批量执行（写入 DB + aiOps）；记 batchId 供对话内一键撤销（复用持久化 undoBatch）
@@ -568,7 +587,7 @@ const AI=(function(){
           lastBatchIds.push(batchId);
           lastBatchId=batchId;
           // 回填：approvedOps 的执行结果 + 未勾选的「用户未选」
-          writeResults=writeOps.map(tc=>{
+          writeResults=knownWriteOps.map(tc=>{
             const approvedIdx=confirmed.approvedOps.findIndex(o=>o.__toolCallId===tc.id);
             if(approvedIdx<0)return {toolCallId:tc.id,content:JSON.stringify({ok:false,error:'用户未勾选该操作'})};
             const r=execRes.results[approvedIdx]||{ok:false,error:'未执行'};
@@ -577,10 +596,11 @@ const AI=(function(){
         }
       }
 
-      // 3) 回填 assistant + tool 响应（OpenAI 协议要求所有 tool_calls 都有响应）
+      // 3) 回填 assistant + tool 响应（OpenAI 协议要求所有 tool_calls 都有响应，含未知工具的错误回填）
       messages.push({role:'assistant',content:res.content||'',tool_calls:calls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args)}}))});
       queryResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       flowResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
+      unknownResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }

@@ -842,6 +842,9 @@ const AIT=(function(){
   /** 阶段4：功能层工具名集合（用于 aiWriteLoop 分流，自动执行不经弹窗） */
   const FLOW_TOOL_NAMES=new Set(['navigate_view','export_order_excel','open_settlement_drawer','open_invoice_drawer','open_unit_form','open_order_form','open_price_form','open_bom_form']);
 
+  /** 知识库只读工具名集合（v1.0.15 新增）：自动执行不经弹窗；校验器对它们免未知报错 */
+  const KB_TOOL_NAMES=new Set(['query_knowledge','list_kb_files','get_kb_file','search_kb_detail']);
+
   /** 工具校验：name → (args) → {ok:boolean,error:string,preview:object} */
   const validators={
     create_unit(args){
@@ -1446,6 +1449,8 @@ const AIT=(function(){
 
   /** 单条校验入口（执行前脏读检查可选，本轮暂略） */
   function validateOp(op){
+    // 知识库只读工具无副作用：不进写入校验表，直接放行（避免弹窗场景误报「未知工具」）
+    if(KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     const v=validators[op.name];
     if(!v)return {ok:false,error:'未知工具：'+op.name};
     try{return v(op.args||{});}
@@ -1756,7 +1761,7 @@ const AIT=(function(){
   }
 
   return {
-    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,
+    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,
     validateOp,executeOp,executeOps,buildToolResponse,unitNameSafe,runQuery,runFlow
   };
 })();
