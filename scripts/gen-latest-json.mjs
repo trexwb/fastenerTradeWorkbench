@@ -26,24 +26,35 @@ const tag = arg('tag') || ('v' + version)
 const base = `https://github.com/${repo}/releases/download/${tag}`
 
 function findUpdaterArtifact(dir, suffix) {
-  if (!dir || !existsSync(dir)) return null
+  if (!dir || !existsSync(dir)) return { found: false, reason: '目录不存在', files: [] }
   const files = readdirSync(dir)
-  const artifact = files.find((f) => f.endsWith(suffix) && existsSync(path.join(dir, f + '.sig')))
-  if (!artifact) return null
+  const match = files.find((f) => f.endsWith(suffix) && existsSync(path.join(dir, f + '.sig')))
+  if (!match) {
+    const installers = files.filter((f) => f.endsWith(suffix))
+    const sigs = files.filter((f) => f.endsWith('.sig'))
+    return { found: false, reason: installers.length ? `找到 ${installers.length} 个安装包但无对应 .sig（签名未生成？）` : '未找到匹配的安装包', files }
+  }
   return {
-    name: artifact,
-    signature: readFileSync(path.join(dir, artifact + '.sig'), 'utf8').trim(),
+    found: true,
+    name: match,
+    signature: readFileSync(path.join(dir, match + '.sig'), 'utf8').trim(),
   }
 }
 
 const platforms = {}
 const win = findUpdaterArtifact(arg('win'), '-setup.exe')
-if (win) {
+if (win.found) {
   platforms['windows-x86_64'] = { signature: win.signature, url: `${base}/${encodeURIComponent(win.name)}` }
+} else {
+  console.error(`[gen-latest-json] Windows: ${win.reason}`)
+  if (win.files.length) console.error('  文件列表:', win.files.join(', '))
 }
 const mac = findUpdaterArtifact(arg('mac'), '.app.tar.gz')
-if (mac) {
+if (mac.found) {
   platforms['darwin-aarch64'] = { signature: mac.signature, url: `${base}/${encodeURIComponent(mac.name)}` }
+} else {
+  console.error(`[gen-latest-json] macOS: ${mac.reason}`)
+  if (mac.files.length) console.error('  文件列表:', mac.files.join(', '))
 }
 
 if (!Object.keys(platforms).length) {

@@ -204,6 +204,13 @@ jobs:
           name: macos-bundles
           path: artifacts/macos
 
+      - name: 诊断产物文件列表
+        run: |
+          echo "=== Windows 产物 ==="
+          ls -la artifacts/windows/ 2>/dev/null || echo "(目录不存在)"
+          echo "=== macOS 产物 ==="
+          ls -la artifacts/macos/ 2>/dev/null || echo "(目录不存在)"
+
       - name: 生成 latest.json
         run: node scripts/gen-latest-json.mjs --win artifacts/windows --mac artifacts/macos --out latest.json
 
