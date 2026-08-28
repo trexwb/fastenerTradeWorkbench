@@ -120,7 +120,7 @@ Unsafe attempt to load URL file:///…/dist/index.html#/units from frame with UR
 
 **额外配置对齐（src/styles/components.css）**：11 功能模块新增 `.coach-overlay` / `.coach-hole` / `.coach-card` 样式，含手机小屏断点（≤640px / ≤420px）自适应；Coach 引擎以 `CFG` 对象维护每个模块的 2–3 条引导步骤，与目标 `data-coach` 锚点一一匹配。`Coach.reset(view?)` / `Coach.resetAll()` 暴露到 window，供测试时按需重新看引导。
 
-#### 10.5 致命根因闭环：两套独立引导系统并存（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+#### 10.5 致命根因闭环：两套独立引导系统并存（2026-08-29，**不推进版本号**；基准版本保持 v1.0.28）
 
 **用户现象**：首次进入任一模块 → **先跳过 Coach 全屏蒙层 → 内容区顶部又还有一条横幅型引导要「知道了」** → 共需关闭两次；刷新后若两套 localStorage 不同步，还可能出现"以为关了横幅却又弹出来"的错觉。
 
