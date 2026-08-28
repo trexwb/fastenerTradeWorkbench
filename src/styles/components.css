@@ -386,7 +386,7 @@ input.alloc-input{width:90px;}
 .ai-set-hero-host{font-size:12px;color:var(--gray);word-break:break-all;margin-top:2px}
 .ai-set-hero-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ai-set-hero-note{font-size:11px;color:var(--gray);max-width:180px;text-align:right;line-height:1.5}
-.ai-set-hd{display:flex;align-items:baseline;gap:8px;margin:18px 0 8px;font-size:14px;padding-top:12px;border-top:1px solid var(--line);font-weight:600;color:var(--ink)}
+.ai-set-hd{display:flex;align-items:baseline;gap:8px;margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink)}
 .ai-set-hd:first-of-type{margin-top:14px}
 .ai-set-hd .note{font-weight:400}
 .ai-set-card{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--card);padding:14px 14px 2px}
@@ -396,6 +396,19 @@ input.alloc-input{width:90px;}
 .ai-preset-chip:hover{border-color:var(--pri);color:var(--pri)}
 .ai-preset-chip.active{border-color:var(--pri);background:var(--pri-l);color:var(--pri);font-weight:500}
 .ai-set-danger{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--red-line,rgba(220,38,38,.35));border-radius:var(--radius)}
+/* 知识库区块内排版：状态行 / 操作行 / 开关栅格（标签永不逐字碎行） */
+.ai-kb-head{margin:4px 0 2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ai-kb-actions{margin:8px 0 2px;display:flex;gap:8px;flex-wrap:wrap}
+.ai-kb-opts{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;margin-top:10px}
+.ai-opt{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);white-space:nowrap;cursor:pointer}
+.ai-opt input[type="checkbox"]{margin:0;accent-color:var(--pri)}
+.ai-opt input[type="number"],.ai-opt select{padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:13px}
+.ai-opt select{padding:3px 8px;cursor:pointer}
+.ai-opt select:focus,.ai-opt input[type="number"]:focus{outline:none;border-color:var(--pri)}
+.ai-opt-inline{font-size:13px;color:var(--gray)}
+.ai-opt-inline input[type="number"]:focus{outline:none;border-color:var(--pri)}
+.ai-kb-ai{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.ai-kb-ai-note{margin-bottom:2px;color:var(--gray)}
 @media (max-width:640px){
   .ai-set-hero{flex-direction:column;align-items:stretch}
   .ai-set-hero-side{flex-direction:row;align-items:center}
