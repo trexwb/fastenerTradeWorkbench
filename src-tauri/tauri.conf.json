@@ -66,6 +66,15 @@
       "deb": {
         "depends": []
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENBRDcyMzZDRUJFNTdDMkQKUldRdGZPWHJiQ1BYeXYyQmxIT3N0ZWJZZ1A5V0Y5bE0vemxpd3ZNcmg0NC91L1pyQno1RE5PRzUK",
+      "endpoints": [
+        "https://github.com/trexwb/fastenerTradeWorkbench/releases/latest/download/latest.json"
+      ]
     }
   }
 }
