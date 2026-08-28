@@ -21,6 +21,14 @@
 #     将 productName 覆盖为 ASCII 的 FastenerTradeWorkbench，产物文件名
 #     全 ASCII；窗口标题（windows[0].title）不受影响，仍为中文。
 #     本地构建（npm run build）不受影响，仍使用中文 productName。
+# 自动更新：
+#   • bundle.createUpdaterArtifacts 生成更新产物与 .sig 签名
+#     （Windows: NSIS setup.exe；macOS: FastenerTradeWorkbench.app.tar.gz）
+#   • 签名私钥存 GitHub Secrets：TAURI_SIGNING_PRIVATE_KEY
+#     （私钥密码为空，无需 PASSWORD 变量；本地私钥 ~/.tauri/fastener-updater.key）
+#   • update-manifest job 汇总产物生成 latest.json 随 Release 发布，
+#     客户端经 plugins.updater.endpoints 指向 releases/latest/download/latest.json
+#   • 注意：Draft Release 未 Publish 前 latest.json 下载 404，属预期
 # ═══════════════════════════════════════════════════════════════════
 
 name: Release Build (Tauri)
@@ -68,6 +76,9 @@ jobs:
         # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
         # 避免中文产物名导致 NSIS/MSI 编码错误
         run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 自检产物文件名（必须全 ASCII，否则覆盖未生效）
         shell: pwsh
@@ -83,6 +94,7 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/bundle/msi/*.msi
 
       - name: 上传到 GitHub Release（草稿，仅推 tag 或勾选 create_release 时）
@@ -93,6 +105,7 @@ jobs:
           generate_release_notes: true
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/bundle/msi/*.msi
 
   # ── macOS：.app + .dmg（ad-hoc 签名，仅构建机可用）───────────────
@@ -126,6 +139,9 @@ jobs:
         # --config 覆盖 productName（TAURI_CONFIG 环境变量实测不生效），
         # 产物文件名全 ASCII，避免上传阶段处理中文文件名出错
         run: npm run tauri:build -- --config '{"productName":"FastenerTradeWorkbench"}'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make:dmg
@@ -149,6 +165,8 @@ jobs:
           if-no-files-found: error
           path: |
             ${{ runner.temp }}/FastenerTradeWorkbench-macos-aarch64.zip
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
             src-tauri/target/release/bundle/dmg/*.dmg
 
       - name: 上传到 GitHub Release（草稿，仅推 tag 或勾选 create_release 时）
@@ -159,4 +177,42 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ runner.temp }}/FastenerTradeWorkbench-macos-aarch64.zip
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
             src-tauri/target/release/bundle/dmg/*.dmg
+
+  # ── 更新清单：汇总双平台产物生成 latest.json ──────────────────────
+  # 客户端 updater 读取 releases/latest/download/latest.json 判断新版本。
+  update-manifest:
+    name: 生成更新清单 (latest.json)
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: 下载 Windows 产物
+        uses: actions/download-artifact@v7
+        with:
+          name: windows-bundles
+          path: artifacts/windows
+
+      - name: 下载 macOS 产物
+        uses: actions/download-artifact@v7
+        with:
+          name: macos-bundles
+          path: artifacts/macos
+
+      - name: 生成 latest.json
+        run: node scripts/gen-latest-json.mjs --win artifacts/windows --mac artifacts/macos --out latest.json
+
+      - name: 上传到 GitHub Release（草稿，仅推 tag 或勾选 create_release 时）
+        if: github.event_name == 'push' || inputs.create_release == true
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          files: latest.json

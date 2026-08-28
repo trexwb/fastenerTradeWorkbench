@@ -5,6 +5,119 @@
 
 ---
 
+## v1.0.19 · 📝 待发布
+
+> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-28
+> **上一版本**: v1.0.18
+> **版本范围**: AI 助手交互体验优化 — 响应中禁止提交（视觉+行为闭环）、发送防抖与输入校验、失败/超时一键重新提交、请求超时保护
+
+---
+
+## 问题背景
+
+AI 助手交互存在三个体验缺口：生成中虽已拦截发送但视觉无忙碌态（弹窗重开时按钮仍显示「发送」有误导）；Enter 连击/快速双击存在重复触发窗口；请求失败/超时后只能手动重新打字，无法一键重发。
+
+## 变更
+
+### 1. 响应中禁止提交（src/views/ai-chat.js）
+
+- 新增 `setAISendingUI(on)`：生成中发送按钮切「停止」语义 + composer 加 `ai-busy` 忙碌标记（输入区降噪、提示条追加「AI 回复中，发送已暂停」）；结束/错误后自动恢复「发送」
+- `openAIAssistant` 打开时若后台仍在生成（弹窗中途关过再重开），立即恢复忙碌态：按钮为「停止」（可中断后台流），Enter/点击发送均被拦截并 toast 提示
+- `requestAISend` 的 chatting 拦截保持（含 Enter、快捷提问、openAIWithMessage 等所有入口）
+
+### 2. 发送防抖 + 输入校验（src/views/ai-chat.js）
+
+- 发送入口 300ms 防抖门槛：窗口内重复触发直接忽略（Enter 连击/快速双击不再产生重复请求）
+- 提问长度校验：超过 8000 字给出明确 toast 提示并阻止发送
+- 通用 `debounce(fn,delay)` 工具（core/utils.js）已存在，项目其他表单可复用同一工具逐步接入
+
+### 3. 失败/超时一键重新提交（src/views/ai-chat.js + core/ai.js）
+
+- 请求失败/超时/手动停止时，消息持久化 `retry` 字段（原始问题 + 原始快照 + 原因），气泡下渲染「⟳ 重新提交此问题」按钮
+- `retryAIMessage(id)` 点击后用原始问题与快照重新走完整发送流程（含知识库检索、确认弹窗、防抖门）；弹窗未开时自动先打开
+- web 直连分支新增 120 秒请求总超时（`REQUEST_TIMEOUT_MS`）：超时自动 abort 并区分文案「请求超时（120 秒未完成）」；`state.abortReason` 区分 manual/timeout；tauri 桌面版无原生中止能力，超时保护仅浏览器直连生效
+
+## 版本号
+
+- 工作区并行迭代（自动更新/知识库检索等）已将版本推进至 v1.0.18；本迭代在其基础上 +1 → **v1.0.19**（五处同步：package.json / package-lock.json / tauri.conf.json / Cargo.toml / AGENTS.md 基准版本 + store.js 兜底值）
+- 构建验证：`npm run vite:build` 通过
+
+---
+
+## v1.0.15 · 📝 待发布
+
+> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-28
+> **上一版本**: v1.0.14
+> **版本范围**: AI 主动检索知识库 —— 把 KB 从「发请求前一次性注入」升级为「模型可按需调用的检索后端」
+
+---
+
+## 问题背景
+
+v1.0.14 的知识库（`core/kb.js`）与 AI（`core/ai.js`）是「单向一次性」耦合：发送请求前由 `buildPromptBlock` 取 Top-N 片段拼入 system prompt，**模型本身感知不到 KB 的存在**。这导致四个短板：
+
+1. 模型不能主动检索 —— 命中不准时无法换关键词再查一次；
+2. 模型不能按文件定位原文 —— 无法核对上下文；
+3. 无命中时模型不知道「没找到」，易凭空编造文件名；
+4. 注入片段占用固定 token，与问题无关时浪费上下文。
+
+## 变更
+
+### 1. KB 侧新增主动检索接口（core/kb.js）
+
+- 新增 `search(query, opts)`：复用现有 `tokenize`+`bmQuery`，返回结构化命中 `{ok,count,hits:[{file,rel,chapter,page,score,snippet}]}`，片段截断到 300 字符（`MAX_SNIPPET_CHARS`）省 token；支持 `topN` 覆盖与 `fileFilter` 限定文件内检索。`bmQuery` 加可选 `limit` 参数，`buildPromptBlock` 保持原行为不变。
+- 新增 `listFiles(keyword)`：列出知识库全部/筛选文件元数据（名/rel/字符数/分块数/索引时间）。
+- 新增 `getFileBlocks(nameOrRel, range)`：取某文件分块全文，累计超 `MAX_GETFILE_CHARS`(4000) 截断并标 `truncated`，`range=[start,end]` 支持翻页。**同步接口**（bootApp 已 init），供 runQuery 直接调用。
+- state 新增 `activeRetrieval`(默认 true)/`autoInjectFallback`(默认 false) 两字段；init 恢复、persistMeta + indexDir 内联 kbPut(K_META) 同步持久化；新增 `setActiveRetrieval`/`setAutoInjectFallback` setter；summarize 输出两字段。
+
+### 2. AI 工具协议新增 4 个检索工具（core/ai-tools.js）
+
+- `query_knowledge(query, topN?, fileFilter?)`：常规检索，返回命中片段。
+- `search_kb_detail(query, topN?, fileFilter?)`：深检版，在常规命中基础上为每条拼接相邻上下文块。
+- `list_kb_files(keyword?)`：列出文件元数据。
+- `get_kb_file(nameOrRel, range?)`：取某文件分块全文。
+- 全部归入 `TOOL_META` 的 `kind:'query'`，自动执行不经弹窗；runQuery 在 `query_help` 后加 4 分支，统一优雅降级（KB 未加载/未绑定/未启用 → `ok:false` 让模型说明）。`get_kb_file` 复用 `KB.getFileBlocks` 同步接口，避免重复逻辑。
+
+### 3. System prompt 注入知识库工具指引（core/ai.js buildSystemPrompt）
+
+- 在硬性规则 9 后新增「知识库主动检索工具」段：说明 4 个工具的能力与参数、使用时机（用户问及「资料/文档/合同/规格书/历史记录」等先调 query_knowledge，不确定 KB 有什么先 list_kb_files，核对上下文用 get_kb_file，常规检索不用 search_kb_detail 省 token）。
+- 硬约束：KB 命中且用于回答时句末必须标注 `【依据：文件名】`；可在同一对话多次调 query_knowledge 精炼关键词；未命中（count:0）明确说「未在知识库中找到」，禁止编造；KB 命中与业务快照冲突时以业务快照为准并说明。
+
+### 4. AI 设置弹窗新增两个开关（views/ai-chat.js）
+
+- `sendAIMessage` 的 KB 注入逻辑改为：仅当 `!activeRetrieval || autoInjectFallback` 时才发请求前注入 Top-N。主动检索开（默认）→ 由模型按需调工具，不再固定注入；关 → 回退旧自动注入模式；自动注入兜底开 → 双保险。
+- `kbrenderZone` 新增 `aiRow`（虚线分隔）：「AI 主动检索」「自动注入兜底」两个 checkbox，未绑定时 disabled。
+- 新增 `kbSetActiveRetrieval`/`kbSetAutoInjectFallback` setter。
+- 引用渲染复用既有 `aiRenderCite`（已把 `【依据：xxx】` 渲染为可点击 chip 调 `kbShowFile` 显示原文），零新增 UI。
+
+## 数据流
+
+```
+用户提问 → aiWriteLoop → chat(tools=[…, query_knowledge, list_kb_files, get_kb_file, search_kb_detail])
+  → 模型调 query_knowledge(query) → AIT.runQuery → KB.search → hits
+  → 模型基于 hits 回答(标【依据：文件名】) 或再精炼 / 调 get_kb_file 深查
+  → ai-chat 渲染：【依据：file】 可点击 → kbShowFile 弹窗显示原文分块
+```
+
+## 验证
+
+- `npm run vite:build` 通过（322 模块，dist/index.html + assets + vendor + images，file:// 可运行）
+- grep 校验：kb.js（search/listFiles/getFileBlocks/setActiveRetrieval/setAutoInjectFallback/MAX_SNIPPET_CHARS/MAX_GETFILE_CHARS/activeRetrieval/autoInjectFallback 全部落盘）、ai-tools.js（4 工具名 + KB.search/listFiles/getFileBlocks 调用点）、ai.js（KB 工具指引段）、ai-chat.js（sendAIMessage 注入逻辑 + aiRow + 2 setter）
+
+## 不在本版本范围（YAGNI，留作后续独立 spec）
+
+- 向量/语义检索 + 混合排序 + OCR（路径 B）
+- 业务数据联动（文档↔供应商/订单关联、合同结构化抽取、AI 结论回写）（路径 C）
+- 预置行业知识库（GB/DIN/ISO 标准、强度等级、表面处理代号）（路径 D）
+
+## 版本号
+
+- `package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` / `AGENTS.md` 基准版本同步递增至 **v1.0.15**
+
+---
+
 ## v1.0.14 · 📝 待发布
 
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）

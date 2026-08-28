@@ -378,6 +378,10 @@ input.alloc-input{width:90px;}
 .ai-input-row textarea::placeholder{color:var(--gray);}
 .ai-input-row .btn{margin-bottom:1px;padding:9px 16px;border-radius:var(--radius);font-size:13px;box-shadow:none;}
 .ai-input-hint{font-size:11px;color:var(--gray);text-align:center;letter-spacing:.01em;}
+/* AI 生成中忙碌态：输入区降噪、提示发送已暂停；发送按钮此时为「停止」语义 */
+.ai-composer.ai-busy .ai-input-row textarea{opacity:.72}
+.ai-composer.ai-busy .ai-input-hint{color:var(--amber,#b8860b)}
+.ai-composer.ai-busy .ai-input-hint::after{content:'（AI 回复中，发送已暂停）';margin-left:6px}
 @keyframes aiBlink{50%{opacity:0;}}
 @media (max-width:560px){.ai-actions{grid-template-columns:repeat(3,1fr);}.ai-message{max-width:96%;}}
 

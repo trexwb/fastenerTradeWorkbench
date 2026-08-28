@@ -190,18 +190,24 @@ async function refreshBackupList(){
       return;
     }
     box.innerHTML=list.map(function(b){
-      const name=String(b.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const fname=escAttr(b.name||'');
       return '<div style="display:flex;align-items:center;gap:10px;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;flex-wrap:wrap;background:var(--bg-tint)">'+
         '<div style="min-width:0">'+
           '<div style="font-size:13px;word-break:break-all">'+escHtml(b.name||'')+'</div>'+
           '<div style="font-size:11px;color:var(--gray)">'+fmtBytes(b.size||0)+' · '+escHtml(_backupTimeLabel(b.modified||0))+'</div>'+
         '</div>'+
         '<div style="display:flex;gap:6px;flex-shrink:0">'+
-          '<button class="btn" style="padding:3px 10px" onclick="restoreBackup(\''+name+'\')">'+icon('rotateCcw','14')+'恢复</button>'+
-          '<button class="btn danger" style="padding:3px 10px" onclick="deleteBackup(\''+name+'\')">'+icon('trash','14')+'删除</button>'+
+          '<button class="btn" style="padding:3px 10px" data-restore="'+fname+'">'+icon('rotateCcw','14')+'恢复</button>'+
+          '<button class="btn danger" style="padding:3px 10px" data-delete="'+fname+'">'+icon('trash','14')+'删除</button>'+
         '</div>'+
       '</div>';
     }).join('');
+    box.querySelectorAll('[data-restore]').forEach(function(btn){
+      btn.addEventListener('click',function(){restoreBackup(btn.getAttribute('data-restore'));});
+    });
+    box.querySelectorAll('[data-delete]').forEach(function(btn){
+      btn.addEventListener('click',function(){deleteBackup(btn.getAttribute('data-delete'));});
+    });
   }catch(e){box.innerHTML='<div style="font-size:13px;color:var(--err)">备份列表加载失败：'+escHtml(e.message||e)+'</div>';}
 }
 /** 字节数格式化 */

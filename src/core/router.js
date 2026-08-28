@@ -224,6 +224,7 @@ function render(){
           '<button class="shortcut-btn" onclick="openSearchPanel()" title="全局搜索 (⌘K)">'+icon('search','16')+'</button>'+
           '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接">'+icon('zap','16')+'</button>'+
           '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)">'+icon('keyboard','14')+'</button>'+
+          '<button class="shortcut-btn" onclick="openSettingsModal()" title="设置">'+icon('gear','16')+'</button>'+
           '<button class="theme-tgl" onclick="switchTheme()" id="themeBtn" title="切换主题">'+icon('palette','16')+'</button>'+
         '</div>'+
       '</div>'+
@@ -299,6 +300,89 @@ function switchTheme(){
   if(btn)btn.title=next==='cream'?'切换精密工坊':'切换奶油白';
 }
 
+
+/* =========================================================
+   设置弹窗（关于 + 版本更新）
+   ========================================================= */
+/** 设置弹窗更新状态轮询定时器 id */
+let _setTimer=null;
+
+/**
+ * 打开设置弹窗：展示应用信息与桌面版自动更新入口。
+ * @returns {void} 无返回值
+ */
+function openSettingsModal(){
+  const upd=window.Updater;
+  const isDesktop=!!upd;
+  const envText=IS_TAURI_RUNTIME?'桌面版（Tauri）':'网页版';
+  let html='';
+  html+='<div style="margin-bottom:18px"><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">关于</div>'+
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">应用</span><b>紧固件贸易工作台</b></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">版本</span><b>'+APP_VERSION+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)"><span style="color:var(--gray)">运行环境</span><b>'+envText+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:var(--gray)">下载中心</span><a href="https://wiki.edtib.com/%E4%B8%8B%E8%BD%BD%E4%B8%AD%E5%BF%83/%E7%B4%A7%E5%9B%BA%E4%BB%B6%E8%B4%B8%E6%98%93%E4%B8%AA%E4%BA%BA%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80.html" target="_blank" style="color:var(--pri)">前往下载地址</a></div>'+
+    '</div>';
+  if(!isDesktop){
+    html+='<div><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">版本更新</div>'+
+      '<div style="color:var(--gray);font-size:13px;line-height:1.7">网页版不支持自动更新，请使用桌面版（Tauri）以获取在线升级能力。</div></div>';
+  }else{
+    html+='<div><div style="font-weight:600;font-size:13px;color:var(--gray);margin-bottom:10px">版本更新</div>'+
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px">'+
+        '<input type="checkbox" id="setAutoUpdate"'+(upd.autoEnabled()?' checked':'')+' style="accent-color:var(--pri)"/>'+
+        '<span>自动检查并后台下载新版本（更新完成后重启应用生效）</span>'+
+      '</label>'+
+      '<div id="setStatusBox"></div>'+
+      '</div>';
+  }
+  modal('设置',html,'关闭',function(){closeModal();},true);
+  if(isDesktop){
+    const au=document.getElementById('setAutoUpdate');
+    if(au)au.onchange=function(){window.Updater.setAutoEnabled(au.checked);};
+    renderSetStatus();
+    if(_setTimer)clearInterval(_setTimer);
+    _setTimer=setInterval(renderSetStatus,600);
+  }
+}
+
+/**
+ * 刷新设置弹窗内的更新状态区（含动作按钮绑定），轮询调用。
+ * @returns {void} 无返回值
+ */
+function renderSetStatus(){
+  const upd=window.Updater;
+  const box=document.getElementById('setStatusBox');
+  if(!upd){if(_setTimer){clearInterval(_setTimer);_setTimer=null;}return;}
+  if(!box){if(_setTimer){clearInterval(_setTimer);_setTimer=null;}return;}
+  const st=upd.state;
+  const cur=APP_VERSION;
+  let h='';
+  if(st.status==='downloading'){
+    h+='<div style="font-size:13px;margin-bottom:8px">正在下载 v'+(st.version||'')+'… '+st.progress+'%</div>'+
+      '<div style="height:8px;background:var(--bg-soft);border-radius:5px;overflow:hidden;margin-bottom:12px"><i style="display:block;height:100%;width:'+st.progress+'%;background:var(--pri);transition:width .3s"></i></div>';
+  }else if(st.status==='ready'){
+    h+='<div style="font-size:13px;color:var(--green);margin-bottom:10px">更新已就绪（v'+st.version+'），重启应用完成更新</div>'+
+      '<button type="button" class="btn primary" id="setRelaunchBtn" style="margin-right:8px">立即重启</button>';
+  }else if(st.status==='available'){
+    h+='<div style="font-size:13px;color:var(--amber);margin-bottom:10px">发现新版本 v'+st.version+'（当前 '+cur+'）'+(st.notes?'<br><span style="color:var(--gray)">'+escHtml(st.notes).slice(0,120)+'</span>':'')+'</div>'+
+      '<button type="button" class="btn primary" id="setDownloadBtn" style="margin-right:8px">下载并安装</button>';
+  }else if(st.status==='checking'){
+    h+='<div style="font-size:13px;color:var(--gray);margin-bottom:10px">正在检查更新…</div>';
+  }else if(st.status==='uptodate'){
+    h+='<div style="font-size:13px;color:var(--green);margin-bottom:10px">已是最新版本（'+cur+'）</div>';
+  }else if(st.status==='error'){
+    h+='<div style="font-size:13px;color:var(--red);margin-bottom:10px">检查更新失败：'+escHtml(st.error)+'</div>';
+  }else{
+    h+='<div style="font-size:13px;color:var(--gray);margin-bottom:10px">当前版本 '+cur+'</div>';
+  }
+  h+='<button type="button" class="btn ghost" id="setCheckBtn">检查更新</button>';
+  box.innerHTML=h;
+  const cb=document.getElementById('setCheckBtn');
+  if(cb)cb.onclick=function(){window.Updater.check(false);renderSetStatus();};
+  const db=document.getElementById('setDownloadBtn');
+  if(db)db.onclick=function(){window.Updater.download();renderSetStatus();};
+  const rb=document.getElementById('setRelaunchBtn');
+  if(rb)rb.onclick=function(){window.Updater.relaunch();};
+}
 
 /**
  * 设置关联单位分页页码并刷新列表
@@ -399,7 +483,11 @@ function filterOrdersData(){
       if(o.id&&o.id.toLowerCase().includes(q))return true;
       if(o.project&&o.project.toLowerCase().includes(q))return true;
       if(o.buyerContact&&o.buyerContact.toLowerCase().includes(q))return true;
-      if(o.delivery&&o.delivery.toLowerCase().includes(q))return true;
+      if(o.delivery){
+        if(typeof o.delivery==='object'){
+          if([o.delivery.time,o.delivery.address,o.delivery.tracking].some(v=>v&&String(v).toLowerCase().includes(q)))return true;
+        }else if(o.delivery.toLowerCase().includes(q))return true;
+      }
       if(o.status&&o.status.toLowerCase().includes(q))return true;
       const buyer=pName(o.buyerId);
       if(buyer&&buyer.toLowerCase().includes(q))return true;

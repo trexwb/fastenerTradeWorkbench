@@ -43,35 +43,45 @@ function loadXLSX() {
     /**
      * 尝试从指定 URL 加载单个脚本标签
      * @param {string} src - 脚本 URL
+     * @param {string} [integrity] - SRI 完整性校验哈希（仅 CDN 使用）
      * @returns {Promise<void>} 加载成功 resolve，失败 reject
      */
-    function loadScript(src) {
+    function loadScript(src, integrity) {
       return new Promise(function (res, rej) {
         let s = document.createElement('script');
         s.src = src;
+        if (integrity) {
+          s.integrity = integrity;
+          s.crossOrigin = 'anonymous';
+        }
         s.onload = function () { res(); };
         s.onerror = function () { rej(new Error('加载失败: ' + src)); };
         document.head.appendChild(s);
       });
     }
 
+    // CDN 脚本的 SRI 完整性校验哈希（sha384，防止 CDN 被劫持后注入恶意脚本）
+    const _CPEXCEL_SRI = 'sha384-L5dK9AXFqWjBnAvvNbSPL1qhvfi2DwHH64Wcd7a8rwFPwUQfOd4GnTgIEcNIrhYm';
+    const _XLSX_SRI = 'sha384-TKzdYxq/t9UpLrJcIQu2hpfQg+oSoJVDkhWcS4zuzQmzQTBx5gSMhINXD2uGv0jw';
+
     /**
-     * 加载单个文件：本地优先 → CDN 兜底
+     * 加载单个文件：本地优先 → CDN 兜底（CDN 带 SRI 校验）
      * @param {string} localSrc - 本地路径
      * @param {string} cdnSrc   - CDN 路径
+     * @param {string} sri      - CDN SRI 哈希
      * @returns {Promise<void>}
      */
-    function loadFileWithFallback(localSrc, cdnSrc) {
+    function loadFileWithFallback(localSrc, cdnSrc, sri) {
       return loadScript(localSrc).catch(function () {
-        return loadScript(cdnSrc);
+        return loadScript(cdnSrc, sri);
       });
     }
 
     // 1) 先加载 cpexcel.js（设置全局 cptable）
-    loadFileWithFallback(_CPEXCEL_LOCAL, _CPEXCEL_CDN)
+    loadFileWithFallback(_CPEXCEL_LOCAL, _CPEXCEL_CDN, _CPEXCEL_SRI)
       .then(function () {
         // 2) 再加载 xlsx.min.js（检测到 cptable 后启用完整编码支持）
-        return loadFileWithFallback(_XLSX_LOCAL, _XLSX_CDN);
+        return loadFileWithFallback(_XLSX_LOCAL, _XLSX_CDN, _XLSX_SRI);
       })
       .then(function () {
         if (window.XLSX && window.XLSX.style_version) {

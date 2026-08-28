@@ -1,6 +1,6 @@
 {
   "name": "fastener-trade-workbench",
-  "version": "1.0.14",
+  "version": "1.0.20",
   "private": true,
   "type": "module",
   "description": "紧固件贸易工作台 (Vue3 + Vite 开发，Tauri 桌面封装)",
@@ -10,7 +10,8 @@
     "build": "npm run vite:build && npm run tauri:build && npm run make:dmg",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "node scripts/with-updater-key.mjs tauri build",
+    "gen:latest": "node scripts/gen-latest-json.mjs",
     "make:dmg": "bash scripts/make-dmg.sh",
     "icons": "tauri icon src/public/images/favicon.png",
     "version:set": "node scripts/bump-version.mjs",

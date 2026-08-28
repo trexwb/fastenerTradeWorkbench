@@ -25,6 +25,8 @@ window.KB=(function(){
   const MAX_RECURSE_DEPTH=3;         // 递归遍历子目录最大深度
   const BLOCK_TARGET=500;            // 分块目标字数（400~600 区间取中）
   const MIN_SCORE=0.6;               // 相关度阈值：BM25 得分低于该值的片段不注入（省 token）
+  const MAX_SNIPPET_CHARS=300;       // search 工具返回的单片段字符上限（省 token）
+  const MAX_GETFILE_CHARS=4000;      // get_kb_file 工具单次返回的字符上限
 
   let ready=false;                    // init 是否完成
   const state={
@@ -33,6 +35,8 @@ window.KB=(function(){
     enabled:false,
     topN:DEFAULT_TOPN,
     cite:true,
+    activeRetrieval:true,       // AI 主动检索：开启后不再自动注入 Top-N，由模型按需调 query_knowledge
+    autoInjectFallback:false,  // 自动注入兜底：开启后除工具调用外仍发请求前注入一次 Top-N
     files:[],
     blocks:[],
     chars:0,
@@ -128,7 +132,7 @@ window.KB=(function(){
     return _bm;
   }
   const K1=1.5,B=0.75;
-  function bmQuery(queryTokens){
+  function bmQuery(queryTokens,limit){
     if(!state.blocks.length)return [];
     const bm=_bm||buildBM();
     const qt=[];
@@ -153,7 +157,9 @@ window.KB=(function(){
     }
     scores.sort((a,b)=>b.score-a.score);
     // 相关度阈值过滤：低于 MIN_SCORE 的弱命中不注入，省 token 且避免无关片段干扰
-    return scores.filter(x=>x.score>=MIN_SCORE).slice(0,state.topN);
+    // limit 可由外部调用方覆盖（如 search 工具按参数 topN 取片段）；缺省走设置中的 state.topN
+    const cap=(limit&&limit>0)?limit:state.topN;
+    return scores.filter(x=>x.score>=MIN_SCORE).slice(0,cap);
   }
 
   /* ---------- 文本解析 ---------- */
@@ -305,7 +311,7 @@ window.KB=(function(){
       if(!found.length){
         state.bound=true;state.dirName=dir.name;state.files=[];state.blocks=[];state.chars=0;state.indexedAt=Date.now();
         await kbPut(K_DIR,dir);
-        await kbPut(K_META,{bound:true,dirName:dir.name,enabled:state.enabled,topN:state.topN,cite:state.cite,indexedAt:state.indexedAt});
+        await kbPut(K_META,{bound:true,dirName:dir.name,enabled:state.enabled,topN:state.topN,cite:state.cite,activeRetrieval:state.activeRetrieval,autoInjectFallback:state.autoInjectFallback,indexedAt:state.indexedAt});
         await kbPut(K_FILES,[]);
         await kbPut(K_BLOCKS,[]);
         _bm=null;
@@ -349,7 +355,7 @@ window.KB=(function(){
       });
       state.bound=true;state.dirName=dir.name;state.files=finalFiles;state.blocks=finalBlocks;state.chars=totalChars;state.indexedAt=Date.now();
       await kbPut(K_DIR,dir);
-      await kbPut(K_META,{bound:true,dirName:dir.name,enabled:state.enabled,topN:state.topN,cite:state.cite,indexedAt:state.indexedAt});
+      await kbPut(K_META,{bound:true,dirName:dir.name,enabled:state.enabled,topN:state.topN,cite:state.cite,activeRetrieval:state.activeRetrieval,autoInjectFallback:state.autoInjectFallback,indexedAt:state.indexedAt});
       await kbPut(K_FILES,finalFiles);
       await kbPut(K_BLOCKS,finalBlocks);
       _bm=null;
@@ -396,6 +402,7 @@ window.KB=(function(){
     if(meta&&meta.bound){
       state.bound=true;state.dirName=meta.dirName||'';
       state.enabled=!!meta.enabled;state.topN=meta.topN||DEFAULT_TOPN;state.cite=meta.cite!==false;
+      state.activeRetrieval=meta.activeRetrieval!==false;state.autoInjectFallback=!!meta.autoInjectFallback;
       state.indexedAt=meta.indexedAt||0;
       const files=await kbGet(K_FILES);const blocks=await kbGet(K_BLOCKS);
       state.files=Array.isArray(files)?files:[];
@@ -453,11 +460,84 @@ window.KB=(function(){
   function setEnabled(v){state.enabled=!!v;persistMeta();return state.enabled;}
   function setTopN(n){const v=Math.max(1,Math.min(10,parseInt(n,10)||DEFAULT_TOPN));state.topN=v;persistMeta();return v;}
   function setCite(v){state.cite=!!v;persistMeta();return state.cite;}
+  function setActiveRetrieval(v){state.activeRetrieval=!!v;persistMeta();return state.activeRetrieval;}
+  function setAutoInjectFallback(v){state.autoInjectFallback=!!v;persistMeta();return state.autoInjectFallback;}
   function persistMeta(){
     if(state.bound){
-      kbPut(K_META,{bound:true,dirName:state.dirName,enabled:state.enabled,topN:state.topN,cite:state.cite,indexedAt:state.indexedAt});
+      kbPut(K_META,{bound:true,dirName:state.dirName,enabled:state.enabled,topN:state.topN,cite:state.cite,activeRetrieval:state.activeRetrieval,autoInjectFallback:state.autoInjectFallback,indexedAt:state.indexedAt});
     }
   }
+  /* ---------- AI 主动检索接口（供 query_knowledge / list_kb_files / get_kb_file 工具调用） ---------- */
+  /** 按问题检索 Top-N 片段，返回结构化命中（含源文件名/章节/页码/片段/得分）
+   *  与 buildPromptBlock 的区别：不拼装 prompt 字符串，返回结构化对象供工具协议回填给模型；
+   *  片段截断到 MAX_SNIPPET_CHARS 以省 token；支持 fileFilter 限定某文件内检索。
+   *  未绑定/未启用/无命中 → 返回 {ok:true,count:0,hits:[]}（让模型按规则声明「未找到」） */
+  function search(query,opts){
+    opts=opts||{};
+    if(!state.enabled||!state.blocks.length)return {ok:true,count:0,hits:[]};
+    const qTokens=tokenize(query||'');
+    if(!qTokens.length)return {ok:true,count:0,hits:[]};
+    const limit=opts.topN?(function(){const v=Math.max(1,Math.min(10,parseInt(opts.topN,10)||DEFAULT_TOPN));return v;})():state.topN;
+    let hits=bmQuery(qTokens,limit);
+    if(opts.fileFilter){
+      const ff=String(opts.fileFilter).toLowerCase();
+      hits=hits.filter(function(h){
+        const b=state.blocks[h.i];const f=(b&&typeof b.file==='number')?state.files[b.file]:null;
+        const name=((f&&(f.name||''))+' '+(f&&(f.rel||''))).toLowerCase();
+        return name.includes(ff);
+      });
+    }
+    const out=hits.map(function(hit){
+      const b=state.blocks[hit.i];
+      const f=(b&&typeof b.file==='number')?state.files[b.file]:null;
+      const name=(f&&f.name)?f.name:'未知来源';
+      const rel=(f&&f.rel)||'';
+      const text=b.text||'';
+      const snippet=text.length>MAX_SNIPPET_CHARS?(text.slice(0,MAX_SNIPPET_CHARS)+'…'):text;
+      return {file:name,rel:rel,chapter:b.chapter||'',page:b.page||0,score:Number(hit.score.toFixed(3)),snippet:snippet};
+    });
+    return {ok:true,count:out.length,hits:out};
+  }
+  /** 列出知识库内全部/筛选文件元数据（供 list_kb_files 工具，让模型先了解资料范围） */
+  function listFiles(keyword){
+    const cnt={};
+    (state.blocks||[]).forEach(function(b){if(typeof b.file==='number')cnt[b.file]=(cnt[b.file]||0)+1;});
+    let list=(state.files||[]).map(function(f,i){
+      return {name:f.name||'',rel:f.rel||'',chars:Number(f.chars)||0,blocks:cnt[i]||0,indexedAt:state.indexedAt||0};
+    });
+    if(keyword){
+      const kw=String(keyword).toLowerCase();
+      list=list.filter(function(f){return (f.name||'').toLowerCase().includes(kw)||(f.rel||'').toLowerCase().includes(kw);});
+    }
+    return {ok:true,count:list.length,files:list};
+  }
+  /** 取某文件指定区间的分块全文（供 get_kb_file 工具，用于「定位原文」深度查阅）
+   *  range=[startBlock,endBlock] 可选；累计超 MAX_GETFILE_CHARS 截断并标 truncated
+   *  同步接口：bootApp 启动时已 init，常态 state.ready；未初始化时返回空结果兜底 */
+  function getFileBlocks(nameOrRel,range){
+    if(!state.files.length)return {ok:false,error:'知识库未初始化'};
+    const f=state.files.find(function(x){return x.rel===nameOrRel||x.name===nameOrRel;});
+    if(!f)return {ok:false,error:'未找到文件：'+nameOrRel};
+    let blocks=state.blocks.filter(function(b){return b.file===f.id;});
+    let truncated=false;
+    if(Array.isArray(range)&&range.length===2){
+      const s=Math.max(0,parseInt(range[0],10)||0);
+      const e=Math.min(blocks.length,parseInt(range[1],10)||blocks.length);
+      blocks=blocks.slice(s,e);
+    }
+    let acc=0;const out=[];
+    for(let i=0;i<blocks.length;i++){
+      const b=blocks[i];const t=b.text||'';
+      if(acc+t.length>MAX_GETFILE_CHARS){
+        out.push({index:i,chapter:b.chapter||'',page:b.page||'',text:t.slice(0,Math.max(0,MAX_GETFILE_CHARS-acc))+'…'});
+        truncated=true;break;
+      }
+      out.push({index:i,chapter:b.chapter||'',page:b.page||'',text:t});
+      acc+=t.length;
+    }
+    return {ok:true,file:f.name,rel:f.rel,blocks:out,truncated:truncated};
+  }
+
   /** 提问时检索 Top-N 片段并组装为注入 system prompt 的知识块（带源标注） */
   function buildPromptBlock(question){
     if(!state.enabled||!state.blocks.length)return '';
@@ -488,14 +568,16 @@ window.KB=(function(){
   function summarize(){
     return {
       bound:state.bound,dirName:state.dirName,enabled:state.enabled,topN:state.topN,cite:state.cite,
+      activeRetrieval:state.activeRetrieval,autoInjectFallback:state.autoInjectFallback,
       files:state.files.length,blocks:state.blocks.length,chars:state.chars,
       indexedAt:state.indexedAt,indexing:state.indexing,error:state.error
     };
   }
 
   return {
-    init,chooseDir,rescan,unbind,setEnabled,setTopN,setCite,
+    init,chooseDir,rescan,unbind,setEnabled,setTopN,setCite,setActiveRetrieval,setAutoInjectFallback,
     buildPromptBlock,fileBlocks,summarize,state,
+    search,listFiles,getFileBlocks,
     tokenize,splitBlocks,isSupported,bmQuery,
     ensureFresh,startAutoScan,stopAutoScan
   };
