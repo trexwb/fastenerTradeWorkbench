@@ -1,6 +1,6 @@
 [package]
 name = "fastener_workbench"
-version = "1.0.14"
+version = "1.0.15"
 description = "紧固件贸易工作台 (Tauri 桌面封装)"
 edition = "2021"
 rust-version = "1.77.2"

@@ -717,6 +717,67 @@ const AIT=(function(){
         description:'打开「新建 BOM」表单（辅助用户手动录入，AI 不代填）。此工具立即执行，不需确认。',
         parameters:{type:'object',properties:{},required:[]}
       }
+    },
+    {
+      type:'function',
+      function:{
+        name:'query_knowledge',
+        description:'检索本地知识库（用户绑定的资料目录，含 md/txt/pdf/docx）。当用户问及「资料/文档/合同/规格书/历史记录/供应商文件」等需要查阅本地资料时调用本工具。立即执行不需确认。返回命中片段（含文件名/章节/页码/片段/得分），片段已截断。回答时若用到命中内容，必须在句末标注【依据：文件名】。未命中时返回 count:0，应明确说明「未在知识库中找到」。',
+        parameters:{
+          type:'object',
+          properties:{
+            query:{type:'string',description:'检索问题/关键词（自然语言即可，内部做中文 bi-gram 分词）'},
+            topN:{type:'integer',description:'返回片段数（1-10，可选，缺省用设置中的 Top-N）'},
+            fileFilter:{type:'string',description:'限定在某文件内检索（按文件名/rel 模糊匹配，可选）'}
+          },
+          required:['query']
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'list_kb_files',
+        description:'列出本地知识库内的全部文件元数据（文件名/相对路径/字符数/分块数/索引时间），可选关键词过滤。用于先了解知识库有哪些资料再决定检索方向。立即执行不需确认。知识库未绑定时返回 count:0。',
+        parameters:{
+          type:'object',
+          properties:{
+            keyword:{type:'string',description:'按文件名/相对路径模糊过滤（可选）'}
+          },
+          required:[]
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'get_kb_file',
+        description:'取知识库某文件的分块全文（用于「定位原文」深度查阅，例如核对 query_knowledge 命中片段的上下文）。立即执行不需确认。单次返回累计字符上限约 4000，超限会截断并标 truncated，可用 range 翻页。文件不存在返回 ok:false。',
+        parameters:{
+          type:'object',
+          properties:{
+            nameOrRel:{type:'string',description:'文件名或相对路径（必填，取自 list_kb_files 或 query_knowledge 命中）'},
+            range:{type:'array',items:{type:'integer'},description:'分块区间 [start,end]（从 0 开始，左闭右开，可选，用于翻页）'}
+          },
+          required:['nameOrRel']
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'search_kb_detail',
+        description:'与 query_knowledge 类似，但返回更长片段并带相邻上下文块，用于深度查阅某问题的完整依据。立即执行不需确认。片段更长、占用更多 token，仅在需要完整上下文时使用；常规检索用 query_knowledge。',
+        parameters:{
+          type:'object',
+          properties:{
+            query:{type:'string',description:'检索问题/关键词'},
+            topN:{type:'integer',description:'返回片段数（1-10，可选）'},
+            fileFilter:{type:'string',description:'限定在某文件内检索（可选）'}
+          },
+          required:['query']
+        }
+      }
     }
   ];
 
@@ -770,7 +831,12 @@ const AIT=(function(){
     open_unit_form:{label:'打开单位表单',tagCls:'info',kind:'flow'},
     open_order_form:{label:'打开订单表单',tagCls:'info',kind:'flow'},
     open_price_form:{label:'打开报价表单',tagCls:'info',kind:'flow'},
-    open_bom_form:{label:'打开BOM表单',tagCls:'info',kind:'flow'}
+    open_bom_form:{label:'打开BOM表单',tagCls:'info',kind:'flow'},
+    // 知识库主动检索类（kind: query，自动执行不经弹窗）
+    query_knowledge:{label:'检索知识库',tagCls:'info',kind:'query'},
+    list_kb_files:{label:'列出KB文件',tagCls:'info',kind:'query'},
+    get_kb_file:{label:'查阅KB原文',tagCls:'info',kind:'query'},
+    search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'}
   };
 
   /** 阶段4：功能层工具名集合（用于 aiWriteLoop 分流，自动执行不经弹窗） */
@@ -1564,6 +1630,45 @@ const AIT=(function(){
       if(name==='query_help'){
         if(typeof helpSearch==='function')return helpSearch(args.keyword);
         return JSON.stringify({ok:false,error:'帮助知识库未加载'});
+      }
+      // 知识库主动检索类：统一优雅降级——KB 未加载/未绑定/未启用 → 返回 ok:false 让模型说明
+      if(name==='query_knowledge'||name==='search_kb_detail'){
+        if(typeof KB==='undefined')return JSON.stringify({ok:false,error:'知识库模块未加载'});
+        if(!KB.state.bound||!KB.state.enabled)return JSON.stringify({ok:false,error:'知识库未绑定或未启用'});
+        const detail=name==='search_kb_detail';
+        const r=KB.search(args.query,{topN:args.topN,fileFilter:args.fileFilter});
+        // search_kb_detail：在常规命中基础上为每条拼接相邻上下文块（取相邻 1 块，累计上限保护）
+        if(detail&&r.ok&&r.hits.length){
+          r.hits=r.hits.map(function(h){
+            // 相邻上下文：按 rel 定位文件内当前块前后各 1 块，拼接成更完整片段
+            let ctx='';
+            try{
+              // 这里不阻塞地复用已索引数据；查不到上下文不影响主命中
+              const blocks=KB.state.blocks||[];
+              const fi=(KB.state.files||[]).findIndex(function(f){return (f.rel||'')===h.rel||(f.name||'')===h.file;});
+              if(fi>=0){
+                const idx=blocks.findIndex(function(b){return b.file===fi&&(b.text||'').indexOf(h.snippet.replace(/…$/,''))===0;});
+                if(idx>=0){
+                  const prevB=blocks[idx-1];const nextB=blocks[idx+1];
+                  ctx=(prevB&&prevB.file===fi?prevB.text+' …\n':'')+(nextB&&nextB.file===fi?'\n… '+nextB.text:'');
+                }
+              }
+            }catch(e){ctx='';}
+            return Object.assign({},h,{snippet:(ctx?ctx+'\n---\n':'')+h.snippet});
+          });
+        }
+        return JSON.stringify(r);
+      }
+      if(name==='list_kb_files'){
+        if(typeof KB==='undefined')return JSON.stringify({ok:false,error:'知识库模块未加载'});
+        if(!KB.state.bound)return JSON.stringify({ok:false,error:'知识库未绑定'});
+        return JSON.stringify(KB.listFiles(args.keyword));
+      }
+      if(name==='get_kb_file'){
+        if(typeof KB==='undefined')return JSON.stringify({ok:false,error:'知识库模块未加载'});
+        if(!KB.state.bound)return JSON.stringify({ok:false,error:'知识库未绑定'});
+        // 复用 KB.getFileBlocks（同步接口，bootApp 已 init）；runQuery 保持同步约定
+        return JSON.stringify(KB.getFileBlocks(args.nameOrRel,args.range));
       }
       if(name==='query_units'){
         let list=DB.units.slice();

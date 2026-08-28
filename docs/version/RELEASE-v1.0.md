@@ -5,6 +5,79 @@
 
 ---
 
+## v1.0.15 · 📝 待发布
+
+> **状态**: 📝 待发布（本地 vite 构建与验证通过，正式发布后改为 ✅ 已发布）
+> **发布日期**: 2026-08-28
+> **上一版本**: v1.0.14
+> **版本范围**: AI 主动检索知识库 —— 把 KB 从「发请求前一次性注入」升级为「模型可按需调用的检索后端」
+
+---
+
+## 问题背景
+
+v1.0.14 的知识库（`core/kb.js`）与 AI（`core/ai.js`）是「单向一次性」耦合：发送请求前由 `buildPromptBlock` 取 Top-N 片段拼入 system prompt，**模型本身感知不到 KB 的存在**。这导致四个短板：
+
+1. 模型不能主动检索 —— 命中不准时无法换关键词再查一次；
+2. 模型不能按文件定位原文 —— 无法核对上下文；
+3. 无命中时模型不知道「没找到」，易凭空编造文件名；
+4. 注入片段占用固定 token，与问题无关时浪费上下文。
+
+## 变更
+
+### 1. KB 侧新增主动检索接口（core/kb.js）
+
+- 新增 `search(query, opts)`：复用现有 `tokenize`+`bmQuery`，返回结构化命中 `{ok,count,hits:[{file,rel,chapter,page,score,snippet}]}`，片段截断到 300 字符（`MAX_SNIPPET_CHARS`）省 token；支持 `topN` 覆盖与 `fileFilter` 限定文件内检索。`bmQuery` 加可选 `limit` 参数，`buildPromptBlock` 保持原行为不变。
+- 新增 `listFiles(keyword)`：列出知识库全部/筛选文件元数据（名/rel/字符数/分块数/索引时间）。
+- 新增 `getFileBlocks(nameOrRel, range)`：取某文件分块全文，累计超 `MAX_GETFILE_CHARS`(4000) 截断并标 `truncated`，`range=[start,end]` 支持翻页。**同步接口**（bootApp 已 init），供 runQuery 直接调用。
+- state 新增 `activeRetrieval`(默认 true)/`autoInjectFallback`(默认 false) 两字段；init 恢复、persistMeta + indexDir 内联 kbPut(K_META) 同步持久化；新增 `setActiveRetrieval`/`setAutoInjectFallback` setter；summarize 输出两字段。
+
+### 2. AI 工具协议新增 4 个检索工具（core/ai-tools.js）
+
+- `query_knowledge(query, topN?, fileFilter?)`：常规检索，返回命中片段。
+- `search_kb_detail(query, topN?, fileFilter?)`：深检版，在常规命中基础上为每条拼接相邻上下文块。
+- `list_kb_files(keyword?)`：列出文件元数据。
+- `get_kb_file(nameOrRel, range?)`：取某文件分块全文。
+- 全部归入 `TOOL_META` 的 `kind:'query'`，自动执行不经弹窗；runQuery 在 `query_help` 后加 4 分支，统一优雅降级（KB 未加载/未绑定/未启用 → `ok:false` 让模型说明）。`get_kb_file` 复用 `KB.getFileBlocks` 同步接口，避免重复逻辑。
+
+### 3. System prompt 注入知识库工具指引（core/ai.js buildSystemPrompt）
+
+- 在硬性规则 9 后新增「知识库主动检索工具」段：说明 4 个工具的能力与参数、使用时机（用户问及「资料/文档/合同/规格书/历史记录」等先调 query_knowledge，不确定 KB 有什么先 list_kb_files，核对上下文用 get_kb_file，常规检索不用 search_kb_detail 省 token）。
+- 硬约束：KB 命中且用于回答时句末必须标注 `【依据：文件名】`；可在同一对话多次调 query_knowledge 精炼关键词；未命中（count:0）明确说「未在知识库中找到」，禁止编造；KB 命中与业务快照冲突时以业务快照为准并说明。
+
+### 4. AI 设置弹窗新增两个开关（views/ai-chat.js）
+
+- `sendAIMessage` 的 KB 注入逻辑改为：仅当 `!activeRetrieval || autoInjectFallback` 时才发请求前注入 Top-N。主动检索开（默认）→ 由模型按需调工具，不再固定注入；关 → 回退旧自动注入模式；自动注入兜底开 → 双保险。
+- `kbrenderZone` 新增 `aiRow`（虚线分隔）：「AI 主动检索」「自动注入兜底」两个 checkbox，未绑定时 disabled。
+- 新增 `kbSetActiveRetrieval`/`kbSetAutoInjectFallback` setter。
+- 引用渲染复用既有 `aiRenderCite`（已把 `【依据：xxx】` 渲染为可点击 chip 调 `kbShowFile` 显示原文），零新增 UI。
+
+## 数据流
+
+```
+用户提问 → aiWriteLoop → chat(tools=[…, query_knowledge, list_kb_files, get_kb_file, search_kb_detail])
+  → 模型调 query_knowledge(query) → AIT.runQuery → KB.search → hits
+  → 模型基于 hits 回答(标【依据：文件名】) 或再精炼 / 调 get_kb_file 深查
+  → ai-chat 渲染：【依据：file】 可点击 → kbShowFile 弹窗显示原文分块
+```
+
+## 验证
+
+- `npm run vite:build` 通过（322 模块，dist/index.html + assets + vendor + images，file:// 可运行）
+- grep 校验：kb.js（search/listFiles/getFileBlocks/setActiveRetrieval/setAutoInjectFallback/MAX_SNIPPET_CHARS/MAX_GETFILE_CHARS/activeRetrieval/autoInjectFallback 全部落盘）、ai-tools.js（4 工具名 + KB.search/listFiles/getFileBlocks 调用点）、ai.js（KB 工具指引段）、ai-chat.js（sendAIMessage 注入逻辑 + aiRow + 2 setter）
+
+## 不在本版本范围（YAGNI，留作后续独立 spec）
+
+- 向量/语义检索 + 混合排序 + OCR（路径 B）
+- 业务数据联动（文档↔供应商/订单关联、合同结构化抽取、AI 结论回写）（路径 C）
+- 预置行业知识库（GB/DIN/ISO 标准、强度等级、表面处理代号）（路径 D）
+
+## 版本号
+
+- `package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` / `AGENTS.md` 基准版本同步递增至 **v1.0.15**
+
+---
+
 ## v1.0.14 · 📝 待发布
 
 > **状态**: 📝 待发布（本地构建与验证通过，正式发布后改为 ✅ 已发布）

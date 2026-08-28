@@ -139,14 +139,17 @@ async function sendAIMessage(message,snapshot){
   const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
   const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
   try{
-    // 知识库检索：若已绑定且启用，本地 BM25 取 Top-N 片段拼入 system prompt（带源标注）
+    // 知识库检索：主动检索模式下不自动注入（由模型按需调 query_knowledge 等工具）；
+    // 仅当「主动检索」关闭（回退旧模式）或「自动注入兜底」开启时，发请求前注入一次 Top-N
     let kbBlock='';
     try{
       if(typeof KB!=='undefined'){
         if(!KB.state.bound){await KB.init();}
         if(KB.state.bound&&KB.state.enabled){
           KB.ensureFresh(); // 距上次索引超时则后台增量更新，不阻塞本次回答
-          kbBlock=KB.buildPromptBlock(message);
+          if(!KB.state.activeRetrieval||KB.state.autoInjectFallback){
+            kbBlock=KB.buildPromptBlock(message);
+          }
         }
       }
     }catch(e){console.warn('KB retrieve failed',e);}
@@ -381,7 +384,8 @@ function kbrenderZone(stat){
   const enableRow='<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetEnabled(this.checked)"> 提问时检索知识库</label>'+
     (s.bound?'<label style="display:flex;align-items:center;gap:4px;font-size:13px">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" style="width:54px;padding:2px 6px" onchange="kbSetTopN(this.value)"></label>':'')+
     '<label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbCite" '+(s.cite?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetCite(this.checked)"> 回答标注来源</label></div>';
-  return head+'<div style="margin-top:6px">'+actions+'</div>'+enableRow;
+  const aiRow='<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)"><div class="note" style="margin-bottom:4px">AI 主动检索（推荐）：开启后不再自动注入片段，由 AI 在对话中按需调用检索工具，命中更准、省 token。</div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbActiveRetrieval" '+(s.activeRetrieval!==false?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetActiveRetrieval(this.checked)"> AI 主动检索</label><label style="display:flex;align-items:center;gap:4px;font-size:13px"><input type="checkbox" id="kbAutoInjectFallback" '+(s.autoInjectFallback?'checked':'')+(s.bound?'':' disabled')+' onchange="kbSetAutoInjectFallback(this.checked)"> 自动注入兜底</label></div></div>';
+  return head+'<div style="margin-top:6px">'+actions+'</div>'+enableRow+aiRow;
 }
 /** 刷新设置弹窗内的知识库区块（每次操作后重渲染） */
 function kbRefreshZone(){
@@ -423,6 +427,8 @@ async function kbUnbind(){
 function kbSetEnabled(v){if(typeof KB!=='undefined'){KB.setEnabled(v);toast(v?'知识库检索已开启':'知识库检索已关闭','info');}}
 function kbSetTopN(v){if(typeof KB!=='undefined'){const n=KB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}}
 function kbSetCite(v){if(typeof KB!=='undefined'){KB.setCite(v);toast(v?'回答将标注来源':'已关闭来源标注','info');}}
+function kbSetActiveRetrieval(v){if(typeof KB!=='undefined'){KB.setActiveRetrieval(v);toast(v?'已开启 AI 主动检索（按需调工具）':'已关闭 AI 主动检索（回退自动注入）','info');}}
+function kbSetAutoInjectFallback(v){if(typeof KB!=='undefined'){KB.setAutoInjectFallback(v);toast(v?'已开启自动注入兜底（双保险）':'已关闭自动注入兜底','info');}}
 
 async function openAISettings(){
   const isTauri=AI.state.runtime==='tauri';

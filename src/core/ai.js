@@ -128,6 +128,13 @@ const AI=(function(){
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
       '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n'+
       '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n\n'+
+      '【知识库主动检索工具】（用户已绑定本地知识库目录时可用的工具，未绑定时工具返回 ok:false）\n'+
+      '- query_knowledge(query, topN?, fileFilter?)：检索本地知识库（md/txt/pdf/docx），返回命中片段（含文件名/章节/页码/片段/得分）。\n'+
+      '- list_kb_files(keyword?)：列出知识库内全部/筛选文件元数据，先了解资料范围再检索。\n'+
+      '- get_kb_file(nameOrRel, range?)：取某文件分块全文（单次约 4000 字符上限，超限标 truncated，用 range 翻页）。\n'+
+      '- search_kb_detail(query, topN?, fileFilter?)：与 query_knowledge 类似但返回更长片段+相邻上下文，仅在需要完整依据时使用。\n'+
+      '使用时机：用户问及「资料/文档/合同/规格书/历史记录/供应商文件/有没有说过…」等需要查阅本地资料的问题时，先调用 query_knowledge；若不确定 KB 有什么资料先 list_kb_files；需要核对命中片段的完整上下文用 get_kb_file；常规检索不要用 search_kb_detail（省 token）。\n'+
+      '硬约束：当 KB 命中且用于回答时，句末必须标注【依据：文件名】（文件名取自命中结果的 file 字段）；可在同一对话中多次调用 query_knowledge 精炼关键词；未命中（count:0）时明确说「未在知识库中找到」，禁止编造文件名或内容；KB 命中与业务数据快照冲突时，以业务快照为准并说明。\n\n'+
       snapshot;
   }
   function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
