@@ -30,13 +30,13 @@ function viewBOM(){
       '<td><input type="checkbox" class="bom-check" data-id="'+escAttr(b.id||idx)+'" data-idx="'+idx+'" onchange="updateBOMBatchBtn()"></td>'+
       '<td><div class="bom-sku">'+escHtml(b.sku||'-')+'</div></td>'+
       '<td><b>'+escHtml(b.name||'-')+'</b></td>'+
-      '<td>'+escHtml(b.spec||'-')+'</td>'+
-      '<td>'+escHtml(b.type||'-')+'</td>'+
-      '<td>'+escHtml(b.standard||'-')+'</td>'+
-      '<td>'+escHtml(b.diameter||'-')+'</td>'+
-      '<td>'+escHtml(b.hardness||'-')+'</td>'+
-      '<td>'+escHtml(b.surface||'-')+'</td>'+
-      '<td>'+escHtml(b.material||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.spec||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.type||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.standard||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.diameter||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.hardness||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.surface||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.material||'-')+'</td>'+
       '<td class="td-act">'+
         '<button class="btn sm" onclick="openBOMForm('+idx+')">'+icon('edit','13')+'编辑</button>'+
         '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')">'+icon('trash','13')+'删除</button>'+
@@ -81,7 +81,7 @@ function viewBOM(){
     '</div>'+
   '</div>'+
   filterRow+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllBOM(this)" title="全选"></th><th>SKU</th><th style="min-width:160px">名称</th><th>规格</th><th>类型</th><th>标准</th><th>直径</th><th>硬度</th><th>表面处理</th><th>材质</th><th></th></tr></thead><tbody id="bomBody">'+
+  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllBOM(this)" title="全选"></th><th>SKU</th><th style="min-width:160px">名称</th><th class="m-hide-s2">规格</th><th class="m-hide-s2">类型</th><th class="m-hide-s1">标准</th><th class="m-hide-s1">直径</th><th class="m-hide-s1">硬度</th><th class="m-hide-s2">表面处理</th><th class="m-hide-s1">材质</th><th></th></tr></thead><tbody id="bomBody">'+
   (rows||'<tr><td colspan="11">'+
     '<div class="empty-state">'+
       '<div class="es-icon">'+icon('package',28)+'</div>'+
@@ -159,13 +159,13 @@ function refreshBOMTable(){
       '<td><input type="checkbox" class="bom-check" data-id="'+escAttr(b.id||idx)+'" data-idx="'+idx+'" onchange="updateBOMBatchBtn()"></td>'+
       '<td><div class="bom-sku">'+escHtml(b.sku||'-')+'</div></td>'+
       '<td><b>'+escHtml(b.name||'-')+'</b></td>'+
-      '<td>'+escHtml(b.spec||'-')+'</td>'+
-      '<td>'+escHtml(b.type||'-')+'</td>'+
-      '<td>'+escHtml(b.standard||'-')+'</td>'+
-      '<td>'+escHtml(b.diameter||'-')+'</td>'+
-      '<td>'+escHtml(b.hardness||'-')+'</td>'+
-      '<td>'+escHtml(b.surface||'-')+'</td>'+
-      '<td>'+escHtml(b.material||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.spec||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.type||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.standard||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.diameter||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.hardness||'-')+'</td>'+
+      '<td class="m-hide-s2">'+escHtml(b.surface||'-')+'</td>'+
+      '<td class="m-hide-s1">'+escHtml(b.material||'-')+'</td>'+
       '<td class="td-act">'+
         '<button class="btn sm" onclick="openBOMForm('+idx+')">'+icon('edit','13')+'编辑</button>'+
         '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')">'+icon('trash','13')+'删除</button>'+

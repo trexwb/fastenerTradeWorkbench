@@ -20,6 +20,7 @@ const FTWB_VERSION_STR = __FTWB_VERSION__
 const SCRIPTS = [
   'core/seed.js',
   'core/utils.js',
+  'core/validators.js', // P3/R3 修复：共享校验模块，须在 ai-tools.js / orders.js 之前加载
   'core/ui.js',
   'core/store.js',
   'core/updater.js',
@@ -28,6 +29,12 @@ const SCRIPTS = [
   'core/help-knowledge.js',
   'core/ai-tools.js',
   'core/kb.js',
+  // ⚠ 重要：2026-08-29 修复「引导提示需要跳过两次」
+  // 原 SCRIPTS 同时加载 core/guide.js（横幅型 · key: wb_fastener_guide_*）
+  //         与     core/router.js（Coach 全屏蒙层 · key: wb_fastener_coach_seen_*）
+  // 两套独立引导系统 + 两个 localStorage 去重 key → 同一模块用户需关闭两次。
+  // 现统一只保留 router.js 的 Coach 全屏 11 模块引导；移除 guide.js 的执行入口。
+  // （guide.js 文件本身已改写为空壳适配器，若未来误加回 SCRIPTS 也不会再注入横幅）
   'views/dashboard.js',
   'views/units.js',
   'views/specs.js',
@@ -80,7 +87,9 @@ function runAllInGlobalScope(chunks) {
     ;(0, eval)(combined) // 间接 eval = 全局作用域 sloppy 模式，单次执行
   } catch (err) {
     console.error('[boot] 聚合脚本执行失败：', err)
-    throw err
+    // P3/R4 修复：包装为统一可读错误前缀，供 onMounted 界面提示；完整堆栈保留在控制台
+    const _msg = (err && err.message) ? String(err.message) : String(err)
+    throw new Error('核心脚本执行失败：' + _msg)
   }
 }
 
@@ -127,14 +136,17 @@ async function boot() {
 onMounted(async () => {
   await nextTick()
   boot().catch(err => {
+    // P3/R4 修复：启动失败给出统一可读界面提示（含错误摘要），完整堆栈输出到控制台
     console.error('[boot] 启动失败：', err)
     const app = document.getElementById('app')
     if (app) {
+      const msg = (err && err.message) ? String(err.message) : String(err)
       app.innerHTML =
-        '<div style="padding:40px;color:var(--err)">' +
-        '<h3>启动失败</h3><pre style="white-space:pre-wrap">' +
-        (err && err.stack ? err.stack : String(err)) +
-        '</pre></div>'
+        '<div style="padding:40px;text-align:center;color:var(--err)">' +
+        '<h3>应用启动失败</h3>' +
+        '<p>核心脚本加载或执行出错，请刷新重试；若持续出现请查看控制台（Console）错误详情。</p>' +
+        '<pre style="white-space:pre-wrap;text-align:left;max-width:720px;margin:16px auto;font-size:12px;color:var(--gray)">' + msg.replace(/</g, '&lt;') + '</pre>' +
+        '</div>'
     }
   })
 })

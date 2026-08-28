@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>紧固件贸易工作台 · 前端规范多维度审计报告</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#1f2329; --soft:#6b7280; --line:#e5e7eb;
+    --pri:#2563eb; --pri-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+    --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+    --purple:#7c3aed; --purple-bg:#f5f3ff;
+    --radius:10px; --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+    --shadow-md:0 4px 12px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 24px 64px}
+  header{background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;
+    padding:36px 24px;border-radius:var(--radius);box-shadow:var(--shadow-md);margin-bottom:28px}
+  header h1{margin:0 0 8px;font-size:26px;font-weight:700}
+  header .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;font-size:13px;opacity:.95}
+  header .meta span{background:rgba(255,255,255,.15);padding:4px 12px;border-radius:20px}
+  h2{font-size:21px;margin:36px 0 14px;padding-bottom:10px;border-bottom:2px solid var(--pri);
+    display:flex;align-items:center;gap:10px}
+  h2 .num{background:var(--pri);color:#fff;width:30px;height:30px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700}
+  h3{font-size:17px;margin:24px 0 10px;color:var(--pri)}
+  h4{font-size:15px;margin:16px 0 8px}
+  p{margin:8px 0}
+  .lead{background:var(--card);border-left:4px solid var(--pri);padding:14px 18px;
+    border-radius:0 var(--radius) var(--radius) 0;box-shadow:var(--shadow);margin:18px 0 24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;box-shadow:var(--shadow);margin:14px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:var(--shadow);text-align:center}
+  .stat .big{font-size:28px;font-weight:700;color:var(--pri)}
+  .stat .lbl{font-size:12px;color:var(--soft);margin-top:4px}
+  .stat.warn .big{color:var(--amber)} .stat.ok .big{color:var(--green)} .stat.bad .big{color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;background:var(--card);
+    border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);font-size:14px}
+  th{background:#f3f4f6;text-align:left;padding:10px 12px;font-weight:600;
+    border-bottom:2px solid var(--line);white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#fafbfc}
+  code{background:#f3f4f6;padding:1px 6px;border-radius:4px;font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;color:#be185d}
+  pre{background:#1f2329;color:#e5e7eb;padding:14px 16px;border-radius:8px;overflow-x:auto;
+    font-size:13px;line-height:1.5;margin:12px 0}
+  pre code{background:none;color:inherit;padding:0}
+  .pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+  .p0{background:var(--red-bg);color:var(--red);border:1px solid #fecaca}
+  .p1{background:var(--amber-bg);color:var(--amber);border:1px solid #fde68a}
+  .p2{background:var(--pri-bg);color:var(--pri);border:1px solid #bfdbfe}
+  .good{color:var(--green)} .bad{color:var(--red)}
+  .issue{border-left:3px solid;padding:12px 16px;margin:12px 0;border-radius:0 8px 8px 0;background:var(--card)}
+  .issue.p0{border-color:var(--red);background:var(--red-bg)}
+  .issue.p1{border-color:var(--amber);background:var(--amber-bg)}
+  .issue.p2{border-color:var(--pri);background:var(--pri-bg)}
+  .issue .title{font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .issue .body{font-size:14px}
+  .issue .ref{font-size:12px;color:var(--soft);margin-top:8px;font-family:"SF Mono",Menlo,monospace}
+  ul,ol{margin:8px 0 8px 4px;padding-left:22px}
+  li{margin:4px 0}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 22px;box-shadow:var(--shadow);margin:20px 0}
+  .toc ol{margin:6px 0}
+  .toc a{color:var(--pri);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .summary-box{background:linear-gradient(135deg,#eff6ff 0%,#f5f3ff 100%);
+    border:1px solid #c7d2fe;border-radius:var(--radius);padding:18px 22px;margin:20px 0}
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--soft);font-size:13px;text-align:center}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0;font-size:13px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>紧固件贸易工作台 · 前端规范多维度审计报告</h1>
+  <div>基于企业级前端开发规范，对项目的功能设计、操作流程、用户体验三个维度进行系统性审计</div>
+  <div class="meta">
+    <span>项目版本 v1.0.26</span>
+    <span>审计时间 2026-08-28</span>
+    <span>技术栈 Vue3 + Vite</span>
+    <span>审计范围 src/ 全量</span>
+  </div>
+</header>
+
+<div class="legend">
+  <span><i style="background:var(--red)"></i>P0 严重（影响数据安全/核心可用性）</span>
+  <span><i style="background:var(--amber)"></i>P1 中等（影响可维护性/体验一致性）</span>
+  <span><i style="background:var(--pri)"></i>P2 轻微（优化项）</span>
+</div>
+
+<div class="grid2">
+  <div class="stat ok"><div class="big">3</div><div class="lbl">审计维度</div></div>
+  <div class="stat warn"><div class="big">11</div><div class="lbl">发现问题</div></div>
+  <div class="stat bad"><div class="big">2</div><div class="lbl">P0 严重</div></div>
+  <div class="stat"><div class="big">6</div><div class="lbl">P1 中等</div></div>
+</div>
+<div class="grid2">
+  <div class="stat"><div class="big">3</div><div class="lbl">P2 轻微</div></div>
+  <div class="stat ok"><div class="big">15+</div><div class="lbl">设计亮点</div></div>
+</div>
+
+<div class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#s1">审计依据与方法</a></li>
+    <li><a href="#s2">维度一：功能设计审计</a></li>
+    <li><a href="#s3">维度二：操作流程审计</a></li>
+    <li><a href="#s4">维度三：用户体验审计</a></li>
+    <li><a href="#s5">改进优先级路线图</a></li>
+    <li><a href="#s6">总结</a></li>
+  </ol>
+</div>
+
+<h2 id="s1"><span class="num">1</span>审计依据与方法</h2>
+<div class="lead">
+  本次审计以<strong>企业级前端开发规范</strong>（项目目录/命名/HTML/CSS/JS/Vue/Git/ESLint/性能/安全 十二大类）为标尺，
+  结合项目自身 <code>AGENTS.md §12 前端编码规范</code>（项目级补充约定），对 <code>src/</code> 全量源码做只读分析。
+  所有结论均附文件路径与行号引用，严格区分<strong>已确认事实</strong>与<strong>推测</strong>。
+</div>
+
+<h3>审计输入</h3>
+<ul>
+  <li><strong>规范层</strong>：前端开发规范 Skill（12 大类）、AGENTS.md §12（项目级补充：私有变量下划线前缀、CSS 变量优先、!important 禁用等）</li>
+  <li><strong>代码层</strong>：src/core/（13 文件）、src/views/（12 文件）、src/styles/（3 文件）、vite.config.js、package.json</li>
+  <li><strong>文档层</strong>：docs/操作手册.md、docs/flows/orders.md、docs/COVERAGE.md</li>
+  <li><strong>事实工具</strong>：grep 行内 onclick / 硬编码颜色 / var 声明 / console / 超长文件 / 重复代码</li>
+</ul>
+
+<h2 id="s2"><span class="num">2</span>维度一：功能设计审计</h2>
+
+<h3>设计亮点（已确认事实）</h3>
+<div class="card">
+  <ol>
+    <li><strong>模块分层清晰</strong>：core（数据/工具/UI 层）+ views（视图层）分离，符合规范"项目目录规范"中 api/components/utils 分层思想。本项目无 api 层属合理——纯本地 IndexedDB 存储，不调用外部接口（AGENTS.md §12.6"无外部 API"）。</li>
+    <li><strong>功能覆盖完整</strong>：操作手册列出 15 大模块，覆盖紧固件贸易全链路——单位/规格/BOM/报价/订单/结算/发票/数据/AI/快捷键/搜索/知识库/自动更新。功能闭环度高。</li>
+    <li><strong>状态机设计严谨</strong>：订单 9 态（待确认/寻货中/报价中/未成交/签约完成/送货中/异常/完成/取消）+ STATUS_FLOW 正向主线 + 分支态（未成交可恢复/异常与取消为终态），符合贸易业务实际流转。</li>
+    <li><strong>数据存储三层架构</strong>：IndexedDB 主库 + localStorage 草稿 + File System Access 文件备份 + 独立知识库 IDB。符合"安全规范"——敏感信息不进 localStorage（仅草稿与 AI Key，AI Key 是用户主动输入的唯一例外，AGENTS.md §12.6 已明确豁免）。</li>
+    <li><strong>AI 可选增强设计优秀</strong>：写入类工具生成提案需用户逐条确认、查询类自动执行、删除走软删除、操作可整批回滚 + 并发脏读检测——企业级安全容错。</li>
+    <li><strong>JSDoc 重视度高</strong>：COVERAGE 报告显示公共函数文档覆盖率 100%（虽版本滞后但反映文档意识）。</li>
+  </ol>
+</div>
+
+<h3>问题清单</h3>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>文档与代码版本/路径严重错位</div>
+  <div class="body">
+    <p><strong>事实</strong>：</p>
+    <ul>
+      <li>docs/COVERAGE.md 标注版本 <code>v1.1.174</code>，引用路径 <code>src/js/</code>；实际 package.json=<code>1.0.26</code>，路径已重构为 <code>src/core/</code> + <code>src/views/</code>。</li>
+      <li>docs/flows/orders.md 状态枚举用<strong>"待签约"</strong>，实际 store.js:51 用<strong>"报价中"+"未成交"</strong>；操作手册 §7.4 用"报价中/未成交"。</li>
+      <li>orders.md 流程文档中的 STATUS_COLORS/STATUS_FLOW 常量与 store.js 实际定义不一致。</li>
+    </ul>
+    <p><strong>影响</strong>：维护者/新 Agent 据过期文档做判断会出错，违反 Git 规范"docs 文档需与代码同步"。</p>
+    <p><strong>建议</strong>：以 package.json version 为单一来源，重建 COVERAGE.md 与 flows/*.md，或加版本水印"以代码为准"。</p>
+  </div>
+  <div class="ref">ref: docs/COVERAGE.md:5, docs/flows/orders.md:71-73, src/core/store.js:51-63</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>视图文件超长，违反"函数提取"规范</div>
+  <div class="body">
+    <p><strong>事实</strong>：4 个文件超千行——</p>
+    <table>
+      <tr><th>文件</th><th>行数</th><th>承担职能</th><th>建议拆分</th></tr>
+      <tr><td>src/views/orders.js</td><td>1839</td><td>列表/详情/编辑/状态流转/批量导入/收货管理 6 大职能</td><td>orders-list / orders-edit / orders-detail / orders-status / orders-receive</td></tr>
+      <tr><td>src/core/exporter.js</td><td>1956</td><td>6 状态导出模板（待确认/寻货/报价/签约/送货/通用）</td><td>按状态拆为 exporter/*.js 子模块</td></tr>
+      <tr><td>src/core/ai-tools.js</td><td>1769</td><td>43 个工具 schema + 执行器</td><td>tools/schema.js + tools/executor.js + tools/validator.js</td></tr>
+      <tr><td>src/core/store.js</td><td>1309</td><td>常量 + IDB + FSA + 迁移 + 种子</td><td>store-const.js + store-idb.js + store-fsa.js</td></tr>
+    </table>
+    <p>规范 §12.4"函数提取：>10 行重复逻辑必须提取"，单文件超千行说明模块拆分不足。orders.js 一个文件混 6 大职能，违反单一职责原则。</p>
+  </div>
+  <div class="ref">ref: Explore 报告 §1 文件行数</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>router.js 职责过载</div>
+  <div class="body">
+    <p>router.js（683 行）既管路由（go/render/bindView）、又管全局状态（curOrder/_fItems 等 13 个模块级 let）、又管筛选（filterUnitsData/filterOrdersData）、还管主题切换（switchTheme）——职责过载。</p>
+    <p><strong>建议</strong>：拆为 router.js（纯路由）+ state.js（全局状态）+ filters.js（筛选工厂）。</p>
+  </div>
+  <div class="ref">ref: src/core/router.js:39-54,159,191-251,297,428,492</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>重复代码迹象（过滤器与行渲染）</div>
+  <div class="body">
+    <p>filterUnitsData / filterOrdersData / filterPricesData 模式相似（搜索 + 多维筛选 + 分页），可抽象为通用过滤器工厂；renderOrderRow / unitRowHTML / bomRowHTML 各 view 重复 HTML 模板拼接逻辑。</p>
+    <p><strong>建议</strong>：提取 createFilter({searchKeys, filters, pageSize}) 工厂 + 行渲染模板函数复用。</p>
+  </div>
+  <div class="ref">ref: src/core/router.js:428,492, src/views/{units,orders,prices}.js</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>全局状态非响应式，靠手动 render()</div>
+  <div class="body">
+    <p>所有状态用模块级 <code>let</code> 声明（router.js），非 Vue 响应式，靠 <code>render()</code> 手动重渲染。虽符合项目"业务层零算法改动 + window.* 全局"约定，但偏离 Vue 范式——状态变更若遗漏 render() 调用会导致 UI 不同步。</p>
+    <p><strong>说明</strong>：此为项目既定架构（eval 全局执行模式），属<strong>有意为之的权衡</strong>，非缺陷。建议在关键写入路径加注释提醒"必须调用 render()"。</p>
+  </div>
+  <div class="ref">ref: src/core/router.js:39-54,159</div>
+</div>
+
+<h2 id="s3"><span class="num">3</span>维度二：操作流程审计</h2>
+
+<h3>流程亮点（已确认事实）</h3>
+<div class="card">
+  <ol>
+    <li><strong>状态流转按钮矩阵清晰</strong>：每个状态只能上一步/下一步，严格校验（开始寻货校验产品+意向价、完成寻货校验已分配≥需求），防止跳站（操作手册 §7.4.1）。</li>
+    <li><strong>寻货双通道</strong>：价格库匹配 + 手动录入，手动录入自动建单位/写价格库，减少重复录入。</li>
+    <li><strong>草稿自动保存 + 恢复提示</strong>：表单未提交自动暂存，重开提示恢复或放弃。</li>
+    <li><strong>批量操作统一模式</strong>：抽屉预览→确认→提交，不静默写入（AGENTS.md §8）。</li>
+    <li><strong>软删除 + 回收站 + AI 无回收站权限</strong>：数据安全设计到位，AI 无法物理删除。</li>
+    <li><strong>AI 操作整批回滚 + 并发脏读检测</strong>：__beforeFingerprint 指纹对比，防确认期间数据被外部修改。</li>
+    <li><strong>导出按状态分发模板</strong>：6 状态 6 模板（产品确认单/寻源进度单/报价单/结算单/送货单/通用），贴合贸易场景。</li>
+  </ol>
+</div>
+
+<h3>问题清单</h3>
+
+<div class="issue p0">
+  <div class="title"><span class="pill p0">P0</span>状态回退无关联数据校验，存在孤儿数据风险</div>
+  <div class="body">
+    <p><strong>事实</strong>：操作手册 §7.4.1 明确"上一步：直接返回上一状态，不需校验"。即 <code>prevStepOrder</code>（orders.js:360）直接 idx-1 返回，无任何校验。</p>
+    <p><strong>风险</strong>：从<strong>签约完成</strong>→返回<strong>报价中</strong>，或<strong>送货中</strong>→返回<strong>签约完成</strong>时，若该订单已关联结算记录（结算关联条件为"签约完成及之后各状态"）或发票任务（每笔结算生成一条发票任务），回退后：</p>
+    <ul>
+      <li>订单状态回到"报价中"，但结算记录仍存在 → 结算列表的"关联订单"查询条件（status ∈ 签约完成/送货中/完成）将<strong>查不到该订单</strong>，但结算记录的 settleId 仍引用它 → <strong>孤儿结算</strong>。</li>
+      <li>发票任务由结算生成，结算孤儿则发票也成孤儿。</li>
+    </ul>
+    <p><strong>建议</strong>：从签约完成/送货中回退时，校验是否已存在结算记录，有则弹窗警告"该订单已关联 N 笔结算/发票，回退将导致结算数据无法在列表中显示，是否继续？"，并记录回退原因到 aiOps。</p>
+  </div>
+  <div class="ref">ref: src/views/orders.js:360 prevStepOrder, docs/操作手册.md §7.4.1, docs/flows/orders.md:257-258</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>"异常"状态无人工入口，依赖 AI</div>
+  <div class="body">
+    <p><strong>事实</strong>：操作手册状态流转图显示"报价中→异常"分支，但状态流转按钮矩阵里"异常"无入口（——）。实际异常由 AI 工具 flow_order_status 进入。</p>
+    <p><strong>影响</strong>：未启用 AI 的用户无法人工标记异常状态——而异常是处理问题的关键状态。</p>
+    <p><strong>建议</strong>：在订单详情页状态工具栏为"报价中/签约完成/送货中"状态增加"标记异常"入口（带二次确认 + 原因填写），与 AI 路径并存。</p>
+  </div>
+  <div class="ref">ref: docs/操作手册.md §7.4, §13.5 工具清单 E 类 flow_order_status</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>未成交恢复与结算/发票的边界未定义</div>
+  <div class="body">
+    <p><strong>事实</strong>：未成交→恢复报价中（restoreOrderQuoting, orders.js:321）是设计的容错。但文档未说明：若未成交期间误生成了结算/发票（虽按规则未成交不在结算关联范围内），恢复后状态变化是否清理关联？结算关联条件为"签约完成/送货中/完成"，未成交本身不在内，理论上无关联，但需在代码层确认。</p>
+    <p><strong>建议</strong>：在 restoreOrderQuoting 增加断言"该订单不应有结算关联"，并在文档明确"未成交状态不产生结算/发票"。</p>
+  </div>
+  <div class="ref">ref: src/views/orders.js:321 restoreOrderQuoting, docs/操作手册.md §8.1 结算关联条件</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>寻货入口分散，两套逻辑并存</div>
+  <div class="body">
+    <p>寻货入口在详情页（sourceItemFromDetail）和编辑页（sourceItem）都有，AGENTS.md §8 明确"寻货与编辑分离"约定，但两套寻货逻辑并存，维护成本高，易产生行为不一致。</p>
+    <p><strong>建议</strong>：抽取共享的 sourceCore(itemId) 函数，两个入口仅做 UI 包装层。</p>
+  </div>
+  <div class="ref">ref: src/views/orders.js:sourceItem, sourceItemFromDetail, persistSourcingFromDetail</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>收货管理嵌在订单详情，流程不够清晰</div>
+  <div class="body">
+    <p>receiveManageSection（orders.js:1627）收货验货是独立业务环节（供应商→我方收货验货→采购商），混在订单详情页中，流程上不够独立。</p>
+    <p><strong>建议</strong>：可作为订单详情的独立 Tab 或子视图，链路可视化更清晰。</p>
+  </div>
+  <div class="ref">ref: src/views/orders.js:1627 receiveManageSection</div>
+</div>
+
+<h2 id="s4"><span class="num">4</span>维度三：用户体验审计</h2>
+
+<h3>体验亮点（已确认事实）</h3>
+<div class="card">
+  <ol>
+    <li><strong>主题两套</strong>（铜/奶油白），CSS 变量体系完整（颜色/间距/圆角/阴影/z-index 全变量化），符合 §12.3"CSS 变量优先"。</li>
+    <li><strong>搜索回车触发</strong>，禁止 oninput（避免中文输入法冲突），符合 §12.5 性能规范。</li>
+    <li><strong>快捷键三层结构</strong>（⌥ 修饰键避让浏览器），输入框内自动禁用，无障碍意识好。</li>
+    <li><strong>combo 下拉支持键盘导航</strong>（↑↓Enter Esc）。</li>
+    <li><strong>⌘K 命令面板</strong>六源搜索 + AI 联动，体验流畅。</li>
+    <li><strong>错误分类器 _friendlyError</strong>把底层异常转中文提示，体验友好（如"网络连接失败，请检查网络后重试"）。</li>
+    <li><strong>关键常量已抽离</strong>：PAGE_SIZE=20、MS_PER_DAY、TOAST_DURATION=2600、TRASH_RETENTION_DAYS=90 等。</li>
+    <li><strong>无 var 声明</strong>（项目源码 0 处，仅第三方 vendor 使用）。</li>
+    <li><strong>views 目录硬编码颜色 0 处</strong>（仅 utils.js:797 一处 #fff）。</li>
+  </ol>
+</div>
+
+<h3>问题清单</h3>
+
+<div class="issue p0">
+  <div class="title"><span class="pill p0">P0</span>无暗色主题，长时间使用伤眼</div>
+  <div class="body">
+    <p><strong>事实</strong>：switchTheme（router.js:297）仅在 <code>default</code>（铜色）↔ <code>cream</code>（奶油白）两套<strong>浅色</strong>主题间切换，无 <code>data-theme="dark"</code> 定义。variables.css 仅有两套 :root 主题。</p>
+    <p><strong>影响</strong>：§12.5 无障碍只提 prefers-reduced-motion，但暗色主题是现代应用基本预期，长时间浅色使用伤眼，夜间/暗光环境体验差。</p>
+    <p><strong>建议</strong>：在 variables.css 增加第三套 <code>[data-theme="dark"]</code>，定义暗色背景（如 #1a1a1a）+ 浅色文字，并在 switchTheme 支持三态切换；可加 <code>@media (prefers-color-scheme: dark)</code> 自动识别系统偏好。</p>
+  </div>
+  <div class="ref">ref: src/styles/variables.css 全文, src/core/router.js:297 switchTheme</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>行内 onclick 大量存在，CSP/XSS 风险</div>
+  <div class="body">
+    <p><strong>事实</strong>：行内 onclick 是整个应用的交互范式（非 Vue SFC 模式，函数挂全局 window）——orders.js 约 58 处、prices.js 14 处、units.js 20 处等共 16 个文件。</p>
+    <p><strong>权衡</strong>：虽偏离规范 §3"禁止行内 onclick"，但属项目既定范式（eval 全局执行模式，AGENTS.md §4 明确"业务层零算法改动 → window.* 全局语义"），是<strong>有意为之</strong>。</p>
+    <p><strong>风险</strong>：</p>
+    <ul>
+      <li>CSP 严格模式下（如 Tauri 生产）script-src 可能拦截行内事件处理器——项目记忆已记录"Tauri 构建注入 sha256 导致 unsafe-inline 失效"问题，印证此风险。</li>
+      <li>XSS 面扩大——若 escHtml/escAttr 在任一处遗漏，用户数据可注入 onclick 执行任意代码。</li>
+    </ul>
+    <p><strong>建议</strong>：① 短期——保持现状但强化 escHtml/escAttr 强制检查（可加 ESLint 规则禁止裸 innerHTML）；② 中期——逐步迁移到事件委托（document.addEventListener + data-action 属性），既保留 eval 模式又消除行内 onclick。</li>
+  </div>
+  <div class="ref">ref: Explore 报告 §7, 项目记忆 Tauri CSP 问题</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>utils.js:797 硬编码颜色 #fff</div>
+  <div class="body">
+    <p><strong>事实</strong>：utils.js:797 分页按钮文字色用内联 style <code>color:#fff</code>。</p>
+    <p><strong>影响</strong>：违反 §12.3"禁止硬编码颜色，必须用 CSS 变量"。虽只一处，但破坏变量体系一致性，暗色主题上线后会不可见。</p>
+    <p><strong>建议</strong>：改为 <code>var(--card-text)</code> 或新增 <code>--btn-pri-fg</code> 变量。</p>
+  </div>
+  <div class="ref">ref: src/core/utils.js:797</div>
+</div>
+
+<div class="issue p1">
+  <div class="title"><span class="pill p1">P1</span>console.* 残留 10 个文件</div>
+  <div class="body">
+    <p><strong>事实</strong>：10 个文件含 console.*——多为 console.error/info 错误日志（ai-chat.js、app.js、utils.js、kb.js、router.js:681、store.js、App.vue、ai.js、exporter.js）。</p>
+    <p><strong>影响</strong>：§12.4"生产代码禁止 console.log（调试日志）；error/warn 仅用于 catch 块"。当前 error/info 多数合规，但散落无统一封装，生产环境无法一键关闭。</p>
+    <p><strong>建议</strong>：封装 logger 工具（logger.error/info/debug），生产构建时通过 Vite define 注入 <code>__LOG_LEVEL__</code> 控制，统一替换裸 console。</p>
+  </div>
+  <div class="ref">ref: Explore 报告 §7 console.*</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>魔法数字部分内联（gap/font-size）</div>
+  <div class="body">
+    <p>关键常量已抽离（PAGE_SIZE/MS_PER_DAY/TOAST_DURATION），但 orders.js 等存在大量内联 style 数字（gap/font-size）。应抽为 CSS 类或 CSS 变量。</p>
+  </div>
+  <div class="ref">ref: Explore 报告 §7, src/views/orders.js</div>
+</div>
+
+<div class="issue p2">
+  <div class="title"><span class="pill p2">P2</span>无虚拟滚动，大列表依赖分页</div>
+  <div class="body">
+    <p>PAGE_SIZE=20 分页是合理替代，但若单页数据量大（如订单明细超 100 行、BOM 批量导入预览），仍可能卡顿。规范 §11"大数据列表使用虚拟滚动"。</p>
+    <p><strong>建议</strong>：批量导入预览、订单产品明细超 50 行时启用虚拟滚动。</p>
+  </div>
+  <div class="ref">ref: src/core/router.js:51 PAGE_SIZE, docs/操作手册.md §5.3 批量导入预览</div>
+</div>
+
+<h2 id="s5"><span class="num">5</span>改进优先级路线图</h2>
+
+<div class="summary-box">
+  <strong>按"影响面 × 实施成本"排序，建议分三阶段推进：</strong>
+</div>
+
+<table>
+  <tr><th>阶段</th><th>优先级</th><th>问题</th><th>实施建议</th><th>预计影响</th></tr>
+  <tr>
+    <td rowspan="2"><strong>阶段一<br>立即修复</strong></td>
+    <td><span class="pill p0">P0</span></td>
+    <td>状态回退无关联数据校验</td>
+    <td>prevStepOrder 增加结算/发票关联检查 + 警告弹窗</td>
+    <td>防孤儿数据，数据完整性</td>
+  </tr>
+  <tr>
+    <td><span class="pill p0">P0</span></td>
+    <td>无暗色主题</td>
+    <td>variables.css 增 [data-theme="dark"] + switchTheme 三态</td>
+    <td>体验提升，护眼</td>
+  </tr>
+  <tr>
+    <td rowspan="4"><strong>阶段二<br>短期改进</strong></td>
+    <td><span class="pill p1">P1</span></td>
+    <td>文档与代码版本/路径错位</td>
+    <td>重建 COVERAGE.md + flows/orders.md，加版本水印</td>
+    <td>维护准确性</td>
+  </tr>
+  <tr>
+    <td><span class="pill p1">P1</span></td>
+    <td>异常状态无人工入口</td>
+    <td>订单详情增加"标记异常"按钮 + 二次确认</td>
+    <td>流程完整性</td>
+  </tr>
+  <tr>
+    <td><span class="pill p1">P1</span></td>
+    <td>utils.js:797 硬编码 #fff</td>
+    <td>改为 var(--card-text)</td>
+    <td>变量体系一致</td>
+  </tr>
+  <tr>
+    <td><span class="pill p1">P1</span></td>
+    <td>console.* 统一封装</td>
+    <td>新增 logger 工具 + Vite define 控制等级</td>
+    <td>生产可关闭日志</td>
+  </tr>
+  <tr>
+    <td rowspan="5"><strong>阶段三<br>中期演进</strong></td>
+    <td><span class="pill p1">P1</span></td>
+    <td>视图文件超长</td>
+    <td>orders.js 拆 5 子模块，exporter/ai-tools/store 同步拆</td>
+    <td>可维护性</td>
+  </tr>
+  <tr>
+    <td><span class="pill p1">P1</span></td>
+    <td>行内 onclick CSP 风险</td>
+    <td>逐步迁移事件委托（data-action + addEventListener）</td>
+    <td>CSP 兼容、XSS 收敛</td>
+  </tr>
+  <tr>
+    <td><span class="pill p2">P2</span></td>
+    <td>router.js 职责过载</td>
+    <td>拆 router/state/filters</td>
+    <td>单一职责</td>
+  </tr>
+  <tr>
+    <td><span class="pill p2">P2</span></td>
+    <td>重复代码（过滤器/行渲染）</td>
+    <td>提取 createFilter 工厂 + 模板函数</td>
+    <td>DRY 原则</td>
+  </tr>
+  <tr>
+    <td><span class="pill p2">P2</span></td>
+    <td>魔法数字内联 / 无虚拟滚动</td>
+    <td>抽 CSS 变量 + 大列表虚拟滚动</td>
+    <td>性能与一致性</td>
+  </tr>
+</table>
+
+<h2 id="s6"><span class="num">6</span>总结</h2>
+
+<div class="lead">
+  紧固件贸易工作台是一个<strong>工程完成度极高</strong>的纯前端 SPA——功能闭环完整、状态机严谨、数据安全设计企业级、CSS 变量体系规范、AI 增强可选可回滚。在三维度审计中，<strong>功能设计</strong>与<strong>操作流程</strong>整体优秀，问题集中在<strong>文档与代码同步</strong>、<strong>文件超长拆分</strong>、<strong>状态回退关联校验</strong>三处；<strong>用户体验</strong>的主要短板是<strong>无暗色主题</strong>与<strong>行内 onclick 的 CSP 风险</strong>。
+</div>
+
+<div class="card">
+  <h4>核心结论</h4>
+  <ul>
+    <li><strong class="good">优势</strong>：数据三层存储 + 软删除 + AI 提案确认 + 整批回滚 + 脏读检测——这套组合在企业级前端中属上乘，安全容错设计可作为参考范本。</li>
+    <li><strong class="bad">短板</strong>：文档滞后于代码（版本/路径/状态枚举三处错位）、单文件超千行、无暗色主题——这三项是下一阶段改进的重点。</li>
+    <li><strong>权衡</strong>：行内 onclick、全局非响应式状态属项目既定架构（eval 全局执行 + file:// 零依赖运行），是有意为之的权衡，非缺陷，但需配套强化 escHtml 强制检查与 CSP 适配。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h4>一句话评价</h4>
+  <p>这是一个"业务逻辑扎实、安全设计精良、工程化有提升空间"的成熟项目——按阶段路线图推进 P0/P1 修复后，可达到企业级前端规范的优秀水平。</p>
+</div>
+
+<footer>
+  本报告由前端开发规范 Skill 驱动，基于 src/ 全量只读分析生成 · 2026-08-28 · 所有结论附文件路径行号引用
+</footer>
+
+</div>
+</body>
+</html>

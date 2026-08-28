@@ -1031,11 +1031,12 @@ API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，
 - 功能层 `flow`（4 个，`AIT.FLOW_TOOL_NAMES`）：**自动执行**（`AIT.runFlow`，纯系统动作）——纯 UI 动作（导航/打开抽屉）不确认不审计；导出（生成文件）记 `op:'export'` 审计（操作历史可追溯，不可回滚）
 - 写入/删除/流转（25 个）：`confirmOpsModal` 确认弹窗（字段 diff + 敏感字段待补 + 删除提示）→ `AIT.executeOps` 批量执行（单条失败不中断）→ 结果回填 → 继续多轮（上限 8 轮）
 
-**工具清单**（`AIT.TOOLS_DEFS`，约 36 个）：
+**工具清单**（`AIT.TOOLS_DEFS`，47 个，v1.0.31）：
 - 查询 7：query_units / query_specs / query_bom / query_prices / query_orders / query_settlements / query_invoices
 - 写入 21：create/update_unit、create/update_price、create/update_bom、set_spec_value、create_order、update_order_meta、add/update_order_item、assign_supplier、add_manual_supplier、remove_sourcing_option、create/update_settlement、create/update_invoice、flow_order_status
 - 软删除 8：delete_unit/bom/price/order/spec_value/settlement/invoice + remove_order_item（均进回收站）
-- 功能层 4：navigate_view / export_order_excel / open_settlement_drawer / open_invoice_drawer（`AIT.runFlow`，纯系统动作）
+- 知识库 4（v1.0.10+）：query_knowledge / list_kb_files / get_kb_file / search_kb_detail（RAG 本地检索，立即执行）
+- 功能层 7：navigate_view / export_order_excel / open_settlement_drawer / open_invoice_drawer / query_help / open_order_detail（新增）/ set_theme（`AIT.runFlow` 或帮助检索，纯系统动作）
 
 **安全机制**：
 - 校验层：`AIT.validateOp` 复用业务规则（查重/角色/状态机/剩余量/引用完整性）

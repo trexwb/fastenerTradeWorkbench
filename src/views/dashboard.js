@@ -144,3 +144,50 @@ function viewDashboard(){
       )+
     '</div>';
 }
+
+/* =========================================================
+   B6：⌘K 新手引导气泡（Dashboard 首次显示；localStorage 去重，只弹一次）
+   - 键名：wb_fastener_cmdk_tip_shown
+   - 用户点击"立即试试"后标记已显示并打开 ⌘K 面板；点击"知道了"仅关闭并标记
+   ========================================================= */
+const _CMD_K_TIP_KEY = 'wb_fastener_cmdk_tip_shown';
+function showCmdKTipIfNeeded(){
+  try{
+    if(localStorage.getItem(_CMD_K_TIP_KEY)) return;
+    // 只在概览页（dashboard）显示；若渲染过程中未到概览，后续 render 会再检查
+    if(view!=='dashboard') return;
+  }catch(e){return;}
+  // 避免与其他弹窗叠层：等 600ms 让主要内容渲染完成后出现
+  setTimeout(function(){
+    // 防止重复注入（同一页多次 render 可能叠加）
+    if(document.querySelector('.cmdk-tip')) return;
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '') ||
+                  (navigator.userAgentData && navigator.userAgentData.platform && /Mac|iOS/.test(navigator.userAgentData.platform));
+    const kbd = isMac ? '⌘K' : 'Ctrl+K';
+    const html = '<div class="cmdk-tip" role="dialog" aria-label="快捷键提示">'+
+      '<div class="ct-title">'+icon('search','16')+'高效快捷键 <span class="kbd">'+kbd+'</span></div>'+
+      '<div class="ct-body">按 <b>'+kbd+'</b> 随时打开全局命令面板：搜索订单/客户/报价，或直接输入问题问 AI 助手。<br>试试输入单号即可跳到对应订单详情。</div>'+
+      '<div class="ct-actions">'+
+        '<button class="ct-close" onclick="dismissCmdKTip(false)">知道了</button>'+
+        '<button class="btn primary sm" onclick="dismissCmdKTip(true)">'+icon('zap','12')+'立即试试 '+kbd+'</button>'+
+      '</div>'+
+    '</div>';
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    document.body.appendChild(tmp.firstElementChild);
+  }, 600);
+}
+function dismissCmdKTip(openPanel){
+  try{localStorage.setItem(_CMD_K_TIP_KEY,'1');}catch(e){}
+  const el = document.querySelector('.cmdk-tip');
+  if(el){el.style.animation='cmdk-tip-in .18s reverse';setTimeout(()=>el.remove(),160);}
+  if(openPanel && typeof openSearchPanel==='function'){
+    setTimeout(function(){try{openSearchPanel();}catch(e){}},180);
+  }
+}
+// render 完成后注册（通过 setTimeout 保证 DOM 已注入）
+setTimeout(function(){
+  // 挂到 window，供 router.render 之后调用；也在全局首次检查一次
+  window.__showCmdKTipIfNeeded = showCmdKTipIfNeeded;
+  try{showCmdKTipIfNeeded();}catch(e){}
+},0);

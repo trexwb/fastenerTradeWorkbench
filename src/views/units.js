@@ -48,10 +48,10 @@ function unitRowHTML(p){
   return '<tr>'+
     '<td><input type="checkbox" class="unit-check" data-id="'+p.id+'" onchange="updateUnitBatchBtn()"></td>'+
     '<td><div style="display:flex;align-items:center;gap:10px"><div class="td-img">'+escHtml(p.name[0])+'</div><b>'+escHtml(p.name)+'</b></div></td>'+
-    '<td>'+roleBadge(p.roles)+'</td>'+
-    '<td>'+escHtml(p.term||'-')+'</td>'+
-    '<td><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
-    '<td class="td-contacts">'+contacts+'</td>'+
+    '<td class="m-hide-s2">'+roleBadge(p.roles)+'</td>'+
+    '<td class="m-hide-s1">'+escHtml(p.term||'-')+'</td>'+
+    '<td class="m-hide-s1"><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
+    '<td class="m-hide-s2 td-contacts">'+contacts+'</td>'+
     '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')">'+icon('trash')+'删除</button></td>'+
   '</tr>';
 }
@@ -104,7 +104,7 @@ function viewUnits(){
   '</div>'+
   roleTabs+
   statsRow+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllUnits(this)" title="全选"></th><th>名称</th><th>角色</th><th>结算账期</th><th>评级</th><th>联系人</th><th></th></tr></thead><tbody id="unitBody">'+
+  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllUnits(this)" title="全选"></th><th>名称</th><th class="m-hide-s2">角色</th><th class="m-hide-s1">结算账期</th><th class="m-hide-s1">评级</th><th class="m-hide-s2">联系人</th><th></th></tr></thead><tbody id="unitBody">'+
   (rows||'<tr><td colspan="7">'+
     '<div class="empty-state">'+
       '<div class="es-icon">'+icon('users',28)+'</div>'+

@@ -34,9 +34,9 @@ function bootApp() {
  * initApp 回调：数据加载完成后，恢复 URL hash 指定的视图
  */
 function onAppReady() {
-  // 如果有 hash，恢复视图状态
-  if (window.location.hash && window.location.hash.length > 2) {
-    restoreFromHash();
-  }
+  // 恢复视图状态：标准协议（http/https）从 URL hash 恢复；
+  // file:/tauri: 等受限协议由 restoreFromHash 内部从 localStorage（fw_last_route）恢复。
+  // restoreFromHash 内部对空 hash / 无记录均有保护，可直接调用。
+  restoreFromHash();
   render();
 }

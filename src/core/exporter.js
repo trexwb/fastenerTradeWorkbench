@@ -141,7 +141,7 @@ function downloadWorkbook(wb, fname) {
       } catch (err) {
         // 用户取消或其他错误，回退到传统下载方式
         if (err.name !== 'AbortError') {
-          console.log('[exporter] showSaveFilePicker 失败，回退到传统下载:', err);
+          console.error('[exporter] showSaveFilePicker 失败，回退到传统下载:', err);
         }
       }
     }
@@ -187,7 +187,7 @@ async function exportOrder(orderId) {
       default:        await _exportOrderGeneral(o); break;
     }
   } catch (err) {
-    console.log('[exporter] 导出异常:', err);
+    console.error('[exporter] 导出异常:', err);
     toast('导出失败：' + err.message, 'error');
   }
 }

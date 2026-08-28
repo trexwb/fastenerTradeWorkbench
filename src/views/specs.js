@@ -80,11 +80,11 @@ function renderSpecGroup(k){
       '<button class="sg-toggle-btn" id="sgt_'+k+'" onclick="toggleSpecGroup(\''+k+'\')" title="展开/折叠">'+icon('chevronDown','14')+'</button>'+
     '</div>'+
     '<div class="sg-body" id="sgb_'+k+'">'+
-      // 搜索过滤行
+      // 搜索过滤行（§8 交互约定：回车或点击🔍图标触发；oninput 仅做防抖高亮，不触发真实"搜索过滤"语义动作）
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
-        '<div style="position:relative;flex:1">'+
-          '<input id="'+filterId+'" type="text" placeholder="搜索已有值..." oninput="filterSpecVals(\''+k+'\',this.value)" style="width:100%;padding:6px 10px 6px 32px;font-size:13px;border:1px solid var(--line);border-radius:var(--radius);box-sizing:border-box;background:var(--card)">'+
-          '<span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--gray);pointer-events:none">'+icon('search','12')+'</span>'+
+        '<div class="spec-filter-box" style="position:relative;flex:1;display:flex;align-items:center">'+
+          '<a href="javascript:void(0)" class="spec-filter-icon" onclick="runSpecFilter(\''+k+'\')" style="text-decoration:none;color:inherit;cursor:pointer;position:absolute;left:10px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center">'+icon('search','12')+'</a>'+
+          '<input id="'+filterId+'" type="text" placeholder="搜索已有值（Enter 触发）..." onkeydown="if(event.key===\'Enter\')runSpecFilter(\''+k+'\')" oninput="highlightSpecVals(\''+k+'\',this.value)" style="width:100%;padding:6px 10px 6px 30px;font-size:13px;border:1px solid var(--line);border-radius:var(--radius);box-sizing:border-box;background:var(--card)">'+
         '</div>'+
         '<button class="btn sm ghost" onclick="clearSpecFilter(\''+k+'\')" id="sfcl_'+k+'" style="display:none;font-size:12px;padding:2px 10px">清除</button>'+
       '</div>'+
@@ -95,7 +95,7 @@ function renderSpecGroup(k){
           let unused=usage.total===0;
           return '<span class="spec-val-tag'+(unused?' unused':'')+'" id="svt_'+k+'_'+i+'" data-idx="'+i+'">'+
             '<span class="sv-text">'+escHtml(v)+'</span>'+
-            (unused?'<span class="sv-unused-tag">(未使用)</span>':'')+
+            /* v1.0.28：未使用标签去掉"(未使用)"文字——.unused class 灰色样式已表达语义，文字冗余 */
             '<span class="sv-del" onclick="event.stopPropagation();delSpecVal(\''+k+'\','+i+')" title="删除">×</span>'+
           '</span>';
         }).join('')+
@@ -132,7 +132,7 @@ function renderSpecGroup(k){
 function viewSpecs(){
   let html='<div class="card">'+
     '<h2>'+icon('tag','18')+'属性选项管理</h2>'+
-    '<p class="note" style="margin-bottom:16px">管理各产品属性的可选值集合。这些选项将出现在签约报价和采购订单的属性下拉框中。无引用的值（显示「未使用」）可安全删除。</p>'+
+    '<p class="note" style="margin-bottom:16px">管理各产品属性的可选值集合。这些选项将出现在签约报价和采购订单的属性下拉框中。无引用的值（灰色样式标记）可安全删除。</p>'+
     '<div class="specs-toolbar">'+
       '<button class="btn sm" onclick="openBatchImportSpec(null)">'+icon('upload','14')+' 批量导入全部维度</button>'+
       '<button class="btn sm" onclick="exportAllSpecs()">'+icon('download','14')+' 导出全部</button>'+
@@ -159,7 +159,36 @@ function toggleSpecGroup(k){
 
 /* 搜索过滤 */
 /**
- * 搜索过滤属性值标签（实时高亮匹配）。
+ * 输入时实时高亮匹配项（仅改变匹配项背景色，不隐藏/重排 DOM，避免中文输入法冲突）。
+ * §8 约定：真实过滤/隐藏动作仅在 Enter 或 🔍 图标点击时触发。
+ * @param {string} k - 属性字段名
+ * @param {string} v - 搜索关键词
+ * @returns {void}
+ */
+function highlightSpecVals(k,v){
+  const container=document.getElementById('svt_'+k);
+  if(!container)return;
+  const q=(v||'').toLowerCase().trim();
+  container.querySelectorAll('.spec-val-tag').forEach(function(span){
+    const text=span.querySelector('.sv-text');
+    const hit=!q||(text&&text.textContent.toLowerCase().includes(q));
+    span.style.outline=hit?'':'2px dashed var(--warn)';
+    span.style.opacity=hit?'':'0.45';
+  });
+}
+/**
+ * 执行规格值过滤（§8 合规入口：Enter 键 或 🔍 图标点击触发）。
+ * 不匹配的标签设置 display:none；同时重置高亮样式。
+ * @param {string} k - 属性字段名
+ * @returns {void}
+ */
+function runSpecFilter(k){
+  const el=document.getElementById('sff_'+k);
+  const v=el?el.value:'';
+  filterSpecValsNow(k,v);
+}
+/**
+ * 搜索过滤属性值标签（真实过滤：不匹配标签隐藏）。
  * @param {string} k - 属性字段名
  * @param {string} v - 搜索关键词
  * @returns {void} 无返回值
@@ -178,11 +207,13 @@ function filterSpecValsNow(k,v){
   spans.forEach(function(span){
     let text=span.querySelector('.sv-text');
     if(!text)return;
-    span.style.display=(!q||text.textContent.toLowerCase().includes(q))?'':'none';
+    const hit=!q||text.textContent.toLowerCase().includes(q);
+    span.style.display=hit?'':'none';
+    span.style.outline='';span.style.opacity='';
   });
 }
-/** 属性值搜索防抖入口（对输入做 150ms 防抖） */
-const filterSpecVals=debounce(filterSpecValsNow,150);
+/** 属性值搜索防抖入口（保留，兼容历史代码引用；仅用在 clearSpecFilter 内部的立即清零场景） */
+const filterSpecVals=filterSpecValsNow;
 /**
  * 清除属性值搜索过滤并恢复全部显示。
  * @param {string} k - 属性字段名

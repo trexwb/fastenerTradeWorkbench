@@ -8,12 +8,12 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-s
 .sidebar .brand{padding:18px 20px;border-bottom:1px solid var(--side-border);font-size:18px;font-weight:700;color:var(--side-brand);line-height:1.4;}
 .sidebar .brand small{display:block;font-size:12px;font-weight:400;color:var(--side-brand-sub);margin-top:3px;}
 .sidebar nav{padding:12px 10px;flex:1;overflow-y:auto;}
-.sidebar nav a{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:8px;color:var(--side-ink-dim);text-decoration:none;font-size:14px;cursor:pointer;transition:.15s;user-select:none;margin-bottom:2px;}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--radius-md);color:var(--side-ink-dim);text-decoration:none;font-size:14px;cursor:pointer;transition:.15s;user-select:none;margin-bottom:2px;}
 .sidebar nav a>*+*{margin-left:10px}
 .sidebar nav a:hover{background:var(--side-hover-bg);color:var(--side-hover-ink);}
 .sidebar nav a.active{background:var(--side-active-bg);color:var(--side-active-ink);box-shadow:inset 2px 0 0 var(--accent);}
 .sidebar nav a svg{width:18px;height:18px;flex-shrink:0;}
-.sidebar nav button{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:8px;color:var(--side-ink-dim);background:none;border:none;font-size:14px;cursor:pointer;transition:.15s;user-select:none;margin-bottom:2px;width:100%;text-align:left;font-family:inherit;}
+.sidebar nav button{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--radius-md);color:var(--side-ink-dim);background:none;border:none;font-size:14px;cursor:pointer;transition:.15s;user-select:none;margin-bottom:2px;width:100%;text-align:left;font-family:inherit;}
 .sidebar nav button:hover{background:var(--side-hover-bg);color:var(--side-hover-ink);}
 .sidebar nav button.active{background:var(--side-active-bg);color:var(--side-active-ink);box-shadow:inset 2px 0 0 var(--accent);}
 .sidebar nav button svg{width:18px;height:18px;flex-shrink:0;}
@@ -23,20 +23,91 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-s
 .sidebar nav .nav-parent .nav-arrow.expanded{transform:rotate(90deg);}
 .sidebar nav .nav-child{padding-left:36px;font-size:13px;margin-top:0;}
 .sidebar .side-ft{padding:12px 18px;border-top:1px solid var(--side-ft-border);}
-.sidebar .side-ft button{width:100%;background:var(--side-ft-btn-bg);border:1px solid var(--side-ft-btn-border);color:var(--side-ft-btn-ink);padding:8px;border-radius:8px;font-size:14px;cursor:pointer;transition:.15s;}
+.sidebar .side-ft button{width:100%;background:var(--side-ft-btn-bg);border:1px solid var(--side-ft-btn-border);color:var(--side-ft-btn-ink);padding:8px;border-radius:var(--radius-md);font-size:14px;cursor:pointer;transition:.15s;}
 .sidebar .side-ft button:hover{background:var(--side-ft-btn-hover);}
-.sidebar .side-ft .side-ft-link{display:block;width:100%;background:var(--side-ft-btn-bg);border:1px solid var(--side-ft-btn-border);color:var(--side-ft-btn-ink);padding:8px;border-radius:8px;font-size:14px;cursor:pointer;transition:.15s;text-align:center;text-decoration:none;}
+.sidebar .side-ft .side-ft-link{display:block;width:100%;background:var(--side-ft-btn-bg);border:1px solid var(--side-ft-btn-border);color:var(--side-ft-btn-ink);padding:8px;border-radius:var(--radius-md);font-size:14px;cursor:pointer;transition:.15s;text-align:center;text-decoration:none;}
 .sidebar .side-ft .side-ft-link:hover{background:var(--side-ft-btn-hover);color:var(--side-ft-btn-ink);}
 .sidebar .side-ft .theme-toggle{margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;}
 .menu-overlay{display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.4);z-index:var(--z-overlay);}
 .menu-overlay.on{display:block;}
+
+/* ===== 移动端 / 平板 响应式断点（C2 修复） =====
+   设计原则：
+   - 900px 以下（平板竖屏 / 大屏手机）：侧栏默认隐藏，hamburger 显示，点击后从左侧滑入，遮罩阻止点穿
+   - 640px 以下（手机）：toolbar 换行、内容区 padding 收缩、表格/卡片最小宽度保证水平单指滚动
+   - 不使用 container 查询，保持 IIFE 单文件打包后 file:// 下的纯 CSS 兼容性 */
+
+/* 平板及以下：侧栏变抽屉 + hamburger 可见 */
+@media (max-width: 900px){
+  .sidebar{transform:translateX(-104%);box-shadow:2px 0 18px rgba(0,0,0,.15);}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  .topbar{padding:0 14px;height:50px;}
+  .topbar .crumb{font-size:16px;}
+  .topbar .hamburger{display:inline-flex;align-items:center;justify-content:center;color:var(--ink);}
+  .content{padding:16px;}
+  .footer{padding:12px 16px;}
+  /* 工具卡弹性换行，避免按钮挤到下一行无空间 */
+  .toolbar{flex-wrap:wrap;gap:8px;}
+  /* 表格：最小宽度兜底，内容溢出时横向滚动（由 .table-wrap 负责） */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .table-wrap>table{min-width:720px;}
+  /* 抽屉：宽度提升到 92vw，移动端更易操作（用 body 前缀提升 specificity 替代 !important，规范 §12.3） */
+  body .drawer-panel{width:92vw;max-width:92vw;}
+  /* 模态对话框：贴底圆角适配，全屏接近原生 */
+  .mask{padding:24px 10px 10px;align-items:flex-end;}
+  .modal{width:100%;border-radius:14px 14px var(--radius-md) var(--radius-md);}
+  /* 全局搜索（⌘K）面板：顶距收窄 */
+  .cmd-overlay{padding-top:8vh;}
+  .cmd-panel{width:100%;border-radius:12px;}
+  /* 统计卡片换行（Dashboard） */
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
+}
+
+/* 手机竖屏：更激进的间距收缩与自适应字号 */
+@media (max-width: 640px){
+  body{font-size:15px;line-height:1.5;}
+  .topbar .crumb{font-size:15px;gap:6px;}
+  .topbar .crumb .crumb-sub{display:none;}
+  .content{padding:12px;}
+  .card{padding:14px 12px;margin-bottom:14px;border-radius:12px;}
+  .stat{padding:14px;border-radius:12px;}
+  .toolbar{padding:10px;gap:8px;}
+  .toolbar .search-box{flex:1 1 100%;max-width:none;}
+  .filter-bar{flex-wrap:wrap;gap:6px;padding:10px;}
+  .filter-bar .combo,
+  .filter-bar .filt-combo{flex:1 1 calc(50% - 6px);}
+  .table-wrap>table{min-width:640px;}
+  th,td{padding:8px 6px;font-size:13px;}
+  .td-act .btn.sm{padding:4px 6px;font-size:12px;}
+  .td-act .btn.sm svg{width:12px;height:12px;}
+  /* 模态：底部贴边显示，便于单手操作 */
+  .mask{padding:10px 6px 6px;}
+  .modal{max-height:calc(100vh - 16px);}
+  body .drawer-panel{width:100vw;max-width:100vw;}
+  /* 导航面包屑过长时截断 */
+  .topbar .crumb{max-width:55vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* 刘海屏/圆角屏安全区适配（配合 index.html viewport-fit=cover） */
+  .topbar{height:auto;min-height:calc(54px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px);}
+  .topbar .crumb{flex:1;min-width:0;}
+  .topbar .right{gap:4px;}
+  .topbar .right .tag{display:none;}
+  .topbar .right .shortcut-btn{padding:4px 7px;}
+  .content{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));}
+  .drawer-bd{padding:16px;}
+  .modal .mb{padding:16px;}
+  .modal .mf{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));}
+  .drawer-ft{flex-wrap:wrap;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));}
+  .mask{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));}
+  .msg-wrap{top:calc(14px + env(safe-area-inset-top,0px));}
+}
 
 .main{flex:1;display:flex;flex-direction:column;min-width:0;margin-left:220px;min-height:100vh;}
 .topbar{height:54px;background:var(--topbar-bg);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;position:sticky;top:0;z-index:var(--z-topbar);}
 .topbar .crumb{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px;}
 .topbar .hamburger{display:none;cursor:pointer;padding:4px;}
 .topbar .right{display:flex;align-items:center;gap:10px;}
-.theme-tgl{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--fg-soft);line-height:0;transition:all .2s;}
+.theme-tgl{background:none;border:1px solid var(--line);border-radius:var(--radius);padding:4px 6px;cursor:pointer;color:var(--fg-soft);line-height:0;transition:all .2s;}
 .theme-tgl:hover{color:var(--pri);border-color:var(--pri);background:var(--pri-bg);}
 .content{padding:24px;overflow:auto;flex:1;max-width:var(--content-max);width:100%;margin:0 auto;}
 .footer{padding:14px 24px;text-align:center;color:var(--gray);font-size:12px;border-top:1px solid var(--line);background:var(--card);flex-shrink:0;}

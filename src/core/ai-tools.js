@@ -7,18 +7,8 @@ const AIT=(function(){
   /** 补充字段说明：直接取自用户对话内容 */
   const SENSITIVE_NOTE='字段直接取自用户对话内容，未提供的可省略；用户提供的信息均可作为普通字段使用。';
 
-  /** 订单状态流转映射：当前状态 → 合法的下一站/终态分支 */
-  const NEXT_STATUS={
-    '待确认':['寻货中','取消'],
-    '寻货中':['报价中','取消'],
-    '报价中':['签约完成','未成交','取消'],
-    '未成交':['报价中'],
-    '签约完成':['送货中','异常'],
-    '送货中':['完成','异常'],
-    '完成':[],
-    '异常':[],
-    '取消':[]
-  };
+  /** 订单状态流转映射：当前状态 → 合法的下一站/终态分支（P3/R3 修复：统一引用共享校验模块 validators.js） */
+  const NEXT_STATUS=FTValidators.NEXT_STATUS;
 
   /** 工具 schema（DeepSeek 兼容 OpenAI function calling 格式） */
   const TOOLS_DEFS=[
@@ -313,6 +303,7 @@ const AIT=(function(){
             buyerId:{type:'string',description:'采购商单位 ID（必填）'},
             project:{type:'string',description:'项目名称（可选）'},
             deliveryDate:{type:'string',description:'交货日期 YYYY-MM-DD（可选）'},
+            deliveryAddress:{type:'string',description:'交货地址（可选，与视图层新建订单的地址能力对齐）'},
             buyerContact:{type:'string',description:'采购方对接人姓名（可选，电话不通过此工具填写）'},
             items:{
               type:'array',
@@ -905,7 +896,7 @@ const AIT=(function(){
       if(!u)return {ok:false,error:'供应商不存在：'+args.unitId};
       if(!u.roles.includes('供应商'))return {ok:false,error:'目标单位不是供应商：'+u.name};
       const price=Number(args.price);
-      if(!(price>0))return {ok:false,error:'单价必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.price))return {ok:false,error:'单价必须 > 0'};
       const attrs={type:args.type||'',standard:args.standard||'',diameter:args.diameter||'',hardness:args.hardness||'',surface:args.surface||'',material:args.material||''};
       const specText=String(args.spec||'');
       const bomSku=String(args.bomSku||'');
@@ -928,7 +919,7 @@ const AIT=(function(){
       if(args.hardness!==undefined)patch.hardness=args.hardness;
       if(args.surface!==undefined)patch.surface=args.surface;
       if(args.material!==undefined)patch.material=args.material;
-      if(args.price!==undefined){const pr=Number(args.price);if(!(pr>0))return {ok:false,error:'单价必须 > 0'};patch.price=pr;}
+      if(args.price!==undefined){if(!FTValidators.isPositiveNumber(args.price))return {ok:false,error:'单价必须 > 0'};const pr=Number(args.price);patch.price=pr;}
       if(args.validFrom!==undefined)patch.validFrom=args.validFrom;
       if(args.contact!==undefined)patch.contact=args.contact;
       if(args.remark!==undefined)patch.remark=args.remark;
@@ -942,9 +933,9 @@ const AIT=(function(){
       const o=DB.orders.find(x=>x.id===args.orderId);
       if(!o)return {ok:false,error:'订单不存在：'+args.orderId};
       if(!ORDER_STATUSES.includes(args.toStatus))return {ok:false,error:'toStatus 取值非法：'+args.toStatus};
-      if(o.status===args.toStatus)return {ok:false,error:'订单已处于该状态：'+o.status};
-      const allow=NEXT_STATUS[o.status]||[];
-      if(!allow.includes(args.toStatus))return {ok:false,error:'非法流转：'+o.status+' → '+args.toStatus+'（允许：'+(allow.join('/')||'无')+'）'};
+      // P3/R3 修复：状态流转合法性复用共享校验模块（消息与原来完全一致）
+      const flow=FTValidators.canFlowOrderStatus(o.status,args.toStatus);
+      if(!flow.ok)return {ok:false,error:flow.error};
       return {ok:true,preview:{orderId:o.id,buyer:unitNameSafe(o.buyerId),before:o.status,after:args.toStatus}};
     },
     // ===== 阶段3：查询类校验（轻量，主要在 runQuery 里执行） =====
@@ -1005,13 +996,16 @@ const AIT=(function(){
       if(!u)return {ok:false,error:'采购商不存在：'+args.buyerId};
       if(!u.roles.includes('采购商'))return {ok:false,error:'目标单位不是采购商：'+u.name};
       const items=Array.isArray(args.items)?args.items:[];
-      if(!items.length)return {ok:false,error:'至少需要 1 项产品明细'};
-      for(let i=0;i<items.length;i++){
-        const it=items[i];
-        if(!String(it.name||'').trim())return {ok:false,error:'第 '+(i+1)+' 项产品名称不能为空'};
-        if(!(Number(it.qty)>0))return {ok:false,error:'第 '+(i+1)+' 项数量必须 > 0'};
+      // P3/R3 修复：明细必填/数量校验统一走共享校验模块（requireDelivery=false 保持 AI 建单不要求交货期；name_only 保持只看名称原语义）
+      const _v=FTValidators.validateOrderInput({buyerId:args.buyerId,items:items},{requireDelivery:false,checkItem:true,itemNameRule:'name_only'});
+      if(!_v.ok){
+        if(_v.code==='no_items')return {ok:false,error:'至少需要 1 项产品明细'};
+        if(_v.code==='item_no_name')return {ok:false,error:'第 '+(+_v.index+1)+' 项产品名称不能为空'};
+        if(_v.code==='item_bad_qty')return {ok:false,error:'第 '+(+_v.index+1)+' 项数量必须 > 0'};
+        return {ok:false,error:_v.error};
       }
-      const after={id:'(自动生成)',buyerId:args.buyerId,buyerName:u.name,project:args.project||'',deliveryDate:args.deliveryDate||'',buyerContact:args.buyerContact||'',status:'待确认',items:items.map(it=>({id:'(自动生成)',name:it.name,spec:it.spec||'',qty:it.qty,salePrice:it.salePrice||0,quotePrice:it.quotePrice||0,bomSku:it.bomSku||''}))};
+      // P2/R2 修复：预览补齐 deliveryAddress 展示，与执行器落库结构一致
+      const after={id:'(自动生成)',buyerId:args.buyerId,buyerName:u.name,project:args.project||'',deliveryDate:args.deliveryDate||'',deliveryAddress:args.deliveryAddress||'',buyerContact:args.buyerContact||'',status:'待确认',items:items.map(it=>({id:'(自动生成)',name:it.name,spec:it.spec||'',qty:it.qty,salePrice:it.salePrice||0,quotePrice:it.quotePrice||0,bomSku:it.bomSku||''}))};
       return {ok:true,preview:{after}};
     },
     update_order_meta(args){
@@ -1031,7 +1025,7 @@ const AIT=(function(){
       const o=DB.orders.find(x=>x.id===args.orderId);
       if(!o)return {ok:false,error:'订单不存在：'+args.orderId};
       if(!String(args.name||'').trim())return {ok:false,error:'产品名称不能为空'};
-      if(!(Number(args.qty)>0))return {ok:false,error:'数量必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.qty))return {ok:false,error:'数量必须 > 0'};
       const after={id:'(自动生成)',name:args.name,spec:args.spec||'',qty:args.qty,salePrice:args.salePrice||0,quotePrice:args.quotePrice||0,bomSku:args.bomSku||'',usage:args.usage||'',remark:args.remark||''};
       return {ok:true,preview:{after}};
     },
@@ -1044,7 +1038,7 @@ const AIT=(function(){
       const before=_snap({id:it.id,name:it.name,spec:it.spec,qty:it.qty,salePrice:it.salePrice,quotePrice:it.quotePrice,usage:it.usage,remark:it.remark});
       const patch={};
       ['name','spec','usage','remark'].forEach(k=>{if(args[k]!==undefined)patch[k]=args[k];});
-      if(args.qty!==undefined){if(!(Number(args.qty)>0))return {ok:false,error:'数量必须 > 0'};patch.qty=Number(args.qty);}
+      if(args.qty!==undefined){if(!FTValidators.isPositiveNumber(args.qty))return {ok:false,error:'数量必须 > 0'};patch.qty=Number(args.qty);}
       if(args.salePrice!==undefined)patch.salePrice=Number(args.salePrice);
       if(args.quotePrice!==undefined)patch.quotePrice=Number(args.quotePrice);
       if(!Object.keys(patch).length)return {ok:false,error:'未提供任何更新字段'};
@@ -1065,7 +1059,7 @@ const AIT=(function(){
       if(!it)return {ok:false,error:'明细不存在：'+args.itemId};
       const p=DB.prices.find(x=>x.id===args.priceId);
       if(!p)return {ok:false,error:'报价不存在：'+args.priceId};
-      if(!(Number(args.allocQty)>0))return {ok:false,error:'分配数量必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.allocQty))return {ok:false,error:'分配数量必须 > 0'};
       const allocSum=(it.options||[]).filter(opt=>opt.status!=='已移除').reduce((s,opt)=>s+(Number(opt.allocQty)||0),0);
       const remain=Number(it.qty||0)-allocSum;
       if(args.allocQty>remain)return {ok:false,error:'分配数量超出剩余量 '+fmtN(remain)};
@@ -1079,8 +1073,8 @@ const AIT=(function(){
       const it=(o.items||[]).find(x=>x.id===args.itemId);
       if(!it)return {ok:false,error:'明细不存在：'+args.itemId};
       if(!String(args.unitName||'').trim())return {ok:false,error:'供应商名称不能为空'};
-      if(!(Number(args.price)>0))return {ok:false,error:'采购单价必须 > 0'};
-      if(!(Number(args.allocQty)>0))return {ok:false,error:'分配数量必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.price))return {ok:false,error:'采购单价必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.allocQty))return {ok:false,error:'分配数量必须 > 0'};
       const allocSum=(it.options||[]).filter(opt=>opt.status!=='已移除').reduce((s,opt)=>s+(Number(opt.allocQty)||0),0);
       const remain=Number(it.qty||0)-allocSum;
       if(args.allocQty>remain)return {ok:false,error:'分配数量超出剩余量 '+fmtN(remain)};
@@ -1102,7 +1096,7 @@ const AIT=(function(){
       const u=DB.units.find(x=>x.id===args.unitId);
       if(!u)return {ok:false,error:'单位不存在：'+args.unitId};
       if(!String(args.date||'').trim())return {ok:false,error:'日期不能为空'};
-      if(!(Number(args.amount)>0))return {ok:false,error:'金额必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.amount))return {ok:false,error:'金额必须 > 0'};
       const after={id:'(自动生成)',type:args.type,unitId:args.unitId,unitName:u.name,date:args.date,amount:args.amount,person:args.person||'',note:args.note||'',orders:args.orders||[]};
       return {ok:true,preview:{after}};
     },
@@ -1112,7 +1106,7 @@ const AIT=(function(){
       const before=_snap({date:s.date,amount:s.amount,person:s.person,note:s.note});
       const patch={};
       if(args.date!==undefined)patch.date=args.date;
-      if(args.amount!==undefined){if(!(Number(args.amount)>0))return {ok:false,error:'金额必须 > 0'};patch.amount=Number(args.amount);}
+      if(args.amount!==undefined){if(!FTValidators.isPositiveNumber(args.amount))return {ok:false,error:'金额必须 > 0'};patch.amount=Number(args.amount);}
       if(args.person!==undefined)patch.person=args.person;
       if(args.note!==undefined)patch.note=args.note;
       if(!Object.keys(patch).length)return {ok:false,error:'未提供任何更新字段'};
@@ -1124,7 +1118,7 @@ const AIT=(function(){
       const u=DB.units.find(x=>x.id===args.unitId);
       if(!u)return {ok:false,error:'单位不存在：'+args.unitId};
       if(!String(args.date||'').trim())return {ok:false,error:'日期不能为空'};
-      if(!(Number(args.amount)>0))return {ok:false,error:'金额必须 > 0'};
+      if(!FTValidators.isPositiveNumber(args.amount))return {ok:false,error:'金额必须 > 0'};
       const after={id:'(自动生成)',type:args.type,unitId:args.unitId,unitName:u.name,date:args.date,amount:args.amount,remark:args.remark||''};
       return {ok:true,preview:{after}};
     },
@@ -1134,7 +1128,7 @@ const AIT=(function(){
       const before=_snap({date:inv.date,amount:inv.amount,remark:inv.remark});
       const patch={};
       if(args.date!==undefined)patch.date=args.date;
-      if(args.amount!==undefined){if(!(Number(args.amount)>0))return {ok:false,error:'金额必须 > 0'};patch.amount=Number(args.amount);}
+      if(args.amount!==undefined){if(!FTValidators.isPositiveNumber(args.amount))return {ok:false,error:'金额必须 > 0'};patch.amount=Number(args.amount);}
       if(args.remark!==undefined)patch.remark=args.remark;
       if(!Object.keys(patch).length)return {ok:false,error:'未提供任何更新字段'};
       const after=Object.assign(_snap(before),patch);
@@ -1212,6 +1206,8 @@ const AIT=(function(){
 
   /** 工具执行器：name → (args, ctx) → {ok,error,summary,opRecord}
    * ctx: {aiChatId, batchId, operator} */
+  /** P2/R1 修复：按白名单字段列表从 args 中 pick 出可写字段（丢弃 id/createdAt 等系统字段） */
+  function _pick(obj,keys){const out={};keys.forEach(k=>{if(obj&&obj[k]!==undefined)out[k]=obj[k];});return out;}
   const executors={
     create_unit(args,ctx){
       const u={id:uid('U'),name:String(args.name).trim(),roles:args.roles,rating:args.rating||'',term:args.term||'',contacts:[],invoice:{},createdAt:today()};
@@ -1230,7 +1226,8 @@ const AIT=(function(){
     update_unit(args,ctx){
       const u=DB.units.find(x=>x.id===args.unitId);
       const before=_snap(u);
-      const patch=Object.assign({},args);delete patch.unitId;
+      // P2/R1 修复：按实体字段白名单 pick，丢弃 id/createdAt 等系统字段
+      const patch=_pick(args,['name','roles','rating','term']);
       Object.assign(u,patch);
       saveDB();
       const op=recordAiOp({op:'update',type:'unit',targetId:u.id,before,after:_snap(u),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1247,7 +1244,8 @@ const AIT=(function(){
     update_price(args,ctx){
       const p=DB.prices.find(x=>x.id===args.priceId);
       const before=_snap(p);
-      const patch=Object.assign({},args);delete patch.priceId;
+      // P2/R1 修复：按实体字段白名单 pick，丢弃 id/createdAt 等系统字段
+      const patch=_pick(args,['bomSku','spec','type','standard','diameter','hardness','surface','material','price','validFrom','contact','remark']);
       Object.assign(p,patch);
       saveDB();
       const op=recordAiOp({op:'update',type:'price',targetId:p.id,before,after:_snap(p),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1273,7 +1271,8 @@ const AIT=(function(){
     update_bom(args,ctx){
       const b=DB.bom.find(x=>x.id===args.bomId);
       const before=_snap(b);
-      const patch=Object.assign({},args);delete patch.bomId;
+      // P2/R1 修复：按实体字段白名单 pick，丢弃 id/createdAt 等系统字段
+      const patch=_pick(args,['name','spec','type','standard','diameter','hardness','surface','material']);
       Object.assign(b,patch);
       saveDB();
       const op=recordAiOp({op:'update',type:'bom',targetId:b.id,before,after:_snap(b),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1297,7 +1296,9 @@ const AIT=(function(){
         salePrice:Number(it.salePrice)||0,quotePrice:Number(it.quotePrice)||0,
         bomSku:it.bomSku||'',usage:it.usage||'',remark:it.remark||'',options:[]
       }));
-      const o={id:uid('O'),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
+      // P2/R2 修复：delivery 结构统一（date/time 双写交期、address 由 deliveryAddress 补齐，与视图层口径一致）；
+      // createdAt/updatedAt 沿用 now()，与视图层订单创建/更新（orders.js createdAt:now()/updatedAt:now()）口径统一
+      const o={id:uid('O'),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:args.deliveryAddress||''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
       DB.orders.push(o);
       saveDB();
       const op=recordAiOp({op:'create',type:'order',targetId:o.id,before:null,after:_snap(o),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1393,7 +1394,8 @@ const AIT=(function(){
     update_settlement(args,ctx){
       const s=DB.settlements.find(x=>x.id===args.settleId);
       const before=_snap(s);
-      const patch=Object.assign({},args);delete patch.settleId;
+      // P2/R1 修复：按实体字段白名单 pick，丢弃 id/createdAt 等系统字段
+      const patch=_pick(args,['date','amount','person','note']);
       Object.assign(s,patch);
       saveDB();
       const op=recordAiOp({op:'update',type:'settlement',targetId:s.id,before,after:_snap(s),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1410,7 +1412,8 @@ const AIT=(function(){
     update_invoice(args,ctx){
       const inv=DB.invoices.find(x=>x.id===args.invoiceId);
       const before=_snap(inv);
-      const patch=Object.assign({},args);delete patch.invoiceId;
+      // P2/R1 修复：按实体字段白名单 pick，丢弃 id/createdAt 等系统字段
+      const patch=_pick(args,['date','amount','remark']);
       Object.assign(inv,patch);
       saveDB();
       const op=recordAiOp({op:'update',type:'invoice',targetId:inv.id,before,after:_snap(inv),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1711,12 +1714,11 @@ const AIT=(function(){
         let list=DB.orders.slice();
         if(args.status)list=list.filter(o=>o.status===args.status);
         if(args.keyword)list=list.filter(o=>(o.id||'').includes(args.keyword)||unitNameSafe(o.buyerId).includes(args.keyword)||(o.project||'').includes(args.keyword));
-        // 迁移：给无 id 的 item 注入 uid('OI')，保证后续操作有稳定标识
-        let migrated=false;
+        // N4 修复：明细 id 迁移已收敛到启动初始化（store.js migrateItems），只读查询不再产生 saveDB 写副作用；
+        // 此处仅对内存态仍缺失 id 的明细做防御性注入，保证本次返回的 itemId 可被后续操作引用（不落盘）
         list.forEach(o=>{
-          if(Array.isArray(o.items))o.items.forEach(it=>{if(!it.id){it.id=uid('OI');migrated=true;}});
+          if(Array.isArray(o.items))o.items.forEach(it=>{if(!it.id)it.id=uid('OI');});
         });
-        if(migrated)saveDB();
         // 脱敏：不返回 delivery.address / buyerContact 电话
         const result=list.slice(0,50).map(o=>{
           const sales=(o.items||[]).reduce((s,it)=>s+((Number(it.salePrice)||0)*(Number(it.qty)||0)),0);
