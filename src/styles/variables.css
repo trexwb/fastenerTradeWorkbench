@@ -24,7 +24,7 @@
   --purple:#7c3aed;--purple-l:#f5f3ff;--purple-line:#ddd6fe;
   --tooltip-bg:#1e293b;
   /* z-index 层级（从低到高） */
-  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-toast:2000;
+  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-cmd:1600;--z-toast:2000;
 }
 /* ===== THEME: 奶油白（薄荷绿·浅蓝） ===== */
 [data-theme="cream"]{
@@ -80,5 +80,5 @@
   --green-line:#2d3b0f;--amber-line:#3b2806;--red-line:#3b1414;
   --purple:#a78bfa;--purple-l:#1e1b2e;--purple-line:#3b2f5e;
   --tooltip-bg:#0f0f10;
-  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-toast:2000;
+  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-cmd:1600;--z-toast:2000;
 }

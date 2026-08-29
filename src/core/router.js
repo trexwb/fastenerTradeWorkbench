@@ -334,6 +334,7 @@ function toggleNavParent(k){
         let el=document.createElement('button');
         el.className='nav-child'+(view===c.k?' active':'');
         el.setAttribute('onclick','go(\''+c.k+'\')');
+        el.removeAttribute('tabindex'); /* P4：展开时恢复 Tab 可达 */
         el.innerHTML=icon(c.icon)+'<span>'+c.label+'</span>';
         frag.appendChild(el);
       });
@@ -343,6 +344,8 @@ function toggleNavParent(k){
     }
   }else{
     wrap.classList.remove('expanded');
+    // P4：折叠立即禁用子项 Tab 聚焦，避免键盘焦点落在不可见链接上
+    wrap.querySelectorAll('.nav-child').forEach(function(c){c.setAttribute('tabindex','-1');});
     // 动画结束后清空子节点，与之前"收起=移除子节点"语义保持一致，
     // 同时避免下次展开时 max-height 先跳再展开
     setTimeout(function(){
@@ -976,7 +979,24 @@ document.addEventListener('click', function (e) {
     document.addEventListener('keydown',onKey);
     state.onEsc=onKey;
     overlay.addEventListener('click',function(e){
-      if(e.target===overlay)Coach.dismiss();
+      if(e.target!==overlay)return;
+      // P2：点击高亮孔区域 → 关闭引导并透传点击到目标元素，避免"第一次点击只关引导"
+      const hole=overlay.querySelector('.coach-hole');
+      const conf=CFG[state.view];
+      const step=conf&&conf.steps[state.step];
+      if(hole&&hole.style.display!=='none'&&step&&step.target){
+        const hr=hole.getBoundingClientRect();
+        if(e.clientX>=hr.left&&e.clientX<=hr.right&&e.clientY>=hr.top&&e.clientY<=hr.bottom){
+          let tgt=null;
+          try{tgt=document.querySelector(step.target);}catch(err){tgt=null;}
+          if(tgt&&typeof tgt.click==='function'){
+            Coach.dismiss();
+            setTimeout(function(){try{tgt.click();}catch(err){}},80);
+            return;
+          }
+        }
+      }
+      Coach.dismiss();
     });
     state.el=overlay;
     // ResizeObserver + rAF 重定位（当 target 元素是动态表格时）

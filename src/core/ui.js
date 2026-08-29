@@ -88,7 +88,16 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
   document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
   document.getElementById('_modalOk').onclick=()=>{
     // confirmModal 的 onOk 也可能需要读 DOM 或 async，与 modal() 同样处理
-    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}}catch(e){}}
+    if(onOk){
+      try{
+        const before=document.getElementById('_mask');
+        const r=onOk();
+        if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}
+        // 嵌套确认：onOk 内部又弹了新的 confirmModal（_mask 已被重建）时，保持新弹窗，不再执行收尾关闭
+        const after=document.getElementById('_mask');
+        if(after&&after!==before){return;}
+      }catch(e){}
+    }
     closeModal();
   };
   document.getElementById('_modalCancel').onclick=()=>{closeModal();if(onCancel)onCancel();};

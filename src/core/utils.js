@@ -74,6 +74,7 @@ const SVG={
   chevronDown:'<polyline points="6 9 12 15 18 9"/>',
   link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   refresh:'<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  rotateCcw:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
   fileText:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>',
   palette:'<circle cx="13.5" cy="6.5" r="2"/><circle cx="17.5" cy="10" r="2"/><circle cx="9.5" cy="14" r="2"/><circle cx="13.5" cy="16.5" r="2"/><circle cx="6.5" cy="11" r="2"/><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10a2 2 0 0 0 2-2c0-.6-.27-1.16-.7-1.54-.42-.36-.68-.87-.68-1.46 0-1.1.9-2 2-2h2.34c3.38 0 6.12-2.72 6.12-6.04C22.08 5.46 17.54 2 12 2z"/>',
   package:'<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
@@ -89,6 +90,7 @@ const SVG={
   chevronUp:'<polyline points="18 15 12 9 6 15"/>',
   chevronLeft:'<polyline points="15 18 9 12 15 6"/>',
   filter:'<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  folder:'<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   shoppingCart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
   info:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
@@ -682,6 +684,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
       });
     }
     drop.style.display='block';setExpanded(true);el.classList.add('open');
+    fitDrop();
   }
 /** 同步 combo 下拉列表中的高亮激活项样式和滚动位置 */
   function syncActive(){
@@ -714,6 +717,23 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   inp.addEventListener('blur',()=>setTimeout(closeDrop,150));
 /** 关闭 combo 下拉列表，重置激活索引和展开状态 */
   function closeDrop(){drop.style.display='none';setExpanded(false);el.classList.remove('open');activeIdx=-1;}
+  /** P1修复：抽屉/滚动容器内空间不足时向上展开，避免下拉选项被容器裁剪点不到 */
+  function fitDrop(){
+    const r=drop.getBoundingClientRect();
+    if(!r.height)return;
+    let sc=drop.parentElement;
+    while(sc&&sc!==document.body){
+      const cs=getComputedStyle(sc);
+      if(/(auto|scroll|hidden)/.test(cs.overflowY))break;
+      sc=sc.parentElement;
+    }
+    const limit=(sc&&sc!==document.body)?sc.getBoundingClientRect().bottom:window.innerHeight;
+    if(r.bottom>limit-8){
+      drop.style.top='auto';drop.style.bottom='calc(100% + 4px)';
+    }else{
+      drop.style.top='calc(100% + 4px)';drop.style.bottom='auto';
+    }
+  }
 /** 处理 combo 选项选中：写入 el.dataset.val，更新 input 显示值，触发 onSelect 回调并派发 input 事件 */
   function select(opt){
     if(opt.id==='__manual__'){inp.value='';inp.placeholder='手动输入';}
