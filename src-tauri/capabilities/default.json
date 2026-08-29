@@ -2,13 +2,16 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "紧固件贸易工作台默认权限：AI 流式事件监听/发送；数据与 AI 请求走受限自定义命令",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:event:allow-emit",
     "core:event:allow-listen",
     "opener:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "dialog:default"
   ]
 }

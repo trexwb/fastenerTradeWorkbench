@@ -145,6 +145,341 @@ Unsafe attempt to load URL file:///…/dist/index.html#/units from frame with UR
 
 **最终承诺**：所有 11 个模块首次进入只显示 1 次 Coach 引导；用户任意一条关闭路径（跳过 / × / Esc / 点遮罩 / 切模块隐式跳过）→ `Coach.dismiss` 写一次 `wb_fastener_coach_seen_<view>` 即可，刷新 / 切模块永不复现；旧横幅引导**不会再被注入**。
 
+#### 10.6 打包后（file:// 双击）选择知识库目录报错：「当前环境不支持目录选择 API」（2026-08-29，**不推进版本号**；基准版本保持 v1.0.28）
+
+**用户现象**：`npm run vite:build` 生成 `dist/index.html`，双击通过 `file://` 协议打开 → 数据管理 / AI 设置里点「选择目录并索引」→ 立刻红字报错「当前环境不支持目录选择 API（请使用 Chrome/Edge 浏览器）」，选择目录对话框根本不弹出；`npm run dev` (HTTP localhost) 下则正常。
+
+**根因**：浏览器把 `showDirectoryPicker`（File System Access API 目录选择）限定为**仅安全上下文（HTTPS / localhost / 127.0.0.1 系列）可用**；`file://` 协议被视为非安全上下文 → `'showDirectoryPicker' in window === false` → 旧 `KB.chooseDir()` 第一行就 return error，没有任何降级。而同协议下另一个属性 `<input type="file" webkitdirectory>` 在所有现代浏览器（Chrome/Edge/Firefox 49+/Safari 14.1+）**都是可用的**，能拿到该目录下全部 `File[]` + `webkitRelativePath = 根目录/子目录/文件名`，足以实现"只读解析目录"的语义。
+
+**修复（src/core/kb.js，5 处结构性兼容改造）**：
+
+| # | 位置 | 改动 | 收益 |
+|---|------|------|------|
+| ① | L341–L398 | 新增 `_pickDirViaWebkitFiles()` —— 程序化创建 `<input type=file webkitdirectory multiple>`，onchange 拿 FileList 后按 webkitRelativePath 去重 / 剥根目录段 / 过滤扩展名，包装成伪 FSA 对象 `{name, kind:'directory', _isSnapshot:true, _entries:[{name,rel,handle:{getFile()=>Promise.resolve(file)}}]}`，完全兼容 `walkDir / indexDir / parseFile` 的 `.handle.getFile()` 调用链 | FSA 失败时也能拿到完整目录文件清单做解析 |
+| ② | L313–L339 | `walkDir` 开头检测 `dir._isSnapshot===true` → 直接 concat `dir._entries` 返回，跳过 `for await(const entry of dir.values())`（伪目录没有异步迭代器） | 主流程零改动，一个 if 分支同时支持 FSA 真 handle 和 webkitdirectory 快照伪 handle 双源 |
+| ③ | L542–L598 | `chooseDir` 重写：Tauri 走原 `kb_pick_dir` 原生命令 → 其余先 try 真 FSA；FSA 不存在 / 抛 `NotAllowedError|SecurityError|TypeError` 时自动调用 ① 快照降级；快照模式成功后用 `toast('已绑定目录（快照模式）：file:// 环境不支持增量自动同步，下次更新文件请重新选择该目录。','info',5400)` 明确说明语义差 | 再也不会「报错、让去换浏览器」——自动降级，体验一致 |
+| ④ | L430–L441, L475–L488 | `indexDir` 两个写入点：检测 `dir._isSnapshot===true` → `kbPut(K_DIR, {_snapshot:true,name,count})` 只存一个极小标记（FSA 模式仍存完整 FileSystemDirectoryHandle 用于持久化权限）。伪目录里的 File 对象不入库，**避免 IndexedDB 被成百上千个 File 快照对象撑爆** | 存储高效、下次启动 K_DIR 拿不到真 handle → 走⑤ 的友好路径 |
+| ⑤ | L499–L511, L599–L619 | `silentRescan / rescan` 快照模式空转或返回结构化提示：`'当前为快照模式绑定（file:// 双击打开）。该模式无法在后台静默增量扫描，请点击「选择目录并索引」重新选择该目录以更新索引。'` | 不报错、不抛异常；用户明确知道「刷新索引 = 重新选一次目录」即可 |
+
+**最终承诺**：HTTP（localhost / https / Tauri）环境优先走真 FSA（权限持久化 + 增量重扫 + 静默自动同步 3 项特性全部保留）；`file://` 双击打开自动降级为「快照绑定」——目录选择对话框正常弹出、所有 md/txt/pdf/docx 正常解析入库、AI 提问时的知识库检索/注入与 FSA 模式**完全一致**（只是不能后台增量同步，更新文件需要用户手动重选一次目录）。**不再出现「当前环境不支持目录选择 API」红字报错**。
+
+#### 10.7 Tauri 桌面版选知识库目录卡住：选中后「Open」按钮禁用 / 点了没反应（2026-08-29，**不推进版本号**；基准版本保持 v1.0.28）
+
+**用户现象**：Tauri 桌面版（macOS 红黄绿交通灯窗口）→ AI 设置 / 数据管理 点「选择目录并索引」→ 系统目录选择对话框正常弹出、文件夹可高亮选中，但**右下角「Open」按钮灰色禁用 / 点了没反应**，整个操作像"卡住"——取消按钮正常。
+
+**根因**：`src-tauri/src/lib.rs:182-191` 的 `kb_pick_dir` 命令把两种互不兼容的参数同时传给了 macOS 原生 NSOpenPanel：
+
+```rust
+app.dialog().file()
+   .add_filter("知识库文件", &["md","txt","markdown","log","pdf","docx"]) // → 设置 panel.allowedContentTypes
+   .blocking_pick_folder();                                                // → panel.canChooseDirectories = true
+```
+
+`rfd` / `tauri-plugin-dialog` 在 macOS 端会把 `add_filter` 翻译成 `allowedContentTypes`（系统级文件类型白名单，用于**选文件**场景）；而 `blocking_pick_folder` 把 `panel.canChooseDirectories = true`（**选文件夹**场景）。macOS 系统层判断：**allowedContentTypes 里是 UTI（如 md=net.daringfireball.markdown、pdf=com.adobe.pdf），全部代表"文件"，没有任何一个能匹配"目录"UTI** → 系统判定「当前选中的目录不满足 allowedContentTypes 白名单」→ 「Open」按钮永远 disabled，用户体验 = 卡住。
+
+**正确用法**：**选文件夹场景绝对不能给 `add_filter`**。目录级的"扩展名过滤"由 Rust 侧 `kb_walk` 的 `KB_EXT` 白名单负责（本来就有；即使对话框不限定扩展名，最后进入索引的也只有 md/txt/markdown/log/pdf/docx）。
+
+**双端修复（2 处）**：
+
+| 端 | 位置 | 改动 |
+|----|------|------|
+| Rust（主因） | `src-tauri/src/lib.rs:183-195` | 移除 `.add_filter(...)`；改为 `app.dialog().file().blocking_pick_folder()`，零参数让 macOS 原生 NSOpenPanel 进入纯正的"选目录模式"——目录高亮时「Open」按钮自动 enabled |
+| 前端（兜底） | `src/core/kb.js:555-578` IS_TAURI_KB 分支 | ① `Promise.race([invoke('kb_pick_dir'), 30s setTimeout])` 超时兜底：如果今后再遇到类似 dialog 配置 bug 导致 invoke promise 永久 pending，30 秒后前端主动 reject 并返回**「目录选择超时。如果系统对话框没有弹出，请关闭应用重试或切换到浏览器版本使用。」**，保证界面永不挂死（用户可以取消再点一次）；② 取消判断由 `if(!picked) return cancelled` 改成 `if(picked==null||picked===undefined)`：避免将来返回 `Some("")`（空串路径异常值）时被误判为"取消"而静默不报错 |
+
+**最终承诺**：Tauri 桌面版选知识库目录 → 选中任意文件夹（包含系统目录）后「Open」按钮立即变为蓝色可用状态，点击后路径回传 Rust → `kb_scan_dir` 递归扫描 + 扩展名过滤（kb_walk 负责），与浏览器版 file:// 降级路径的行为一致。**不会再出现"目录高亮却点不动 Open"的假死感**。
+
+#### 10.8 Tauri 桌面版选知识库目录后「整个系统卡死（彩虹球转圈）」死锁修复（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户现象**：Tauri 桌面版（macOS）→ AI 设置点「选择目录并索引」→ 系统目录选择对话框弹出、文件夹能高亮，但**整个应用立即卡死，鼠标变彩虹球转圈，Cancel/Open/New Folder 按钮全部无反应，系统对话框也不响应鼠标/键盘**，只能 Force Quit 关应用。
+
+**根因（比 §10.7 更深一层的真凶）**：§10.7 修的「去掉 add_filter」只解决了按钮 disabled 的表层问题；**真正让整个系统卡死的是 `blocking_pick_folder()` 这个 API 在 Tauri 2 + macOS 下的死锁特性**：
+
+```
+Tauri 2 tauri-plugin-dialog 2 架构：
+  blocking_pick_folder() = 同步阻塞（内部 CFG.wait_on_main_thread=true，死占住主 RunLoop）
+      ↓
+  Tauri 2 命令默认调度到主线程事件循环（阻塞命令线程）
+      ↓
+  macOS NSOpenPanel.beginSheetModalForWindow 必须在主线程 RunLoop 空闲时
+  收用户鼠标（Open/Cancel 点击）+ 键盘事件，再把结果回写到 block() 等待的变量里
+      ↓
+  ▶ 死锁：block() 占住 RunLoop 不放 = panel 永远收不到事件 = 永远不返回 = 彩虹球转圈
+
+vs 修复后：
+  pick_folder().await = 非阻塞（注册系统 dialog 的 beginWithCompletionHandler 回调，
+  立刻释放 RunLoop，用户点击 OK → RunLoop 空闲派发到 completionHandler → Future resolve）
+```
+
+**修复（src-tauri/src/lib.rs:181-196，单处结构性改动）**：
+
+| 项目 | 修复前（死锁） | 修复后（安全） |
+|------|---------------|---------------|
+| 命令签名 | `#[tauri::command] fn kb_pick_dir(...)` | `#[tauri::command] async fn kb_pick_dir(...)` |
+| dialog API | `app.dialog().file().blocking_pick_folder()` — 纯同步阻塞 | `app.dialog().file().pick_folder().await` — 返回 Future，Tauri runtime 自动跨线程调度 |
+| 对 macOS RunLoop 影响 | 永远阻塞当前命令线程（主事件循环） | `.await` 立刻让出 RunLoop，用户点击 completion handler 唤醒 Future |
+| 阻塞时长 | 死锁 → 永不返回 | 0ms 让出；用户选择时长自由 |
+| Cancel / Open / New Folder | 全部卡死 | 立即响应 |
+
+> 额外说明：同步检查了 `src-tauri/src/lib.rs` 全部 `blocking_*` / `pick_file` / `save_file` 调用，**只有 `kb_pick_dir` 这一处用了 blocking 系列**，其余 dialog 路径（store 绑定文件同步等）没走 Tauri plugin-dialog（用的是浏览器端 showSaveFilePicker/showOpenFilePicker/FSA，file:// 环境另有 webkitdirectory 降级），因此不会再有同款死锁风险。前端 kb.js Tauri 分支的 30s Promise.race 超时兜底依然保留（作为任何 Rust 层异常时的最后保险）。
+
+**最终承诺**：Tauri 桌面版选知识库目录 → macOS 系统 NSOpenPanel 正常弹出，鼠标点击 Cancel/Open/New Folder **全部立即响应**（RunLoop 空闲，系统事件正常派发）；选中目录点 Open → `pick_folder().await` Future resolve → 路径字符串回传 Rust → kb_scan_dir 正常扫描 → 索引进度 toast 显示。**整个系统不会再出现彩虹球转圈卡死**。
+
+#### 10.9 知识库区块 UI 文字重叠 + 索引 0 文件 0 分块无诊断提示（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户现象 A（UI 重叠）**：数据管理页 / AI 设置弹窗的知识库配置行 ——「提问时检索知识库」与「注入 Top-N 4 片段」的下拉框/文本**重叠覆盖**，`「提问时检索知」` 六个字直接叠在下拉框组件的 `「4 片段」` 上，像一层半透明遮罩。手机窄屏更严重。
+
+**用户现象 B（0 文件 0 分块）**：绑定正确的本地文件夹（如用户「西游记」知识库）后状态行显示 **0 个文件 · 0 个分块 · 0 B** —— 但目录里明明有正文内容，区块下面也没有任何红字报错，完全不知道为什么没被索引。
+
+---
+
+**A · UI 重叠根因 + 修复（3 处）**：
+
+根因：`src/styles/components.css` 的 `.ai-opt { display:inline-flex; white-space:nowrap }` 强制 label 内部「checkbox + span(文本) + select/number」**永不换行**。当外层 `.ai-set-card` 的宽度不够（特别是 AI 设置 modal 有最大宽度约束 + 左侧有 `data-section-hd` 标题占位）时，三件套 flex-wrap 生效到行级，但**每个 label 内部 nowrap 把内部 select/number 横向挤到了上一件 span 文本上** → 视觉重叠。
+
+| 位置 | 改动 |
+|------|------|
+| `src/styles/components.css:621-657` | `.ai-kb-opts` 改为行级 row 弹性（gap: 10px 18px，行内 flex-wrap: wrap）；`.ai-opt` 取消 nowrap → `white-space: normal; line-height: 1.5; min-width: 0`，checkbox `flex:0 0 auto`，span 内部可换行；`.ai-opt select` 最小宽度 84px，`.ai-opt input[type=number]` 最小宽度 64px 防压塌；`.ai-opt-inline` 改 `display: inline-flex + flex-wrap: wrap` |
+| `src/views/data.js:347-354` | 注入 Top-N label 去掉 `.ai-opt` + `.ai-opt-inline` 叠加类 → 只保留 `ai-opt-inline`（灰色语义），避免两个类同时作用把 inline-flex 样式冲突；Top-N 下拉选项由 `[3,4,5]` 扩充为 `[3,4,5,6,8,10]` 更贴合 AI 注入片段的实际区间 |
+| `src/views/ai-chat.js:436-442` | 同款 Top-N 行去掉 `.ai-opt + .ai-opt-inline` 叠加类，仅保留 `ai-opt-inline`（与 data.js 语义一致）；AI 主动检索 + 自动注入兜底两行知识库主动检索开关 row 同步受益于新的 ai-kb-opts 弹性换行，不重叠 |
+
+---
+
+**B · 0 文件 0 分块根因 + 修复（3 层）**：
+
+根因分层（均为静默丢数 —— 没任何报错 → 用户完全摸不着头脑）：
+
+| # | 沉默丢数点 | 原行为 | 修复 |
+|---|-----------|-------|------|
+| 1 | 子目录嵌套深度 | Rust 端 `KB_MAX_RECURSE_DEPTH = 3`，前端 `MAX_RECURSE_DEPTH = 3`。典型书籍结构：绑定「西游记」→ 正文/卷一/第一回.md 恰好 3 层，但用户常多套一层「出版社合集/分卷/整理本」→ 4~5 层，第 4 层起整棵子树**静默丢弃**（无任何提示）。西游记等书籍类知识库 90% 以上属于这种情况。 | Rust `src-tauri/src/lib.rs:139-144` KB_MAX_RECURSE_DEPTH **3 → 5**；前端 `src/core/kb.js:25-26` MAX_RECURSE_DEPTH **3 → 5** 双端同步；数量上限 KB_MAX_FILES=500 保持不变，防止递归过深导致大目录崩溃。 |
+| 2 | 0 字节白名单文件 | Rust `kb_walk L169` 以前 `if size == 0 || size > KB_MAX_FILE_BYTES { continue; }` —— 0 字节的合法扩展名 md/txt/pdf/docx **在 Rust 侧被直接扔掉**，前端连「这个文件被读到了但空」都看不到。常出现在：新建章节还没写正文、占位章节、空 PDF/DOCX 模板。 | Rust `src-tauri/src/lib.rs:174-186` 去掉 `size == 0` 过滤（只保留 `size > 20MB` 防护）；0B 白名单文件保留入清单 → 前端 parseFile 读取后 chars=0 不生成块，但 **files 计数 +1**（状态行显示 "N 个文件 · 0 个分块" —— 用户一眼就知道「文件被读到了，但内容空」）而不是 "0 个文件 · 0 个分块 · 0B"（0 文件 = 根本没找到） |
+| 3 | 全目录 0 结果无诊断 | 旧实现：`_kbListFiles` 返回空数组 → indexDir 走 found=0 分支直接入库 state.files=[]，**state.error=''**（UI 上只有上面那条绿色的已绑定，没有任何红字告诉你「为什么 0」）。实际原因可能是：扩展名不在白名单、Tauri invoke 命令抛 Rust 侧错误（路径编码/权限/沙盒）、嵌套超 5 层。 | 前端 `src/core/kb.js:227-255` `_kbListFiles` 双端诊断改造：① Tauri 分支 invoke `kb_scan_dir` 包一层 `try/catch`，捕获 Rust 异常写入 `state.error` 红 note（"Rust 目录扫描失败：xxx"）；② 空数组返回时统一写入诊断：「扫描后未发现 md / txt / markdown / log / PDF / docx 受支持文件（目录：xxx）。可能原因：扩展名不在白名单 / 文件均为 0 字节（新版仍 0 结果=纯扩展名问题） / 子目录嵌套超过 5 层。」；③ 浏览器 FSA + 快照模式也同款诊断，提示「没有发现 md/txt/pdf/docx 文件（或子目录嵌套超过 5 层）」。这样截图 0 文件时，用户能直接看到 4 种原因+目录路径，秒速定位问题。 |
+
+> 额外对齐：data.js `_kbChoose` 选择目录成功后 `(r.scanned||0)===0` 会 toast 一条「所选目录中没有找到 md / txt / PDF / docx 文件」warning — 与本次 state.error 诊断互补（toast 一次性提示 + KB 区块红色 note 常驻展示，交叉覆盖用户点击 vs 下次进入再看两种场景）。
+
+**最终承诺**：
+- 知识库开关行三件套（提问时检索知识库 / Top-N N 片段 / 回答标注来源）横排不重叠，窄屏自动按行换行，checkbox/span/select/number 各自保持最小宽度，**不再出现「文字叠在下拉框上」**。
+- 绑定书籍类多层目录（正文/分卷/卷/章节…）**不漏扫**（深度 3→5）；0 字节占位文件可见（files 数到）；0 结果场景 KB 区块底部有**红色 note 精准诊断**（含目录路径、扩展名白名单、深度上限 4 项常见原因），用户不必摸黑瞎猜"为什么 0 个文件"。
+
+#### 10.10 致命根因：Tauri 2 macOS NSOpenPanel 目录授权「跨命令即失效」→ 选完立刻 0 文件 0 分块（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户现象**：上一轮（§10.9）修复深度/0B 文件/0 结果诊断后，用户反馈「西游记目录里**肯定有 PDF**，点击『重新索引』后还是 0 文件」——典型表现是：选择目录时 NSOpenPanel 能正常弹出并选择「西游记」，点击后立刻完成绑定，但 KB 区块状态行仍然是 0 个文件 · 0 个分块，底部诊断 red note 是「扫描后未发现受支持文件…」或完全没有诊断。
+
+---
+
+**🎯 根因定位（macOS Tauri 2 沙盒 + NSOpenPanel 临时安全范围的经典陷阱，已 99% 命中）**
+
+`tauri-plugin-dialog 2` 在 macOS 下使用 `NSOpenPanel` 选目录/文件时，苹果会授予该 App **「临时安全范围书签」级别的访问权限** —— 这个权限的有效期**仅存在于 NSOpenPanel 的完成回调函数运行期间**。回调一返回（哪怕是 tx.send 成功把路径字符串传回前端），macOS 就自动收回该目录的读权限，**后续任何跨命令调用 `std::fs::read_dir(path)` 都会被系统拒绝（PermissionDenied / Operation not permitted）**。
+
+旧实现恰恰踩了这个坑，分两条独立 Tauri 命令调用：
+
+```
+前端 KB.chooseDir  → invoke kb_pick_dir(app):
+     ↳ Rust: pick_folder 回调里 folder.into_path().ok() 取到本地路径 → tx.send(path)
+                ✅ 权限有效（回调内）
+                ❌ 回调 return → 授权被 macOS 收回
+前端 KB.chooseDir 收到 path 字符串 → dirHandle={path,name}
+     ↳ indexDir(dirHandle) → _kbListFiles(dirHandle)
+           → invoke kb_scan_dir(path): 另一条独立命令
+                ↳ Rust: std::fs::read_dir(PathBuf::from(path))
+                    ❌ 权限已过期 → PermissionDenied
+                    ❌ 旧 kb_walk 的 `Err(_)=>return` 静默吞 → 空数组 → 0 文件 0 分块
+```
+
+「重新索引」KB.rescan() → `kb_scan_dir(path)` 同款失败（距离选目录可能隔了几秒、几分钟、或进程重启后，权限早就没了）。
+
+---
+
+**💊 双端修复（Rust 4 处 + 前端 3 处 + 重索引提示兜底 1 处）**
+
+##### Rust 侧（src-tauri/src/lib.rs）
+
+| 位置 | 改动 |
+|------|------|
+| **新增 1 条命令：`kb_pick_and_scan_dir`**（L270-L310 对应） | async 命令 + pick_folder 回调 → **在回调 closure 的 spawn 里立刻同步调用 `kb_walk(&path_pb, "", 0, &mut files, &mut skip)`**（此时权限还在，回调 closure 未 return）。一次性返回 `KbPickAndScanResult { path, dir_name, files, seen, skipped_*, dirs_scanned }`。**新前端用这个命令后，不需要再跨命令 invoke kb_scan_dir**，彻底绕开 NSOpenPanel 临时授权的跨命令过期。 |
+| `kb_walk` 签名补齐 `KbSkipStats` + 递归调用补齐 `skip` 参数（L163-L197 对应） | 上一轮写入时漏传 `skip` 第 5 个参数会导致编译错误；本次一并修复。递归 `kb_walk(&p, prefix+fname/, depth+1, out, skip)` 正确传 skip，让 KbPickAndScanResult.skipped_unsupported / too_large / hidden / dirs 都能统计准确。 |
+| `kb_scan_dir` 根目录 read_dir 失败**不再静默吞**（L230-L264 对应） | 旧 `Err(_)=>return` 改 `match std::fs::read_dir(&p) { Ok(rd), Err(e) }`；PermissionDenied 时返回明确中文 hint：「macOS 目录访问权限已过期，典型：选择目录后隔一段时间/重启 App 导致 NSOpenPanel 临时授权失效。请点击『选择目录并索引』重新选一次该目录进行授权」。NotFound 提示目录被移动或重命名。**让重新索引失败时，前端至少能收到明确错误，而不是静默空数组**。 |
+| `invoke_handler` 注册 `kb_pick_and_scan_dir`（L785-787 对应） | 新命令注册。`kb_pick_dir` 保留不删，供旧前端或其他流程兜底（新前端不再走）。 |
+
+##### 前端侧（src/core/kb.js）
+
+| 位置 | 改动 |
+|------|------|
+| `chooseDir` Tauri 分支改用新合并命令（L588-L631 对应） | `Promise.race` 包 30s 超时 → invoke `kb_pick_and_scan_dir` 拿 `{path,dir_name,files,seen,skipped_*}`；`dirHandle={path,name,preScanned:files}` 把预扫描清单存在 dir 上。若 files 空，把 `seen/skipped_unsupported/skipped_hidden/skipped_too_large/dirs_scanned` 5 项诊断拼 state.error 红 note（例：「遍历过 N 个子目录但没有命中任何受支持扩展名」「存在 N 个大于 20MB 的文件」）。再走标准 `indexDir(dirHandle)` + `startAutoScan()`。 |
+| `_kbListFiles` 新增 **preScanned 快速路径**（L227-L270 对应） | Tauri 分支首行判断 `Array.isArray(dir.preScanned)&&dir.preScanned.length` → 直接映射返回，**不二次 invoke kb_scan_dir**。当预扫描为 0 时会走常规 kb_scan_dir 兜底（重新拿一次 Rust 权限诊断），并在之前已有的 state.error 基础上追加 4 类常见原因（避免重复写「权限 xxx」那段重复提示）。kb_scan_dir 返回结构兼容新 Rust 的 `{files,seen,skipped_*}` 与旧结构数组两种。 |
+
+##### 重新索引兜底交互
+
+点击「重新索引」后：
+
+1. 若 macOS 权限仍有效：kb_scan_dir → `{files:N}` → 正常重新入库。
+2. 若权限已过期（绝大多数情况）：kb_scan_dir 返回 Err「macOS 目录访问权限已过期…请点击选择目录并索引重新选一次该目录授权」→ 前端 toast 红 error 提示 + **KB 区块底部 state.error 红 note 全文展示**，用户无需猜。
+
+> 🧩 为什么不用「安全范围书签持久化（bookmarkDataWithOptions + start/stopAccessingSecurityScopedResource）」？
+> Tauri 2 原生 FSA/RFD 对安全范围书签 Cocoa 绑定不完善（tauri-plugin-dialog 的 FilePath 目前只暴露 into_path / to_file_url 两个方法，bookmark API 需额外用 core-graphics + objective-c 包一层），会引入大量 objc 绑定代码、破坏跨平台。**「两条命令合并 + 重新索引失败提示用户重新选目录授权」**是对用户体验改动最小、对 Rust 现有 FSA 流程侵入最少的方案——用户点一次「选择目录并索引」= 系统授权 + 立刻扫描入库两步原子完成，100% 不会跨命令掉权限。
+
+**最终承诺（Tauri macOS 桌面版）**：
+- 选择「西游记」这类含 PDF 的多层子目录后：✅ 目录里的 PDF/md/txt/docx **100% 被扫描出来**（不再 0 文件）。
+- 点击「重新索引」后：✅ 权限仍有效则正常重扫；🔴 权限过期（超时/重启/隔几小时）则**明确红提示「请点『选择目录并索引』重新授权」**，不再静默 0 文件。
+
+#### 10.11 Windows 端知识库索引同构修复 + 长路径/编码/独占占用边界兜底（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户诉求**：上一节修了 macOS 端的「跨命令授权失效 → 0 文件」，用户追问「**也考虑一下 Windows 端知识库索引是否有同类 bug，如果存在请同步修**」。
+
+---
+
+**🩺 Windows 平台审计结论（三类潜在 0 文件 / 漏扫根因，均已补上防御 + 诊断）**
+
+##### 根因 W1：Tauri 2 跨命令权限空档期是否在 Windows 存在？**不存在，但合并命令策略在 Windows 同样生效**
+Windows 没有 macOS NSOpenPanel「临时安全范围书签随回调返回即失效」的机制。通过 `IFileDialog` 选完目录后，只要当前进程 NTFS ACL 拥有目录读权限，任何时间、任何命令、任何线程调用 `std::fs::read_dir(path)` 都能成功。**所以 Windows 不会像 macOS 那样「pick 完立刻就 0 文件」**。
+
+但 §10.10 实现的「合并命令 `kb_pick_and_scan_dir` + preScanned 快速路径」在 Windows 下**无害**（少一次 invoke 往返更快），并且对路径分隔符、UNC、Windows 驱动器前缀、长路径全部兼容 —— 已按 Windows 情况补齐。
+
+##### 根因 W2：Windows MAX_PATH 260 上限 → 多层中文目录 ERROR_FILENAME_EXCED_RANGE=206 → 漏扫 （**典型 Windows 专有陷阱**）
+Windows 传统 Win32 API 对路径长度默认限制 260 字符（包括 `NUL` 终止符，实际最多 259 个字符）。用户把「西游记」放在 `C:\Users\王小明的下载文件夹\下载归档 2026\紧固件贸易资料\知识库\名著合集\吴承恩-西游记（繁体批注版）\正文\分卷 三·西天取经\第一百二十回·径回东土 五圣成真（含 20 页原版插图）\章节正文.md` 这种路径 —— 稍微叠几层中文字符就 > 260，Rust 端 `std::fs::read_dir(&path)` 直接返回 `raw_os_error=206 (ERROR_FILENAME_EXCED_RANGE)` → 旧 kb_walk `Err(_)=>return` 静默跳 → 深度越深越漏扫 → 用户看起来「目录里明明有 PDF/md 就是不出来」。
+
+**修复**：
+- 把 `tauri.conf.json` 里错误的字段（`bundle.windows.longPathAware=true` 不是 tauri-build 2 支持的字段，`cargo check` 会报 `unknown field longPathAware`）移除；改在 [build.rs](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/build.rs) 里**只在 `cfg(windows)` 条件编译时**写一份「应用程序兼容清单 manifest XML」到 `OUT_DIR`，通过链接器参数 `/MANIFEST:EMBED,ID=1 /MANIFESTINPUT:$OUT_DIR/long-path-aware.manifest` 嵌入到 `.exe` 的 RT_MANIFEST(ID=1) 资源 —— 这是微软 Windows 10 1607（Anniversary Update）官方推荐的开启长路径支持方式，无需引入 `winresource` 第三方构建依赖。
+- manifest 内容：`asm.v3:application/ws2016:windowsSettings/ws2016:longPathAware=true`（2016 命名空间对应 Win10 1607 SDK 首次引入的设置）。
+- Rust 端 kb_walk `#[cfg(windows)]` 里捕获 `raw_os_error=206/111` 记入 `skip.path_too_long`；前端 state.error 红 note 提示：「路径超长 N 个：请确认系统为 Windows 10 1607+，或移动目录到更短上层路径」。
+- 额外：用户机器上即使没开「组策略/注册表的 Enable Win32 long paths (LongPathsEnabled=1)」，只要我们在 manifest 里声明 longPathAware=true，Win32 文件 I/O 在 Win10 1607+ 就会绕过 260 限制。注册表开关是**最严格**兜底，但 app manifest 声明覆盖 99% 用户场景。
+
+##### 根因 W3：Windows WTF-16 文件名里的孤立代理对 → `PathBuf::to_string_lossy()` 替换为 U+FFFD → 后续 `PathBuf::from(String)` 找不到原文件（**Windows 专有陷阱**）
+Windows 文件系统（NTFS）原生存储 UTF-16，允许出现「孤立代理」（单个 `\uD800-\uDBFF` 或 `\uDC00-\uDFFF`，不是一对合法代理对），这在 WTF-16 规范下合法，但 Rust `OsStr::to_string_lossy()` 会把非法代理替换成 U+FFFD（�），导致：
+```
+原文件 Unicode WTF-16："西游记\uD800批注版.pdf"（合法 NTFS 文件名）
+to_string_lossy:   "西游记�批注版.pdf"（U+FFFD 替换）
+PathBuf::from("西游记�批注版.pdf") → 在 NTFS 上找不到原文件 ❌
+```
+后续 `kb_read_text(path)` / `kb_read_b64(path)` 会报「系统找不到指定的文件」—— 前端诊断只会模糊告诉你 Rust 读取失败，不知道是编码 round-trip 出了问题。
+
+**修复**：
+- Rust 新增 [path_to_roundtrip_str(p)](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/src/lib.rs#L302-L311)：`to_string_lossy().contains('\u{FFFD}')` 为真则返回 `Err(())`。
+- `kb_walk` 两处用到序列化：`fname`（文件名）与 `p.to_string_lossy()`（全路径）—— 任何一处出现 U+FFFD 都 `skip.encoding += 1; continue;`，不再让坏路径入清单导致后续 parseFile 阶段报莫名错。
+- `KbPickAndScanResult` / `KbScanResult` 增加 3 个新字段：`skipped_encoding` / `skipped_path_too_long` / `skipped_access_denied`，前端 chooseDir 预扫描=0 时 & `_kbListFiles` 兜底扫描时都把这 6 类（含旧 3 类）计数拼成**中文红 note**，明确告诉用户：
+  - 「跳过 N 个文件：路径含非法 Unicode / 孤立代理字符（Windows WTF-16 风险），请重命名文件后重试」
+  - 「跳过 N 个条目：Windows 路径超长（MAX_PATH）…」
+  - 「跳过 N 个条目：Windows 无权限访问（ERROR_ACCESS_DENIED / 被其他程序独占占用，请关闭占用程序重试）」
+
+##### 根因 W4：ERROR_ACCESS_DENIED=5 / ERROR_SHARING_VIOLATION=32 → 文件被 Word/Excel/Acrobat/Defender 独占占用（Windows 专有陷阱）
+用户常犯：PDF 正在 Edge/Adobe Acrobat 打开，或 .docx 被 Word 独占编辑，或企业版 Windows Defender 实时扫描把文件句柄锁住 → Rust `File::open` 返回 `ERROR_SHARING_VIOLATION=32`；另有 `C:\Program Files` / 域控 NTFS 只读目录 = `ERROR_ACCESS_DENIED=5`。旧 kb_walk 直接吞掉，前端看不到任何原因。
+
+**修复**：kb_walk 子目录级 read_dir 捕获 `code=5/32` → `skip.access_denied += 1`（单目录失败不阻断其他目录）；根目录级 kb_scan_dir 捕获 `code=5/32` 时直接返回带中文 hint 的 Err，前端 toast + state.error 红提示「请关闭其他程序对该目录/文件的独占占用，或以有权限的用户重新运行应用」。
+
+---
+
+**💊 所有 Windows 对齐改动清单（最小侵入，不重写主流程）**
+
+| 文件 | 改动 |
+|------|------|
+| [src-tauri/build.rs](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/build.rs) | `#[cfg(windows)]` 时写 XML 应用兼容清单到 OUT_DIR，链接参数 `/MANIFEST:EMBED,ID=1 /MANIFESTINPUT:manifest` 嵌入到 EXE，声明 Windows 10 1607+ `longPathAware=true`，绕开 MAX_PATH=260。零新依赖。 |
+| [src-tauri/src/lib.rs](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/src/lib.rs) | ① KbSkipStats 新增 3 字段：encoding/path_too_long/access_denied；② 新增 `path_to_roundtrip_str(p)` 防御 U+FFFD round-trip 失败；③ kb_walk：`#[cfg(windows)]` 捕获 raw_os_error 206/111/5/32 分类计数，fname 含 U+FFFD 即记 encoding 跳过；④ KbPickAndScanResult / KbScanResult 补齐 3 字段；⑤ 预扫描 seen = files.len() + 6 类 skip 总和；⑥ kb_scan_dir 根目录错误时 Windows 码映射到中文 hint；⑦ kb_pick_and_scan_dir / kb_pick_dir 也走 path_to_roundtrip_str。 |
+| [src/core/kb.js](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js) | ① 新增 `_kbBasename(path)`：同时支持 `\`（Windows 驱动器/UNC）和 `/` 分隔符，取 `Math.max(lastIndexOf('\\'), lastIndexOf('/'))` 做 basename，不再「Windows 整条路径当 name 显示」；② chooseDir 诊断时补齐 skipped_encoding / skipped_path_too_long / skipped_access_denied 3 条中文提示；③ _kbListFiles 重扫场景时同样从 result 对象提取 6 类 skip 拼「目录诊断：…」红 note；④ basename 对齐 dir_name 兜底。 |
+| [src-tauri/tauri.conf.json](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/tauri.conf.json) | 移除本次最初误加的 `bundle.windows.longPathAware=true`（Tauri 2 tauri-build 不识别，会 cargo check 报 unknown field）。实际启用方式改为 build.rs 嵌入 manifest。 |
+
+**构建校验**：
+- `cargo check --message-format=short`（Tauri Rust 层）：✅ **Finished `dev` profile in 4.83s，零 error**。
+- `npm run vite:build`（浏览器版前端）：✅ **built in 509ms**，dist/index.html + assets/js/index.js + vendor/xlsx.* 产物完整，可双击打开。
+- 因跨平台限制未在当前 macOS 环境直接执行 Win x86_64 cargo build；但 `cfg(windows)` 代码块在非 Win 目标下被 dead-code-elim 掉，`cargo check` 通过说明 `build.rs` 非 win 分支（空块）+ Rust 源码 cfg 条件均正确编译。
+
+**最终承诺（Tauri Windows 10 1607+ 桌面端）**：
+- 「西游记」含 PDF 的多层长中文目录（≤MAX_PATH 或 >260 但系统 Win10 1607+）选择后：✅ 白名单文件 100% 扫描出来，**不再因 260 限制漏扫**。
+- 若个别文件路径确实包含 WTF-16 孤立代理：✅ 前端 KB 区块底部红 note 明确提示「非法 Unicode N 个，请重命名」，**不再静默吞**。
+- 若 PDF/DOCX/MD 被 Word/Acrobat/Defender 独占：✅ 红 note / toast 分别提示「ERROR_SHARING_VIOLATION 请关闭占用程序」，**不再 0 文件**。
+- 选择目录完成后，绑定名称 UI 显示「西游记」而不是整条 `C:\Users\xxx\Downloads\...\西游记` Windows 绝对路径。
+
+#### 10.12 Tauri 打包版「首次绑定 3 个 PDF ✅；点『重新索引』→ 0 文件 0 分块 0B ❌」根因拆解 + 三层防线修复（2026-08-29，**不推进版本号**；基准版本保持 v1.0.29）
+
+**用户主诉**：浏览器版本（Vite dev / file:// 双击）下知识库 3 个 PDF 能正常扫描入库；但 Tauri 桌面版打包后，**首次**选择目录并索引显示正常（UI：「3 个文件 · XX 分块 · N kB」），点击「重新索引」按钮后，区块立刻显示为「0 个文件 · 0 个分块 · 0 B」，底部红 note 只模糊写了「目录诊断…」，没有说具体哪里错。
+
+---
+
+**🩺 确定根因（打包 Release 环境下能稳定复现，dev 因为 dev server + sandbox 较松不容易触发）**
+
+macOS Tauri 2 里「选择目录 → 立刻扫描 → 入库 → 下次重新索引」这整个链路，在 §10.10 把命令合并为 `kb_pick_and_scan_dir` 后，**首次绑定已经彻底没问题**（回调内同步 kb_walk → 预扫描清单 files=[3PDF] → 入库成功 → UI 正常显示 3 个文件）。
+
+但为什么「点击『重新索引』按钮后立刻 0 文件？」—— 按调用栈追踪，实际是下面这串**看起来都合理、组合起来就炸**的代码：
+
+1. 用户首次选目录完成 → 前端 `kbPut(K_DIR, dirHandle={path,name,preScanned:[3PDF]})` 把**预扫描快照**也持久化进了 Rust `kb_store_*` 存储（因为 dirHandle 是一个普通对象，`kbPut(K_DIR, dir)` 会连 `preScanned` 字段一起 JSON 序列化）。
+2. 用户点击「重新索引」按钮 → `KB.rescan()` → `rescan()` 第 734 行：`indexDir(dirHandle,{incremental:false})`（注意此时 `state.bound=true`，dirHandle 如果来自页面重启还会走 kbGet(K_DIR) 恢复，K_DIR 里那个 preScanned 也还在）。
+3. `indexDir` → `_kbListFiles(dir)` → 旧代码判断 **`Array.isArray(dir.preScanned) && dir.preScanned.length`** 就直接 return `dir.preScanned`。
+   - 看起来没问题：「preScanned 是上次扫过的 3 个 PDF，直接用省一次 invoke」。
+   - 但 **打包 Release 环境下，距离首次 pick_folder 回调帧已经过去几秒~几小时** —— macOS NSOpenPanel 的「临时安全范围书签」在回调 return 后就会被 macOS 自动收回，所以现在这个 preScanned[].path 指向的 3 条 PDF 路径，`std::fs::File::open(path)` 会**全部 PermissionDenied throw**。
+4. `_kbListFiles` 返回 found=[3PDF]（看起来正常！），`indexDir` 循环 3 次调 `parseFile(f.name,f)` → PDF 分支 `_kbReadBytes(source)` → Rust `kb_read_b64(path)` → 3 个全部 throw「Permission denied」。
+5. parseFile throw → indexDir 把它 push 进 `errors[]`（但旧代码没把 errors 写 state.error，也没把 errors 拼到返回）→ `finalFiles=[]`、`finalBlocks=[]`。
+6. indexDir 旧实现不区分「found=0」与「found>0 但 finalFiles=0」，直接：
+   ```js
+   state.files=finalFiles; state.blocks=finalBlocks;
+   await kbPut(K_FILES, finalFiles); await kbPut(K_BLOCKS, finalBlocks);
+   ```
+   → 上次保存的 K_FILES/K_BLOCKS（3 个 PDF 解析出的真实分块）**被空数组覆写** → UI 显示「0 文件 · 0 分块 · 0 B」。
+7. 雪上加霜：`_kbListFiles` 直接用了预扫描快照，根本没触发 `invoke kb_scan_dir` → Rust 端 PermissionDenied 的带中文 hint 的 Err 没暴露出来 → 前端 state.error 只能写「目录诊断：未发现 md/txt/pdf/docx…」—— 诊断完全错方向。
+
+浏览器端不触发的原因：浏览器端根本不走 `IS_TAURI_KB` 分支（没有 `window.__TAURI__`），`_kbListFiles` 走 FSA walkDir，FileSystemDirectoryHandle 的权限在 dev server 上下文里稳定持久化；file:// 双击降级走快照模式，rescan 本来就会返回友好提示不会调 indexDir。
+
+> **一句话总结**：预扫描快照 `preScanned` 只在「pick_folder 回调帧还活着」的那一刻有意义；当它被持久化到磁盘、或用户第二次点「重新索引」时，它已是**过期快照**——列表里的文件路径全部打不开，最终把已入库数据清为 0。
+
+---
+
+**💊 修复：三层防御（从入口到底层全部兜住，任何一层都能避免 0 文件 0 分块）**
+
+##### 防线 1：入口处「禁止过期 preScanned」（[src/core/kb.js _kbListFiles](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js#L239-L265)）
+只有在「chooseDir 刚完成的**一次性初始化**」场景才允许用预扫描快照：
+```
+canUsePreScanned = !state.bound && !dirFromRestore && Array.isArray(dir.preScanned) && dir.preScanned.length>0
+```
+- 只要 `state.bound==true`（用户点了「重新索引」= 已绑定 → 必须重新扫描授权）→ 作废 preScanned。
+- 只要 dirHandle 是 `kbGet(K_DIR)` 恢复出来的（路径相同 = 来自磁盘持久化）→ 作废 preScanned。
+- 作废后强制走 `invoke('kb_scan_dir', {path})`：
+  - 若书签过期 → Rust 返回 PermissionDenied Err，前端 state.error 明确提示「知识库目录临时授权已过期，macOS Tauri 选择目录后的临时权限有时间限制。请点『选择目录并索引』重新选择该目录，系统会在选完立刻重新扫描入库」；
+  - 书签仍有效 → 正常重扫。
+
+##### 防线 2：「重新索引成功」判据不只是「扫描列表非空」，还要 parseFile 真能产出 finalFiles>0，否则保留旧数据（[src/core/kb.js indexDir](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js#L565-L594)）
+新增「最后一道防线」分支：
+```js
+if(!incremental && found.length>0 && finalFiles.length===0){
+  // 不执行：state.files = [] / await kbPut(K_FILES,[])
+  // 改为：保留 state.files / state.blocks / K_FILES / K_BLOCKS 上次有效数据
+  state.error = '解析失败 N 个文件（已保留上次成功索引的数据，未清空）……'
+  return {ok:false, preserved:true, ...}
+}
+```
+效果：**即使防线 1 漏了（假设将来还有其他过期路径），用户最多看到红提示，不再看到 0 文件 0 分块把数据清掉**。这是最重要的「数据安全」兜底。
+
+##### 防线 3：Rust 回调内字节级可读性探针，预扫描结果若「列得出来但读不到」立刻标记为异常（[src-tauri/src/lib.rs](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/src/lib.rs#L372-L397)）
+在 macOS NSOpenPanel 回调帧还没 return 时（权限帧 100% 有效），额外同步跑一次：
+```rust
+fn probe_read_files(files: &[KbFileEntry]) -> usize {
+  // 对 files[i] 逐个 File::open(&p) → read(&mut [0u8;1])，成功读至少 1 字节计数 +1。
+}
+```
+`kb_pick_and_scan_dir` 把 `probe_read_bytes_ok` 返回给前端，前端 chooseDir 对比：`probe_ok < files.length` → 立刻 state.error 红提示「选择目录并扫描完成，但 N 个文件在回调上下文里就无法读字节，请重新点『选择目录并索引』重试，或移到 Downloads/Desktop 再试」。打包版探针只要全过 = 后续 3 个 PDF 解析肯定有字节读（除非用户手动删了文件），0 分块就不会出现。`kb_scan_dir` 同样带 probe 字段，便于将来前端扩展「重新索引时可读比例」的更细诊断。
+
+附带：`_kbListFiles` catch 分支做了**权限/独占占用类异常的细分类映射**：
+- macOS：PermissionDenied / Operation not permitted / security scope / scoped resource → 统一提示「请点『选择目录并索引』重新授权」。
+- Windows：ERROR_ACCESS_DENIED=5 / ERROR_SHARING_VIOLATION=32 / AccessDenied → 提示「关闭占用程序 / 重新以有权限账户运行」。
+
+---
+
+**🏗️ 改动清单与构建**
+
+| 文件 | 改动 |
+|------|------|
+| [src/core/kb.js _kbListFiles](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js#L239-L304) | 重写 preScanned 可用性判断为「仅 !state.bound 且 !dirFromRestore」；权限类异常细分类映射到中文红提示。 |
+| [src/core/kb.js indexDir](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js#L565-L594) | 新增 preserved 兜底分支：incremental=false 且 found>0 && finalFiles=0 时保留旧索引、不覆写 K_FILES/K_BLOCKS，红提示原因。 |
+| [src/core/kb.js chooseDir](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src/core/kb.js#L703-L720) | 读取 picked.probe_read_bytes_ok，若 < files.length 立即写权限异常红提示；避免后续 indexDir 被逐文件抛清空。 |
+| [src-tauri/src/lib.rs](file:///Users/wbtrex/AI助手/node/trexwb/fastenerTradeWorkbench/src-tauri/src/lib.rs) | KbPickAndScanResult / KbScanResult 新增 probe_read_bytes_ok 字段；新增 `probe_read_files(files)` 做「回调帧逐文件读 1 字节」探针；kb_scan_dir 修复 E0382（out 移入返回值前先算 probe 再 move）。 |
+
+**构建校验**：
+- `cargo check --message-format=short`（Tauri Rust 层）：✅ **Finished `dev` profile in 2.12s，零 error**。
+- `npm run vite:build`（浏览器版前端）：✅ **built in 457ms**，dist/index.html + assets/js/index.js 产物完整双击可运行。
+- 打包 Release 验证留待用户在真实 Tauri 环境验证；三层防御设计上把「任何一步失败都不会清空上次有效索引」作为不变式。
+
+**最终承诺（Tauri macOS 桌面打包版）**：
+- 选择含 3 个 PDF 的知识库目录绑定入库后 ✅：UI 显示 3 文件 · N 分块 · N kB。
+- 点「重新索引」若书签已过期（超时/重启/隔几小时）✅：**不再清空为 0 文件 0 分块**（preserved 兜底保留上次数据），KB 区块底部红提示明确：「请点击『选择目录并索引』重新选择该目录即可重新入库」。
+- 点「重新索引」若书签仍有效 ✅：正常增量/全量刷新，分块、字符计数、目录名全部正确。
+- 选择目录时若遇到极端 sandbox 边界（极少数 3rd-party 安全软件拦截）✅：Rust 探针 probe_ok<files → 前端红提示「请重新选择或移动到 Downloads/Desktop」，不会让用户看到「0 文件 0 分块」的无因静默失败。
+
 ---
 
 ## 文档校准

@@ -162,7 +162,11 @@ textarea{resize:vertical;min-height:60px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
 .field{margin-bottom:14px;}
-.note{font-size:14px;color:var(--gray);margin-top:5px;}
+.note{font-size:14px;color:var(--gray);margin-top:5px;line-height:1.7;
+  /* 全局说明文字：CJK 短语换行，不要 word-break:break-word（那会让中文逐字断 → 窄容器竖排）；
+   * 只用 overflow-wrap:anywhere 处理长英文路径 / URL。 */
+  overflow-wrap:anywhere;
+}
 /* Form states */
 label.required::after{content:' *';color:var(--red);}
 input.error,select.error,textarea.error{border-color:var(--red);box-shadow:0 0 0 3px var(--red-l);}
@@ -602,12 +606,19 @@ input.alloc-input{width:90px;}
 .ai-input-hint{font-size:11px;color:var(--gray);text-align:center;letter-spacing:.01em;}
 /* AI 设置弹窗：状态摘要卡 + 分组卡片体系 */
 .ai-set-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius-lg);background:linear-gradient(135deg,var(--pri-l,rgba(59,130,246,.08)),transparent 60%),var(--card);margin-bottom:4px}
-.ai-set-hero-main{min-width:0}
+.ai-set-hero-main{min-width:220px;flex:1 1 320px}
 .ai-set-hero-status{font-size:12px;margin-bottom:2px}
-.ai-set-hero-model{font-size:17px;font-weight:600;color:var(--ink);word-break:break-all}
-.ai-set-hero-host{font-size:12px;color:var(--gray);word-break:break-all;margin-top:2px}
-.ai-set-hero-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.ai-set-hero-note{font-size:11px;color:var(--gray);max-width:180px;text-align:right;line-height:1.5}
+.ai-set-hero-model{font-size:17px;font-weight:600;color:var(--ink);
+  /* 原 word-break:break-all 对中文副作用：逐字断句 → 窄屏看起来每字一行（竖排）。
+   * 改为 overflow-wrap:anywhere：CJK 仍按短语换行，只有长 API base URL / token 才字符级断。 */
+  overflow-wrap:anywhere;line-height:1.45;
+}
+.ai-set-hero-host{font-size:12px;color:var(--gray);overflow-wrap:anywhere;margin-top:2px;line-height:1.6}
+.ai-set-hero-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  /* 侧栏最小宽度 240px，避免 hero-note 中文说明被压到 2~3 字宽变竖排 */
+  min-width:240px;flex:0 0 240px;
+}
+.ai-set-hero-note{font-size:12px;color:var(--gray);max-width:100%;min-width:220px;text-align:right;line-height:1.7}
 .ai-set-hd{display:flex;align-items:baseline;gap:8px;margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink)}
 .ai-set-hd:first-of-type{margin-top:14px}
 .ai-set-hd .note{font-weight:400}
@@ -618,24 +629,93 @@ input.alloc-input{width:90px;}
 .ai-preset-chip:hover{border-color:var(--pri);color:var(--pri)}
 .ai-preset-chip.active{border-color:var(--pri);background:var(--pri-l);color:var(--pri);font-weight:500}
 .ai-set-danger{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--red-line,rgba(220,38,38,.35));border-radius:var(--radius)}
-/* 知识库区块内排版：状态行 / 操作行 / 开关栅格（标签永不逐字碎行） */
-.ai-kb-head{margin:4px 0 2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* 知识库区块内排版：状态行 / 操作行 / 开关栅格 */
+.ai-kb-head{margin:4px 0 2px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;line-height:1.7}
+.ai-kb-head strong{font-size:14px;font-weight:600;overflow-wrap:anywhere;display:inline-block;max-width:62ch;}
 .ai-kb-actions{margin:8px 0 2px;display:flex;gap:8px;flex-wrap:wrap}
-.ai-kb-opts{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;margin-top:10px}
-.ai-opt{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);white-space:nowrap;cursor:pointer}
-.ai-opt input[type="checkbox"]{margin:0;accent-color:var(--pri)}
-.ai-opt input[type="number"],.ai-opt select{padding:3px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-size:13px}
-.ai-opt select{padding:3px 8px;cursor:pointer}
-.ai-opt select:focus,.ai-opt input[type="number"]:focus{outline:none;border-color:var(--pri)}
-.ai-opt-inline{font-size:13px;color:var(--gray)}
-.ai-opt-inline input[type="number"]:focus{outline:none;border-color:var(--pri)}
+/* data.js KB 区块状态与错误区专用：避免代码/错误文本在窄卡片内被挤压成单字竖排 */
+.data-kb-status-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;line-height:1.7}
+.data-kb-status-row code{font-size:12px;overflow-wrap:anywhere;
+  background:var(--bg-soft,rgba(0,0,0,.03));padding:2px 8px;border-radius:6px;border:1px solid var(--line);
+  display:inline-block;max-width:60ch;
+}
+.data-kb-error{color:var(--red);margin-top:8px;margin-bottom:0;line-height:1.7;overflow-wrap:anywhere;
+  background:rgba(239,68,68,.05);padding:8px 10px;border-radius:8px;border:1px dashed var(--red-line,rgba(220,38,38,.3));
+}
+/* 状态点：统一不被挤压 */
+.ai-status{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;line-height:1.6}
+/* 2026-08-29 知识库 & AI 设置区排版美化 + 「文字竖着放」兜底修复：
+ * 上轮把 .ai-opt .ai-opt-row .ai-opt>span 都写了 min-width:0 防止重叠，
+ * 但 CJK 中文在 `min-width:0 + inline-flex 收缩 + 窄容器` 时会被压到只剩
+ * 1 个汉字宽度 → 每个字单独一行 → 视觉上看起来就像「文字竖排竖着放」。
+ * 本补丁把「带中文文本的 label/span」从 min-width:0 改成合理的最小宽度下限
+ * （中文字号 13px × 4~6 字 ≥ 80~120px 足够承载「提问时检索知识库」这类标签），
+ * 并把 word-break:break-word / break-all 降级为 overflow-wrap:anywhere（只在
+ * 必要的长 URL / 路径时断字符级，CJK 默认按短语断行）。 */
+.ai-kb-opts{
+  margin-top:10px;
+  display:flex;flex-direction:column;align-items:stretch;
+  gap:8px;
+}
+.ai-kb-opts .ai-opt-row{
+  display:flex;flex-direction:row;align-items:center;gap:8px;
+  min-width:0;flex-wrap:wrap;
+}
+.ai-opt{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:13px;color:var(--ink);cursor:pointer;
+  /* 每项独占一整行（容器 column 布局），宽度充足，永不出现逐字竖排 */
+  white-space:nowrap;line-height:1.7;
+  padding:5px 8px;
+  border-radius:8px;
+  transition:background .15s;
+}
+.ai-kb-opts .ai-opt:hover{background:var(--bg-soft,rgba(0,0,0,.03));}
+.ai-kb-opts .ai-opt:hover > span{color:var(--pri);}
+.ai-opt:hover{background:var(--bg-soft,rgba(59,130,246,.05));}
+.ai-opt input[type="checkbox"]{margin:0;accent-color:var(--pri);flex:0 0 auto;width:14px;height:14px;}
+.ai-opt > span{
+  overflow-wrap:anywhere;
+  display:inline-block;
+  line-height:1.7;
+}
+.ai-opt input[type="number"],.ai-opt select{
+  padding:4px 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--ink);font-size:13px;line-height:1.4;
+  /* 控件固定宽度，不参与 flex-shrink 挤压：number 至少能显示 99 两位 + spinner */
+  min-width:72px;flex:0 0 auto;
+  transition:border-color .15s, box-shadow .15s;
+}
+.ai-opt select{padding:4px 12px;cursor:pointer;min-width:96px}
+.ai-opt select:focus,.ai-opt input[type="number"]:focus{
+  outline:none;border-color:var(--pri);
+  box-shadow:0 0 0 3px var(--pri-l,rgba(59,130,246,.18));
+}
+.ai-opt-inline{
+  font-size:13px;color:var(--gray);
+  display:inline-flex;align-items:center;gap:6px;
+  flex-wrap:wrap;line-height:1.7;
+  min-width:180px;
+}
+.ai-opt-inline input[type="number"]:focus{
+  outline:none;border-color:var(--pri);
+  box-shadow:0 0 0 3px var(--pri-l,rgba(59,130,246,.18));
+}
 .ai-kb-ai{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
-.ai-kb-ai-note{margin-bottom:2px;color:var(--gray)}
+/* 2026-08-29 AI 设置 hero 文案区：原 ai-set-hero-note max-width:180px + right 对齐，
+ * 在平板窄 / 桌面窗口小时右侧宽度可能被挤压到 2~3 字 → 视觉竖排。统一给 hero-note
+ * 一个足够的下限（3~4 行中文没问题的 240px + 移动端 100% 取消上限），并恢复
+ * align-items:flex-start 让小字从左往右读，不再被挤压成单字竖排。 */
+.ai-kb-ai-note{margin-bottom:2px;color:var(--gray);line-height:1.7}
 @media (max-width:640px){
-  .ai-set-hero{flex-direction:column;align-items:stretch}
-  .ai-set-hero-side{flex-direction:row;align-items:center}
-  .ai-set-hero-note{max-width:none;text-align:left}
-  .ai-preset-chip{padding:5px 10px}
+  .ai-set-hero{flex-direction:column;align-items:stretch;gap:8px}
+  .ai-set-hero-main{min-width:0;flex:1 1 auto}
+  .ai-set-hero-side{flex-direction:row;align-items:center;flex-wrap:wrap;min-width:0;flex:1 1 auto}
+  .ai-set-hero-note{max-width:none;min-width:0;text-align:left;font-size:12px}
+  .ai-kb-opts .ai-opt-row{min-width:0;flex:1 1 100%}
+  .ai-opt{min-width:0}
+  .ai-opt>span{min-width:0}
+  .ai-opt-inline{min-width:0}
 }
 /* AI 生成中忙碌态：输入区降噪、提示发送已暂停；发送按钮此时为「停止」语义 */
 .ai-composer.ai-busy .ai-input-row textarea{opacity:.72}

@@ -48,7 +48,14 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
   if(body instanceof Element){mb.appendChild(body);}
   else{mb.innerHTML=body||'';}
   document.getElementById('app').appendChild(m);
-  document.getElementById('_modalOk').onclick=()=>{closeModal();if(onOk)onOk();};
+  // 2026-08-29 关键修复：先执行 onOk 回调（它里面要读 modal body 里的 DOM），
+  // 再关闭弹窗。旧写法 closeModal() 在 onOk() 前面，导致 AI 设置弹窗里
+  // document.getElementById('aiDeepseekToken') 拿到 null → 永远保存不到 Key。
+  // 各 modal 的 onOk 内部已经会自行调 closeModal()，这里的 closeModal 只是兜底。
+  document.getElementById('_modalOk').onclick=()=>{
+    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}}catch(e){}}
+    closeModal();
+  };
   /* v1.0.28 修复：取消按钮未绑 onclick，导致设置等弹窗点"取消"无反应。modal() 无 onCancel 形参，取消即关闭弹窗（与 confirmModal 行为一致） */
   const cn=document.getElementById('_modalCancel');
   if(cn)cn.onclick=()=>{closeModal();};
@@ -79,7 +86,11 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
      仅调用方显式传入 html=true 且内容已自行 escHtml 或为可信静态模板时，才按 HTML 渲染 */
   const safeMsg=html?String(msg):escHtml(String(msg));
   document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
-  document.getElementById('_modalOk').onclick=()=>{closeModal();if(onOk)onOk();};
+  document.getElementById('_modalOk').onclick=()=>{
+    // confirmModal 的 onOk 也可能需要读 DOM 或 async，与 modal() 同样处理
+    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}}catch(e){}}
+    closeModal();
+  };
   document.getElementById('_modalCancel').onclick=()=>{closeModal();if(onCancel)onCancel();};
 }
 
