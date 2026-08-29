@@ -301,25 +301,24 @@ fn kb_scan_dir(path: String) -> Result<KbScanResult, String> {
         Ok(rd) => rd,
         Err(e) => {
             let kind = e.kind();
-            #[allow(unused_mut)]
-            let mut hint = match kind {
-                std::io::ErrorKind::PermissionDenied => "（macOS 目录访问权限已过期，典型：选择目录后隔一段时间/重启 App 导致 NSOpenPanel 临时授权失效。请点击「选择目录并索引」重新选一次该目录进行授权）",
-                std::io::ErrorKind::NotFound => "（目录可能已被移动或重命名）",
-                _ => "",
-            };
-            #[cfg(windows)]
-            {
-                if let Some(code) = e.raw_os_error() {
-                    let mut win = String::new();
-                    if code == 206 || code == 111 {
-                        win.push_str("（Windows 路径过长：ERROR_FILENAME_EXCED_RANGE。当前应用已通过嵌入应用程序兼容清单（build.rs）声明 longPathAware=true；若仍报此错，请确认运行系统为 Windows 10 1607+，或将知识库目录移动到更短的上层路径后重试）");
-                    } else if code == 5 || code == 32 {
-                        win.push_str("（Windows 无权限：ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION。请关闭其他程序对该目录/文件的独占占用，或以有权限的用户重新运行应用）");
-                    }
-                    if !win.is_empty() { hint = &win; }
+            let hint: Option<String> = match kind {
+                std::io::ErrorKind::PermissionDenied => Some("（macOS 目录访问权限已过期，典型：选择目录后隔一段时间/重启 App 导致 NSOpenPanel 临时授权失效。请点击「选择目录并索引」重新选一次该目录进行授权）".to_string()),
+                std::io::ErrorKind::NotFound => Some("（目录可能已被移动或重命名）".to_string()),
+                #[cfg(windows)]
+                _ => {
+                    if let Some(code) = e.raw_os_error() {
+                        if code == 206 || code == 111 {
+                            Some("（Windows 路径过长：ERROR_FILENAME_EXCED_RANGE。当前应用已通过嵌入应用程序兼容清单（build.rs）声明 longPathAware=true；若仍报此错，请确认运行系统为 Windows 10 1607+，或将知识库目录移动到更短的上层路径后重试）".to_string())
+                        } else if code == 5 || code == 32 {
+                            Some("（Windows 无权限：ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION。请关闭其他程序对该目录/文件的独占占用，或以有权限的用户重新运行应用）".to_string())
+                        } else { None }
+                    } else { None }
                 }
-            }
-            return Err(format!("无法读取目录内容：{e}{hint}；raw={kind:?}; path={path}"));
+                #[cfg(not(windows))]
+                _ => None,
+            };
+            let hint_str = hint.as_deref().unwrap_or("");
+            return Err(format!("无法读取目录内容：{e}{hint_str}；raw={kind:?}; path={path}"));
         }
     };
     let mut out = Vec::new();
