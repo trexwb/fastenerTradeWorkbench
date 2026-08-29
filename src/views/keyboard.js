@@ -233,7 +233,7 @@ document.addEventListener('keydown',function(e){
       case 'i':
         e.preventDefault();
         if(view==='data'){
-          const fi=document.getElementById('importFileInput');
+          const fi=document.getElementById('importFile');
           if(fi)fi.click();
         }
         return;
