@@ -326,33 +326,34 @@ async function _kbRefreshBox(){
   }
   if(!s.bound){
     box.innerHTML='<div style="line-height:1.9">'+
-      '<span class="tag gray">未绑定</span> <span style="color:var(--gray)">选择本机目录作为 AI 知识库，将解析其中的 md / txt / PDF / docx（纯前端解析、不联网、本地检索）。</span>'+
+      '<span class="tag gray">未绑定</span> <span class="note" style="display:inline;color:var(--gray);margin-top:0">选择本机目录作为 AI 知识库，将解析其中的 md / txt / PDF / docx（纯前端解析、不联网、本地检索）。</span>'+
       '<div style="margin-top:10px"><button type="button" class="btn primary sm" onclick="_kbChoose()">选择目录并索引</button></div>'+
     '</div>';
     return;
   }
   const sizeStr=s.chars<1024?s.chars+' B':(s.chars<1048576?(s.chars/1024).toFixed(1)+' KB':(s.chars/1048576).toFixed(1)+' MB');
   const timeTxt=s.indexedAt?_backupTimeLabel(s.indexedAt):'';
-  const inner='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+  const inner='<div class="data-kb-status-row">'+
       '<span class="tag ok">已绑定</span>'+
-      '<code style="font-size:12px;word-break:break-all">'+escHtml(s.dirName)+'</code>'+
+      '<code>'+escHtml(s.dirName)+'</code>'+
       (s.indexing?'<span class="tag warn">索引中…</span>':'')+
       '<span style="color:var(--ink)">'+s.files+' 个文件 · '+s.blocks+' 个分块 · '+sizeStr+'</span>'+
-      (timeTxt?'<span style="color:var(--gray)">最近索引 '+timeTxt+'</span>':'')+
+      (timeTxt?'<span class="note" style="margin:0">最近索引 '+timeTxt+'</span>':'')+
     '</div>'+
-    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
+    '<div class="ai-kb-actions">'+
       '<button type="button" class="btn sm" onclick="_kbRescan()" '+(s.indexing?'disabled':'')+'>'+icon('refresh','14')+' 重新索引</button>'+
+      '<button type="button" class="btn sm" onclick="_kbChooseFiles()" '+(s.indexing?'disabled':'')+'>'+icon('fileText','14')+' 批量选择文件</button>'+
       '<button type="button" class="btn sm" onclick="_kbUnbind()" '+(s.indexing?'disabled':'')+'>'+icon('link','14')+' 断开</button>'+
     '</div>'+
     '<div class="ai-kb-opts">'+
       '<label class="ai-opt"><input type="checkbox" id="kbSectEnabled" '+(s.enabled?'checked':'')+' onchange="_kbToggle(this.checked)"><span>提问时检索知识库</span></label>'+
-      '<label class="ai-opt ai-opt-inline">注入 Top-N '+
+      '<label class="ai-opt-inline">注入 Top-N '+
         '<select id="kbSectTopN" onchange="_kbTopN(this.value)">'+
-          [3,4,5].map(n=>'<option value="'+n+'"'+(s.topN===n?' selected':'')+'>'+n+' 片段</option>').join('')+
+          [3,4,5,6,8,10].map(n=>'<option value="'+n+'"'+(s.topN===n?' selected':'')+'>'+n+' 片段</option>').join('')+
         '</select></label>'+
       '<label class="ai-opt"><input type="checkbox" id="kbSectCite" '+(s.cite?'checked':'')+' onchange="_kbCite(this.checked)"><span>回答标注来源</span></label>'+
     '</div>'+
-    (s.error?'<div class="note" style="color:var(--red);margin-top:8px;margin-bottom:0">'+escHtml(s.error)+'</div>':'');
+    (s.error?'<div class="data-kb-error">'+escHtml(s.error)+'</div>':'');
   box.innerHTML=inner;
 }
 async function _kbChoose(){
@@ -371,6 +372,14 @@ async function _kbRescan(){
   const r=await KB.rescan();
   if(r&&r.ok){_kbToastResult('重新索引完成',r);}
   else{toast(r&&r.error?r.error:'重新索引失败','error');}
+  _kbRefreshBox();
+}
+async function _kbChooseFiles(){
+  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
+  const r=await KB.chooseFiles();
+  if(r&&r.cancelled)return;
+  if(r&&r.ok){_kbToastResult('批量文件索引完成',r);}
+  else{toast(r&&r.error?r.error:'批量选择文件失败','error');}
   _kbRefreshBox();
 }
 async function _kbUnbind(){

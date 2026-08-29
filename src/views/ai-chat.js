@@ -39,7 +39,9 @@ function renderAIMarkdown(text){
   return html;
 }
 function aiStatusLabel(){
-  if(AI.state.hasKey)return '<span class="ai-status online">● '+(AI.state.runtime==='tauri'?'桌面就绪':'直连就绪')+'</span>';
+  // 2026-08-29：hasKey + apiKey 双重检查，防止初始化时序导致 hasKey=false 但 Key 实际已保存
+  const hasKey=AI.state.hasKey||!!(AI.state.apiKey&&String(AI.state.apiKey).trim());
+  if(hasKey)return '<span class="ai-status online">● '+(AI.state.runtime==='tauri'?'桌面就绪':'直连就绪')+'</span>';
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
@@ -90,7 +92,7 @@ function openAIAssistant(){
   if(AI.state.chatting)setAISendingUI(true);
 }
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
-function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){button.classList.toggle('online',AI.state.hasKey);button.title=AI.state.hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
+function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){const hasKey=AI.state.hasKey||!!(AI.state.apiKey&&String(AI.state.apiKey).trim());button.classList.toggle('online',hasKey);button.title=hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
 function handleAIInputKey(event){
   // Enter 直接发送；Ctrl/Cmd+Enter 与 Shift+Enter 均为换行（textarea 默认行为，不拦截）
   if(event.key==='Enter'&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){
@@ -120,7 +122,7 @@ function requestAISend(){
   const message=input.value.trim();
   if(!message){input.focus();return;}
   if(message.length>8000){toast('提问过长（'+message.length+' 字），请精简到 8000 字以内再发送','warning');return;} // 输入长度校验
-  if(!AI.state.hasKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
+  if(!AI.state.hasKey&&!AI.state.apiKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
   const extra=_aiExtraContext;_aiExtraContext='';
   _aiCurrentSnapshot=AI.buildPreview(message,extra);
   // 数据快照确认弹窗：首次发送提示一次，确认后记住（localStorage），后续发送不再重复弹
@@ -418,6 +420,16 @@ function fmtOpsVal(v){
 }
 /* ===== 本地知识库（KB）设置区 ===== */
 /** 渲染知识库设置区 HTML（AI 设置弹窗内嵌，id=kbZone） */
+async function clearSavedAIKey(){
+  try{await AI.setDeepseekToken('');const i=document.getElementById('aiDeepseekToken');if(i)i.value='';toast('已清除保存的 Key','info');const z=document.getElementById('kbZone');if(z)z.innerHTML=kbrenderZone(KB.summarize());}catch(e){toast('清除失败','error');}
+}
+async function kbPickFiles(){
+  const r=await KB.chooseFiles();
+  if(r&&r.cancelled)return;
+  const z=document.getElementById('kbZone');if(z)z.innerHTML=kbrenderZone(KB.summarize());
+  if(r&&r.ok){toast('批量文件索引完成：成功 '+(r.files||0)+' 个 · '+(r.blocks||0)+' 个分块',r.errors&&r.errors.length?'warning':'success');}
+  else{toast((r&&r.error)||'批量选择文件失败','error');}
+}
 function kbrenderZone(stat){
   if(!stat)return '<p class="note">知识库模块未加载。</p>';
   const s=stat;
@@ -430,12 +442,12 @@ function kbrenderZone(stat){
     head='<div class="ai-kb-head"><span class="ai-status warning">● 未绑定知识库目录</span></div><div class="note">绑定一个本地文件夹作为知识库（支持 md/txt/pdf/docx），提问时自动查阅其中的资料；正文留在原目录不动。</div>';
   }
   const actions=s.bound
-    ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+(s.indexing?' disabled':'')+'>断开</button>'
-    :'<button type="button" class="btn sm primary" onclick="kbBindDir()">选择目录并索引</button>';
+    ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbPickFiles()"'+(s.indexing?' disabled':'')+'>批量选择文件</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+(s.indexing?' disabled':'')+'>断开</button>'
+    :'<button type="button" class="btn sm primary" onclick="kbBindDir()">选择目录并索引</button> <button type="button" class="btn sm" onclick="kbPickFiles()">批量选择文件</button>';
   const dis=(s.bound?'':' disabled');
   const enableRow='<div class="ai-kb-opts">'+
     '<label class="ai-opt"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+dis+' onchange="kbSetEnabled(this.checked)"><span>提问时检索知识库</span></label>'+
-    (s.bound?'<label class="ai-opt ai-opt-inline">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" onchange="kbSetTopN(this.value)"></label>':'')+
+    (s.bound?'<label class="ai-opt-inline">注入 Top-N <input type="number" id="kbTopN" min="1" max="10" step="1" value="'+s.topN+'" onchange="kbSetTopN(this.value)"></label>':'')+
     '<label class="ai-opt"><input type="checkbox" id="kbCite" '+(s.cite?'checked':'')+dis+' onchange="kbSetCite(this.checked)"><span>回答标注来源</span></label></div>';
   const aiRow='<div class="ai-kb-ai"><div class="note ai-kb-ai-note">AI 主动检索（推荐）：开启后不再自动注入片段，由 AI 在对话中按需调用检索工具，命中更准、省 token。</div><div class="ai-kb-opts">'+
     '<label class="ai-opt"><input type="checkbox" id="kbActiveRetrieval" '+(s.activeRetrieval!==false?'checked':'')+dis+' onchange="kbSetActiveRetrieval(this.checked)"><span>AI 主动检索</span></label>'+
@@ -524,7 +536,7 @@ async function openAISettings(){
         '<div class="field"><label class="f">快捷预设</label><div class="ai-preset-row">'+presetBtns+'</div><div class="note">点击自动填入下方地址与模型名，也可手动填写任意 OpenAI 兼容端点。</div></div>'+
         '<div class="field"><label class="f" for="aiBaseUrl">服务地址 Base URL</label><input id="aiBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com/v1" value="'+escAttr(savedBase)+'" oninput="aiEndpointHint()"><div class="note" id="aiEndpointHint"></div></div>'+
         '<div class="field"><label class="f" for="aiModel">模型名称</label><input id="aiModel" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-v4-flash" value="'+escAttr(savedModel)+'"></div>'+
-        '<div class="field" style="margin-bottom:0"><label class="f" for="aiDeepseekToken">API_KEY</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存，仅在编辑时可见':'尚未设置')+'；使用本地 Ollama / oMLX 时可留空。</div></div>'+
+        '<div class="field" style="margin-bottom:0"><label class="f" for="aiDeepseekToken">API_KEY'+(savedKey?' <button type="button" class="btn sm" style="padding:2px 8px;margin-left:6px" onclick="clearSavedAIKey()">清除 Key</button>':'')+'</label><input id="aiDeepseekToken" type="text" autocomplete="off" spellcheck="false" placeholder="'+escAttr(keyPh)+'" value="'+escAttr(savedKey)+'"><div class="note">'+(savedKey?'已保存 Key（打开弹窗时会自动回显，输入新值覆盖）':'尚未设置')+'；使用本地 Ollama / oMLX 时可留空。</div></div>'+
       '</div>'+
       '<div class="ai-set-hd">知识库 <span class="note">提问时自动查阅本地资料</span></div>'+
       '<div class="ai-set-card"><div id="kbZone">'+kbZone+'</div></div>'+
@@ -540,15 +552,21 @@ async function openAISettings(){
     const tokenEl=document.getElementById('aiDeepseekToken');
     const tokenVal=tokenEl?(tokenEl.value||'').trim():'';
     try{
-      await AI.setDeepseekToken(tokenEl?tokenEl.value:'');
-      // 本地端点未填 Key 时按服务规则提示（Ollama 可免；oMLX 必须与 oMLX 设置中的 Key 一致）
+      AI.setProvider(baseEl?baseEl.value:'',modelEl?modelEl.value:'');
       const baseVal=baseEl?(baseEl.value||'').trim():'';
-      if(!tokenVal&&/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseVal)){
-        toast('本地端点未填 API_KEY：Ollama 可直接使用；若为 oMLX，需在 oMLX「设置 → API Key」配置后，在应用内填写相同值','info');
-      }else{
+      if(tokenVal){
+        await AI.setDeepseekToken(tokenVal);
         toast('AI 设置已保存','success');
+      }else{
+        const hasSaved=await AI.getDeepseekToken();
+        if(hasSaved){toast('API_KEY 输入为空——已保留原保存的 Key（如需清除请点「清除 Key」）','info');}
+        else if(/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseVal)){
+          toast('本地端点未填 API_KEY：Ollama 可直接使用；若为 oMLX，需在 oMLX「设置 → API Key」配置后，在应用内填写相同值','info');
+        }else{
+          toast('已保存端点/模型，但未填写 API_KEY','warning');
+        }
       }
-    }catch(e){toast('保存 API_KEY 失败：'+(e&&e.message?e.message:e),'error');}
+    }catch(e){toast('保存 AI 设置失败：'+(e&&e.message?e.message:e),'error');}
     closeModal();
   },true);
   aiEndpointHint(); // 初始按已保存端点渲染单行动态提示

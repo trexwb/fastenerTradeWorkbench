@@ -11,58 +11,17 @@ const AI=(function(){
   const DEFAULT_BASE_URL='https://api.deepseek.com/v1';   // OpenAI 兼容端点，可在设置中修改（如 Ollama http://127.0.0.1:11434/v1）
   const STREAM_EVENT='ai:deepseek:chunk';
   const REQUEST_TIMEOUT_MS=120000; // 单次请求总超时（含流式全程）；超时后自动 abort，前端给出「重新提交」入口
-  const WEB_KEY_STORAGE='wb_fastener_ai_key';   // 浏览器形态：API_KEY 存 localStorage（混淆形式）
+  const WEB_KEY_STORAGE='wb_fastener_ai_key';   // API_KEY 明文存 localStorage（三端统一，用户决策 v1.0.31+）
   const WEB_API_URL=DEFAULT_BASE_URL+'/chat/completions';   // 默认端点（可配置）
   const WEB_BASE_STORAGE='wb_fastener_ai_base';   // Base URL 存 localStorage
   const WEB_MODEL_STORAGE='wb_fastener_ai_model'; // 模型名存 localStorage
   const _OBF_SALT_KEY='wb_fastener_obf_salt';   // 混淆盐值存 localStorage
 
-  /** 设备派生密钥：用随机盐 + app 标识生成 XOR 密钥流（混淆，非密码学安全） */
-  function _obfDeriveKey(){
-    let salt=localStorage.getItem(_OBF_SALT_KEY);
-    if(!salt){
-      const arr=new Uint8Array(32);
-      crypto.getRandomValues(arr);
-      salt=btoa(String.fromCharCode.apply(null,arr));
-      try{localStorage.setItem(_OBF_SALT_KEY,salt);}catch(e){}
-    }
-    const raw=salt+'fastener_workbench_v1';
-    const keyBytes=new Uint8Array(raw.length);
-    for(let i=0;i<raw.length;i++)keyBytes[i]=raw.charCodeAt(i);
-    return keyBytes;
-  }
-
-  /** 混淆明文 → 'obf1:Base64' 格式字符串
-   * P2/F2 局限说明：Web 形态下 API Key 仅做异或+Base64 的弱混淆后存入 localStorage，属"防明文直读"级别，
-   * 无法抵御有 JS 调试/读存储能力的攻击者（密钥派生逻辑同包可见）；Tauri 形态优先走系统文件存储（0600 权限），
-   * 且 Tauri 下本函数不会被调用。不要将本实现当作安全加密方案使用。 */
-  function _obfuscate(plain){
-    if(!plain)return '';
-    const key=_obfDeriveKey();
-    const bytes=new TextEncoder().encode(plain);
-    const out=new Uint8Array(bytes.length);
-    for(let i=0;i<bytes.length;i++)out[i]=bytes[i]^key[i%key.length];
-    return 'obf1:'+btoa(String.fromCharCode.apply(null,out));
-  }
-
-  /** 解混淆 'obf1:Base64' → 明文；无前缀则兼容旧版明文直接返回 */
-  function _deobfuscate(stored){
-    if(!stored)return '';
-    if(stored.indexOf('obf1:')!==0)return stored.trim();
-    try{
-      const key=_obfDeriveKey();
-      const cipher=atob(stored.slice(5));
-      const bytes=new Uint8Array(cipher.length);
-      for(let i=0;i<cipher.length;i++)bytes[i]=cipher.charCodeAt(i);
-      const out=new Uint8Array(bytes.length);
-      for(let i=0;i<bytes.length;i++)out[i]=bytes[i]^key[i%key.length];
-      return new TextDecoder().decode(out);
-    }catch(e){return '';}
-  }
   const state={
     runtime:'web',           // 'tauri' | 'web'
     proxyOnline:false,       // 运行通道可达（tauri：Rust 命令；web：已保存 Key）
-    hasKey:false,            // 是否已保存 DeepSeek API_KEY
+    hasKey:false,            // 是否已保存 API_KEY
+    apiKey:'',               // 明文 Key（localStorage 同步；每次请求随 body 传给 Rust）
     model:DEFAULT_MODEL,
     baseUrl:DEFAULT_BASE_URL,
     chatting:false,
@@ -80,12 +39,18 @@ const AI=(function(){
     tauriToolAcc:[],
     removeStreamListener:null
   };
-  // 恢复多模型配置（浏览器与 Tauri 均用 localStorage；Tauri 版 API_KEY 仍在应用数据目录）
+  // 恢复多模型配置与 API_KEY（浏览器 / macOS / Windows 统一明文存 localStorage）
   try{
     const _b=localStorage.getItem(WEB_BASE_STORAGE);
     if(_b&&String(_b).trim())state.baseUrl=String(_b).trim().replace(/\/+$/,'');
     const _m=localStorage.getItem(WEB_MODEL_STORAGE);
     if(_m&&String(_m).trim())state.model=String(_m).trim();
+    const _k=localStorage.getItem(WEB_KEY_STORAGE);
+    if(_k&&String(_k).trim()&&String(_k).indexOf('obf1:')!==0)state.apiKey=String(_k).trim();
+    // 2026-08-29 修复：初始化时同步推导 hasKey，不再等 probeProxy 异步调用
+    // 否则 bootApp → render 渲染 UI 时 hasKey 仍为 false → 显示「未设置 API_KEY」
+    state.hasKey=!!state.apiKey||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
+    state.proxyOnline=state.hasKey;
   }catch(e){}
   const _T=window.__TAURI__;
   /** 是否处于 Tauri 桌面运行时 */
@@ -225,23 +190,19 @@ const AI=(function(){
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
   function apiChatUrl(){const b=(state.baseUrl||DEFAULT_BASE_URL).replace(/\/+$/,'');return b.endsWith('/chat/completions')?b:b+'/chat/completions';}
-  function webHasKey(){return !!_deobfuscate(localStorage.getItem(WEB_KEY_STORAGE)).trim();}
+  /** 读取明文 Key；旧版混淆值（obf1: 前缀）自动清除，避免误当 Key 使用 */
+  function readPlainKey(){
+    const v=(localStorage.getItem(WEB_KEY_STORAGE)||'').trim();
+    if(v.indexOf('obf1:')===0){localStorage.removeItem(WEB_KEY_STORAGE);return '';}
+    return v;
+  }
+  function webHasKey(){return !!readPlainKey();}
 
   /** 健康检查：tauri 检查 Rust 通道与 Token 文件；web 检查本地保存的 Key */
   async function probeProxy(){
-    if(state.runtime==='tauri'){
-      // 本地端点（Ollama 等）免 Token；其余端点检查 Token 文件
-      const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
-      try{
-        const has=await tauriInvoke('ai_deepseek_token_has');
-        state.proxyOnline=true;
-        state.hasKey=localBase||!!has;
-      }catch(e){state.proxyOnline=localBase;state.hasKey=localBase;}
-    }else{
-      // 本地端点（Ollama 等）无需 API_KEY 也可用
-      state.hasKey=webHasKey()||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
-      state.proxyOnline=state.hasKey;
-    }
+    // Key 明文存 localStorage（浏览器 / macOS / Windows 三端统一）；本地端点无需 Key 也可用
+    state.hasKey=webHasKey()||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
+    state.proxyOnline=state.hasKey;
     if(typeof refreshAIStatus==='function')refreshAIStatus();return {runtime:state.runtime,online:state.proxyOnline,hasKey:state.hasKey,model:state.model};
   }
   function startHealthCheck(){if(state.healthTimer)return;probeProxy();state.healthTimer=setInterval(probeProxy,HEALTH_INTERVAL_MS);}
@@ -320,7 +281,7 @@ const AI=(function(){
    *  options.tools 提供 → 透传给 DeepSeek（OpenAI 兼容 function calling）；缺省 → 仅返回 content
    */
   async function webChat(messages,onChunk,signal,options){
-    const key=_deobfuscate(localStorage.getItem(WEB_KEY_STORAGE)).trim();
+    const key=readPlainKey();
     const localBase=/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
     if(!key&&!localBase)throw new Error('请先在 AI 设置中填写 API_KEY（本地 Ollama 可留空）');
     // 本地端点无 Key 时用占位 token：Ollama 等 OpenAI 兼容层要求 Authorization 头非空（空值会 401）
@@ -410,6 +371,12 @@ const AI=(function(){
    */
   async function chat(messages,onChunk,options){
     if(!state.model)state.model=DEFAULT_MODEL;
+    // 2026-08-29 安全兜底：若 state.apiKey 为空（可能 IIFE 初始化后 probeProxy 未跑完，
+    // 或 setDeepseekToken 设了 hasKey 但 state.apiKey 赋值时序错），从 localStorage 再读一次。
+    // 这不影响安全（Key 本就存 localStorage），只是确保 Tauri chat 不误报「未设置 API_KEY」。
+    if(!state.apiKey){
+      try{const _k=localStorage.getItem(WEB_KEY_STORAGE);if(_k&&String(_k).trim()&&String(_k).indexOf('obf1:')!==0)state.apiKey=String(_k).trim();}catch(e){}
+    }
     state.chatting=true;
     state.abortController=null;
     state.abortReason=''; // 每次新请求重置中止原因
@@ -429,6 +396,7 @@ const AI=(function(){
             }),
             model:state.model,
             baseUrl:state.baseUrl,
+            apiKey:state.apiKey,
             stream:true,
             temperature:0.3,
             max_tokens:1200,
@@ -617,31 +585,22 @@ const AI=(function(){
   }
   function abort(){state.abortReason='manual';if(state.abortController)state.abortController.abort();}
 
-  /** 保存/删除 API Key：tauri → 应用数据目录文件；web → localStorage 混淆存储（空串删除）
+  /** 保存/删除 API Key：明文存 localStorage（三端统一；空串删除）
    *  多模型接入：放开 sk- 前缀校验，自定义端点 Key 非空即可；仅限长度防滥用 */
   async function setDeepseekToken(raw){
     const token=String(raw||'').trim();
     if(token&&token.length>4000){
       throw new Error('API_KEY 过长，无法保存');
     }
-    if(state.runtime==='tauri'){
-      await tauriInvoke('ai_deepseek_token_write',{token:token});
-    }else{
-      if(token)localStorage.setItem(WEB_KEY_STORAGE,_obfuscate(token));
-      else localStorage.removeItem(WEB_KEY_STORAGE);
-    }
+    if(token){localStorage.setItem(WEB_KEY_STORAGE,token);}
+    else{localStorage.removeItem(WEB_KEY_STORAGE);}
+    state.apiKey=token;
     state.hasKey=!!token||/^https?:\/\/(127\.0\.0\.1|localhost)/.test(state.baseUrl||'');
     if(typeof refreshAIStatus==='function')refreshAIStatus();
   }
   /** 读取已保存的 Key 明文（仅设置弹窗编辑态回显用；非编辑状态不展示） */
   async function getDeepseekToken(){
-    if(state.runtime==='tauri'){
-      try{
-        const t=await tauriInvoke('ai_deepseek_token_get');
-        return typeof t==='string'?t:'';
-      }catch(e){return '';}
-    }
-    return _deobfuscate(localStorage.getItem(WEB_KEY_STORAGE)).trim();
+    return readPlainKey();
   }
   async function getDeepseekTokenDraft(){
     const t=await getDeepseekToken();
