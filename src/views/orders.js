@@ -92,9 +92,9 @@ function viewOrderDetail(){
   if(!o){view='orders';return viewOrders();}
   const flowIdx=STATUS_FLOW.indexOf(o.status);
   const showRcv=RECEIVABLE_STATUSES.includes(o.status);
-  const locked=['签约完成','送货中','完成'].includes(o.status);
-  const editLocked=o.status==='完成';
-  const rcvLocked=o.status!=='签约完成';
+  const locked=['签约完成','送货中'].includes(o.status);
+  const editLocked=false;
+  const rcvLocked=false;
   const flowHTML='<div class="status-flow">'+
     STATUS_FLOW.map((s,i)=>{
       const cls=i<flowIdx?'done':(i===flowIdx?'cur':'');
@@ -146,14 +146,14 @@ function viewOrderDetail(){
   const nextBtnHTML=nextStepButton(o);
   const prevBtnHTML=prevStepButton(o);
   const cancelBtnHTML=['待确认','寻货中','报价中'].includes(o.status)?'<button class="btn danger" title="将订单标记为「取消」状态，不可恢复正常流程" onclick="cancelOrderConfirm(\''+o.id+'\')">'+icon('x','16')+' 取消订单</button>':'';
-  const markAbnormalBtnHTML=['报价中','签约完成','送货中'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+o.id+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
+  const markAbnormalBtnHTML=['报价中','签约完成','送货中','完成'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+o.id+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
     '<button class="btn sm" onclick="exportOrder(\''+o.id+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
     (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑订单</button>')+
-    (o.status==='送货中'?'<button class="btn primary" title="确认订单完成，所有信息锁定只读" onclick="confirmOrderComplete(\''+o.id+'\')">'+icon('check','16')+' 订单完成</button>':'')+
+    (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+o.id+'\')">'+icon('check','16')+' 订单完成</button>':'')+
     (function(){
       if(o.status!=='签约完成')return'';
       const rows=[];o.items.forEach(function(it){itemOpts(it).forEach(function(opt){rows.push(opt);});});
@@ -175,9 +175,9 @@ function viewOrderDetail(){
     '</div>'+
     (o.remark?'<div style="margin-bottom:16px"><label class="f">订单备注</label><div>'+escHtml(o.remark)+'</div></div>':'')+
     (o.status==='签约完成'?'<div id="inspection-notice-'+o.id+'"></div>':'')+
-    (o.status==='送货中'?(o.delivery?
+    (['送货中','完成'].includes(o.status)?(o.delivery?
       '<div style="margin-bottom:16px;background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:16px">'+
-        '<div style="font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('package','16')+' 送货信息 <span class="tag info">送货中</span><span class="muted" style="margin-left:auto;font-size:12px">'+escHtml(o.delivery.time||'-')+'</span></div>'+
+        '<div style="font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('package','16')+' 送货信息 <span class="tag '+(o.status==='完成'?'gray':'info')+'">'+escHtml(o.status)+'</span><span class="muted" style="margin-left:auto;font-size:12px">'+escHtml(o.delivery.time||'-')+'</span></div>'+
         '<div id="delivery-readonly-'+o.id+'">'+
           '<div class="grid3" style="gap:16px">'+
             '<div><label class="muted" style="font-size:12px">送货地址</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.address||'-')+'</div></div>'+
@@ -302,7 +302,7 @@ function nextStepFinishSourcing(id){
 /** 「报价中 → 签约完成」：确认弹窗后切换状态 */
 function nextStepConfirmSign(id){
   confirmModal(
-    '确认合同已与采购商签署完成？<br><span class="muted" style="font-size:12px">完成后将进入「签约完成」状态，可开始收货管理；合同如需修改可直接编辑订单，进入送货后锁定只读。</span>',
+    '确认合同已与采购商签署完成？<br><span class="muted" style="font-size:12px">完成后将进入「签约完成」状态，可开始收货管理；合同后续如需修改，可随时编辑订单调整。</span>',
     function(){changeOrderStatus(id,'签约完成');},
     '确认签约',
     null,null,
@@ -478,14 +478,10 @@ function newOrder(){
     setTimeout(bindOrderDraftSave,200);
   }
 }
-/** 进入指定采购订单的编辑模式（仅「完成」状态锁定只读；其余状态均允许编辑） */
+/** 进入指定采购订单的编辑模式（记录型系统：所有状态均允许编辑，「完成」订单亦可随时修改） */
 function goOrderEdit(id){
   const o=DB.orders.find(x=>x.id===id);
   if(!o)return;
-  if(o.status==='完成'){
-    toast('订单已完成，信息已锁定只读，不可编辑','warning');
-    return;
-  }
   _fMode='edit';_fOrderId=id;
   _draftOrder=null;
   _fItems=o.items.map(it=>({...it}));
@@ -1754,7 +1750,7 @@ const _receiveRenderDebounced=debounce(render,150);
 function updateReceiveField(optId,field,value){
   const o=DB.orders.find(x=>x.id===curOrderView);
   if(!o)return;
-  if(!['签约完成','送货中'].includes(o.status)){toast('仅「签约完成」或「送货中」状态可修改收货信息','warning');return;}
+  if(!['签约完成','送货中','完成'].includes(o.status)){toast('仅「签约完成」「送货中」「完成」状态可修改收货信息','warning');return;}
   let opt=null;
   for(const it of o.items){
     opt=(it.options||[]).find(x=>x.id===optId);
@@ -1856,9 +1852,9 @@ function renderInspectionSection(o){
     '</div>';
   }
 }
-/** 订单完成确认弹窗 */
+/** 订单完成确认弹窗（记录型系统：完成后仍可编辑修改或回退） */
 function confirmOrderComplete(id){
-  confirmModal('确认完成此订单？完成后所有信息将锁定只读。',function(){
+  confirmModal('确认将此订单标记为「完成」？标记后仍可随时编辑修改，或回退到「送货中」。',function(){
     changeOrderStatus(id,'完成');
   },'确认完成');
 }

@@ -103,19 +103,19 @@ function viewDashboard(){
 
   return todayHTML+
     '<div class="stats">'+
-      '<div class="stat" onclick="go(\'orders\')" title="查看全部采购订单">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'orders\')" title="查看全部采购订单">'+
         '<div class="k">采购订单 <span style="float:right;font-size:12px;opacity:.6">全部</span></div>'+
         '<div class="v">'+DB.orders.length+'<small> 条</small></div>'+
       '</div>'+
-      '<div class="stat" onclick="gotoPendingOrders()" title="筛选待处理订单">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="gotoPendingOrders()" title="筛选待处理订单">'+
         '<div class="k">待处理 <span style="float:right;font-size:12px;opacity:.6">待跟进</span></div>'+
         '<div class="v" style="color:var(--amber)">'+pendingCount+'<small> 条</small></div>'+
       '</div>'+
-      '<div class="stat" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'供应商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看供应商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'供应商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看供应商列表">'+
         '<div class="k">供应商</div>'+
         '<div class="v" style="color:var(--green)">'+suppliers+'<small> 家</small></div>'+
       '</div>'+
-      '<div class="stat" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'采购商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看采购商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'采购商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看采购商列表">'+
         '<div class="k">采购商</div>'+
         '<div class="v" style="color:var(--pri)">'+buyers+'<small> 家</small></div>'+
       '</div>'+
@@ -154,13 +154,19 @@ const _CMD_K_TIP_KEY = 'wb_fastener_cmdk_tip_shown';
 function showCmdKTipIfNeeded(){
   try{
     if(localStorage.getItem(_CMD_K_TIP_KEY)) return;
-    // 只在概览页（dashboard）显示；若渲染过程中未到概览，后续 render 会再检查
-    if(view!=='dashboard') return;
+    // 气泡只属于概览页：非 dashboard 时移除可能残留的气泡（用户 600ms 内切页/已注入后切走），避免遮挡其他页面右下角
+    if(view!=='dashboard'){
+      const _tip=document.querySelector('.cmdk-tip');
+      if(_tip){_tip.remove();}
+      return;
+    }
   }catch(e){return;}
   // 避免与其他弹窗叠层：等 600ms 让主要内容渲染完成后出现
   setTimeout(function(){
     // 防止重复注入（同一页多次 render 可能叠加）
     if(document.querySelector('.cmdk-tip')) return;
+    // 600ms 延迟期间用户可能已切走：气泡只属于 dashboard，切走则不再注入，避免遮挡其他页面右下角按钮
+    if(view!=='dashboard') return;
     const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '') ||
                   (navigator.userAgentData && navigator.userAgentData.platform && /Mac|iOS/.test(navigator.userAgentData.platform));
     const kbd = isMac ? '⌘K' : 'Ctrl+K';

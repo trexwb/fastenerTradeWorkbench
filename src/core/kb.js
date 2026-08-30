@@ -217,7 +217,17 @@ window.KB=(function(){
   /** 统一文件字节读取：Tauri 走 kb_read_b64（路径），浏览器走 FSA handle */
   async function _kbReadBytes(source){
     if(source&&source.path&&IS_TAURI_KB){
-      const b64=await window.__TAURI__.core.invoke('kb_read_b64',{path:source.path});
+      // 性能优化（v1.0.31+）：纯文本文件走 kb_read_text UTF-8 直读通道，
+      // 绕开 base64 链（省 ~33% 体积的 IPC 字符串传输 + 前端 atob ~300ms/20MB）；
+      // 失败（权限变化等）自动落回 b64 通道。kb_read_text 内部 UTF-8 lossy + BOM 剥除，索引场景可接受。
+      const _p=String(source.path);
+      if(/\.(md|txt|markdown|log)$/i.test(_p)){
+        try{
+          const text=await window.__TAURI__.core.invoke('kb_read_text',{path:_p});
+          return new TextEncoder().encode(text);
+        }catch(_e){/* 落回下方 b64 通道 */}
+      }
+      const b64=await window.__TAURI__.core.invoke('kb_read_b64',{path:_p});
       const bin=atob(b64);const bytes=new Uint8Array(bin.length);
       for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
       return bytes;

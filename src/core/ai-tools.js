@@ -121,7 +121,7 @@ const AIT=(function(){
       type:'function',
       function:{
         name:'flow_order_status',
-        description:'起草流转采购订单状态。必须守 STATUS_FLOW：只能前进到下一站，或转入「异常」「取消」终态分支；「未成交」可恢复回「报价中」；终态（完成/异常/取消）不可流转。'+PROPOSAL_NOTE,
+        description:'起草流转采购订单状态。必须守 STATUS_FLOW：只能前进到下一站，或转入「异常」「取消」分支；「未成交」可恢复回「报价中」；「完成」可回退到「送货中」或转「异常」；「异常」「取消」为终态不可流转。'+PROPOSAL_NOTE,
         parameters:{
           type:'object',
           properties:{

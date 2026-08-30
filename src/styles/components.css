@@ -374,7 +374,7 @@ tbody tr:hover .td-act .btn{opacity:1}
 .spec-val-tag.unused{background:var(--bg-soft);border-color:var(--line);color:var(--gray);}
 .spec-val-tag.unused .sv-del{color:var(--gray);}
 .spec-val-tag .sv-text{flex:1;}
-.spec-val-tag .sv-del{cursor:pointer;opacity:.4;transition:.12s;font-size:13px;line-height:1;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;}
+.spec-val-tag .sv-del{cursor:pointer;opacity:.4;transition:.12s;font-size:13px;line-height:1;width:22px;height:22px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;} /* 热区 16→22px：满足最小点击尺寸，视觉图标不变 */
 .spec-val-tag .sv-del:hover{opacity:1;color:#fff;background:var(--red);}
 .sg-toggle-btn{background:none;border:none;cursor:pointer;padding:2px;color:var(--gray);display:inline-flex;align-items:center;transition:transform .2s;}
 .sg-toggle-btn:hover{color:var(--text);}
@@ -1362,3 +1362,74 @@ kbd{display:inline-block;background:var(--bg-soft);border:1px solid var(--line);
   .coach-actions .btn{flex:1;justify-content:center;min-height:40px;}
 }
 
+
+/* =========================================================================
+   🖥️ Tauri 桌面端 UI/UX 深化（frontend-dev）
+   - 顶栏毛玻璃（backdrop-filter，@supports 降级为不透明原背景）
+   - 桌面 hover 细腻反馈（仅鼠标设备生效，避免触摸误触）
+   - 桌面端表格吸顶表头（视口滚动，避开 54px topbar）
+   - 侧栏品牌区渐变层次
+   - 拖放导入 JSON 备份遮罩（桌面端整窗拖入）
+   ========================================================================= */
+
+/* ---- 顶栏毛玻璃（支持 backdrop-filter 时启用半透明+模糊） ---- */
+.topbar{background:var(--topbar-bg);}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) and (background:color-mix(in srgb,red 50%,blue)){
+  .topbar{
+    background:color-mix(in srgb,var(--topbar-bg) 82%,transparent);
+    -webkit-backdrop-filter:blur(14px) saturate(1.5);
+    backdrop-filter:blur(14px) saturate(1.5);
+    box-shadow:0 1px 0 var(--line),0 4px 20px -8px rgba(0,0,0,.06);
+  }
+}
+
+/* ---- 桌面 hover：卡片阴影层次（仅鼠标设备；不动 transform，避免影响 fixed 子元素定位） ---- */
+@media (hover:hover) and (pointer:fine){
+  .card{transition:box-shadow var(--dur-base) var(--ease-out);}
+  .card:hover{box-shadow:var(--shadow-md);}
+}
+@media (prefers-reduced-motion:reduce){
+  .card{transition:none !important;}
+}
+
+/* ---- 侧栏品牌区：顶部微光渐变 + 底缘柔化 ---- */
+.sidebar .brand{
+  background:linear-gradient(180deg,rgba(255,255,255,.05),transparent 70%);
+  position:relative;
+}
+.sidebar .brand::after{content:'';position:absolute;left:18px;right:18px;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--side-border),transparent);}
+
+/* ---- 桌面端表格吸顶表头（仅页面级表格，避让 drawer 内表格） ---- */
+/* 滚动祖先为 .content(overflow:auto) 或 .table-wrap(max-height+overflow-y:auto)，
+   其滚动视口顶部即 topbar 底边 / 容器上缘，因此 top:0 紧贴吸顶；
+   若沿用 top:54px 会在视口顶再偏移 54px，造成表头悬空、首行数据被遮。 */
+@media (min-width:901px){
+  .content .table-wrap thead th{
+    position:sticky;top:0;z-index:4;
+    box-shadow:0 1px 0 var(--line);
+  }
+}
+
+/* ---- 拖放导入遮罩（Tauri 桌面端整窗拖入 JSON 备份） ---- */
+#dropOverlay{
+  position:fixed;inset:0;z-index:calc(var(--z-modal) + 10);
+  display:none;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--bg) 72%,transparent);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  pointer-events:none;
+}
+#dropOverlay .drop-zone{
+  width:min(420px,80vw);padding:40px 28px;text-align:center;
+  border:2px dashed var(--pri);border-radius:var(--radius-lg);
+  background:var(--card);box-shadow:var(--shadow-lg);
+  color:var(--ink);
+}
+#dropOverlay.invalid .drop-zone{border-color:var(--red);}
+#dropOverlay .drop-zone-icon{
+  width:64px;height:64px;margin:0 auto 14px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--pri-l);color:var(--pri);
+}
+#dropOverlay.invalid .drop-zone-icon{background:var(--red-l);color:var(--red);}
+#dropOverlay .drop-zone-title{font-size:17px;font-weight:600;margin-bottom:6px;}
+#dropOverlay .drop-zone-sub{font-size:13px;color:var(--gray);}

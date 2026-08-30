@@ -2,7 +2,14 @@
 
 面向紧固件贸易场景的离线工作台，覆盖关联单位管理、规格管理、价格管理、采购订单全流程，支持多供应商分配寻源。
 
-> **当前版本：v1.0.0** — UX 交互体验优化：Drawer 关闭确认防丢失、订单保存防重、寻货过滤保留勾选、多 toast 合并
+> **当前版本：v1.0.33** — 模块引导遮罩锁死修复、统计卡键盘可达、全视图遮挡归零
+
+## 更新日志
+
+- **v1.0.33** — 修复 Coach 引导自动渲染空壳（遮罩锁死页面无法关闭）；dashboard / settlements 统计卡补键盘可达（role=button + Enter/空格激活）；P11 核实无手型误导；11 个视图 CDP 实测遮挡全部归零
+- **v1.0.32** — 桌面端 UI/UX 深化（吸顶表头、毛玻璃、拖放导入 JSON）；修复列表页首行被 sticky 表头遮挡（top:54px → top:0）；四技能全量复查样式遮挡与点击无效
+- **v1.0.31** — 统计卡 stat-static 分化、标题 cursor:default、12 处 Enter 输入法候选补 isComposing 防护；删除 .row-clickable 死代码、td-act 补 title/aria-label、备份/导入接 .btn.loading
+- **v1.0.30** — 样式遮挡与点击无效审查修复：fitDrop() 下拉越界兜底、Coach 高亮孔透传、折叠菜单 tabindex、.ai-message-delete 指针、--z-cmd 层级
 
 ## 快速开始
 
