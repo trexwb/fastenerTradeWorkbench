@@ -153,7 +153,7 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
 /// Tauri WebView 默认不处理 target="_blank" 外链导航，前端检测到
 /// Tauri 运行时改为 invoke 本命令；浏览器版保持原生 target="_blank"。
 #[tauri::command]
-fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
+async fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err("仅允许打开 http/https 链接".into());
     }
@@ -168,6 +168,7 @@ fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
    桌面版改走 Tauri 原生对话框 + 受限文件读取命令。
    ========================================================= */
 
+static CACHE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 const KB_ALLOWED_EXT: [&str; 6] = [".md", ".txt", ".markdown", ".log", ".pdf", ".docx"];
 const KB_MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
 /// 2026-08-29 修复「西游记」等多层子目录知识库漏扫：
@@ -292,7 +293,7 @@ async fn kb_pick_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
 /// 2026-08-29：根目录 read_dir 失败不再静默吞，明确告诉前端是「不存在」、
 ///「macOS 权限过期」还是「Windows 路径过长/无权限」。
 #[tauri::command]
-fn kb_scan_dir(path: String) -> Result<KbScanResult, String> {
+async fn kb_scan_dir(path: String) -> Result<KbScanResult, String> {
     let p = std::path::PathBuf::from(&path);
     if !p.is_dir() {
         return Err(format!("目录不存在：{path}"));
@@ -567,7 +568,7 @@ async fn kb_pick_and_scan_dir(app: tauri::AppHandle) -> Result<Option<KbPickAndS
 /// - Some(id) → 只删 {cache_root}/{id}
 /// - None    → 删整个 kb_cache（解绑所有知识库时用）
 #[tauri::command]
-fn kb_clear_cache(app: tauri::AppHandle, cache_id: Option<String>) -> Result<usize, String> {
+async fn kb_clear_cache(app: tauri::AppHandle, cache_id: Option<String>) -> Result<usize, String> {
     let root = kb_cache_root(&app)?;
     let target = match cache_id.as_deref() {
         Some(id) => {
@@ -611,7 +612,7 @@ fn kb_clear_cache(app: tauri::AppHandle, cache_id: Option<String>) -> Result<usi
 
 /// 读取文本文件（md/txt/markdown/log），UTF-8 lossy 容错，单文件上限 10MB
 #[tauri::command]
-fn kb_read_text(path: String) -> Result<String, String> {
+async fn kb_read_text(path: String) -> Result<String, String> {
     let p = std::path::PathBuf::from(&path);
     let meta = fs::metadata(&p).map_err(|e| format!("读取失败：{e}"))?;
     if meta.len() > 10 * 1024 * 1024 {
@@ -623,7 +624,7 @@ fn kb_read_text(path: String) -> Result<String, String> {
 
 /// 读取二进制文件返回 base64（pdf/docx 供前端解析器使用），单文件上限 30MB
 #[tauri::command]
-fn kb_read_b64(path: String) -> Result<String, String> {
+async fn kb_read_b64(path: String) -> Result<String, String> {
     use std::io::Read;
     let p = std::path::PathBuf::from(&path);
     let mut f = fs::File::open(&p).map_err(|e| format!("读取失败：{e}"))?;
@@ -640,7 +641,7 @@ fn kb_read_b64(path: String) -> Result<String, String> {
 /// WKWebView 里 pdfjs 的 getTextContent 会返回空文本（浏览器 Chrome 正常），
 /// 桌面版改由 Rust 侧用 pdf-extract 提取，绕开 WebKit 的 pdfjs 行为差异。
 #[tauri::command]
-fn kb_read_pdf_text(path: String) -> Result<String, String> {
+async fn kb_read_pdf_text(path: String) -> Result<String, String> {
     let p = std::path::PathBuf::from(&path);
     let meta = fs::metadata(&p).map_err(|e| format!("读取失败：{e}"))?;
     if meta.len() > 30 * 1024 * 1024 {
@@ -672,7 +673,7 @@ fn base64_encode(data: &[u8]) -> String {
 
 /// 知识库索引存储（桌面版）：独立文件 kb-data.json（WKWebView 下 IndexedDB 不可靠）
 #[tauri::command]
-fn kb_store_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn kb_store_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let p = data_root(&app)?.join("kb-data.json");
     if !p.exists() { return Ok(None); }
     let raw = fs::read(&p).map_err(|e| format!("读取知识库索引失败: {e}"))?;
@@ -681,10 +682,11 @@ fn kb_store_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn kb_store_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
+async fn kb_store_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
-    let tmp = root.join("kb-data.json.tmp");
+    let _seq = CACHE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = root.join(format!("kb-data.json.{}.tmp", std::process::id() as u64 ^ CACHE_SEQ.load(std::sync::atomic::Ordering::Relaxed)));
     let dst = root.join("kb-data.json");
     fs::write(&tmp, content).map_err(|e| format!("写入知识库索引失败: {e}"))?;
     fs::rename(&tmp, &dst).map_err(|e| format!("写入知识库索引失败: {e}"))
@@ -693,7 +695,7 @@ fn kb_store_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
 /// 返回应用数据目录（IndexedDB 之外的 Token 等文件也存于此）。
 /// 供前端数据管理页展示「数据所在目录」。
 #[tauri::command]
-fn data_dir_get(app: tauri::AppHandle) -> Result<String, String> {
+async fn data_dir_get(app: tauri::AppHandle) -> Result<String, String> {
     data_root(&app).map(|p| p.to_string_lossy().into_owned())
 }
 
@@ -731,7 +733,7 @@ fn backup_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// 执行一次自动备份：把主数据文件 data.json 复制为备份目录中的带时间戳文件。
 /// name 由前端生成（本地时区 YYYYMMDD_HHMMSS），Rust 侧仅做合法性校验。
 #[tauri::command]
-fn backup_create(app: tauri::AppHandle, name: String) -> Result<String, String> {
+async fn backup_create(app: tauri::AppHandle, name: String) -> Result<String, String> {
     if !valid_backup_name(&name) {
         return Err("备份文件名不合法".into());
     }
@@ -751,7 +753,7 @@ fn backup_create(app: tauri::AppHandle, name: String) -> Result<String, String> 
 
 /// 列出备份目录中的所有备份文件（按修改时间倒序，最新在前）。
 #[tauri::command]
-fn backup_list(app: tauri::AppHandle) -> Result<Vec<BackupInfo>, String> {
+async fn backup_list(app: tauri::AppHandle) -> Result<Vec<BackupInfo>, String> {
     let root = backup_root(&app)?;
     let mut out = Vec::new();
     if let Ok(rd) = fs::read_dir(&root) {
@@ -778,7 +780,7 @@ fn backup_list(app: tauri::AppHandle) -> Result<Vec<BackupInfo>, String> {
 
 /// 读取指定备份文件内容（JSON 字符串），供「从备份恢复」。
 #[tauri::command]
-fn backup_read(app: tauri::AppHandle, name: String) -> Result<String, String> {
+async fn backup_read(app: tauri::AppHandle, name: String) -> Result<String, String> {
     if !valid_backup_name(&name) {
         return Err("备份文件名不合法".into());
     }
@@ -791,7 +793,7 @@ fn backup_read(app: tauri::AppHandle, name: String) -> Result<String, String> {
 
 /// 删除指定备份文件。
 #[tauri::command]
-fn backup_remove(app: tauri::AppHandle, name: String) -> Result<(), String> {
+async fn backup_remove(app: tauri::AppHandle, name: String) -> Result<(), String> {
     if !valid_backup_name(&name) {
         return Err("备份文件名不合法".into());
     }
@@ -806,7 +808,7 @@ fn backup_remove(app: tauri::AppHandle, name: String) -> Result<(), String> {
 /// 文件不存在返回 Ok(None)。macOS WKWebView 的 tauri:// 协议下 IndexedDB
 /// 可能挂起（open 无回调），因此桌面版主存储改用本机文件。
 #[tauri::command]
-fn data_file_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn data_file_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let p = data_root(&app)?.join(DATA_FILENAME);
     if !p.exists() {
         return Ok(None);
@@ -823,14 +825,15 @@ fn data_file_load(app: tauri::AppHandle) -> Result<Option<String>, String> {
 
 /// 将主数据 JSON 写入应用数据目录（原子写入：临时文件 + rename，避免写一半损坏）。
 #[tauri::command]
-fn data_file_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
+async fn data_file_save(app: tauri::AppHandle, content: String) -> Result<(), String> {
     if content.len() > MAX_DATA_BYTES {
         return Err(format!("数据过大（{} 字节，上限 {}），拒绝写入", content.len(), MAX_DATA_BYTES));
     }
     let root = data_root(&app)?;
     fs::create_dir_all(&root).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
     let p = root.join(DATA_FILENAME);
-    let tmp = p.with_extension("tmp");
+    let _seq = CACHE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = p.with_extension(format!("{}.tmp", std::process::id() as u64 ^ CACHE_SEQ.load(std::sync::atomic::Ordering::Relaxed)));
     fs::write(&tmp, content.as_bytes()).map_err(|e| format!("写入数据文件失败: {e}"))?;
     fs::rename(&tmp, &p).map_err(|e| format!("替换数据文件失败: {e}"))
 }
@@ -878,6 +881,16 @@ struct UpstreamChunk {
 }
 
 /// DeepSeek chat completions：非流式直接返回 JSON 字符串；流式按行 emit 文本块（前端拼接为完整回复）。
+static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .expect("构建 HTTP 客户端失败")
+    })
+}
+
 #[tauri::command]
 async fn ai_deepseek_chat(
     _app: tauri::AppHandle,
@@ -935,11 +948,6 @@ async fn ai_deepseek_chat(
     let payload =
         serde_json::to_vec(&body).map_err(|e| format!("序列化请求失败: {e}"))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {e}"))?;
-
     // 多模型接入：优先使用前端传入的 Base URL（OpenAI 兼容端点，如 Ollama http://127.0.0.1:11434/v1）
     let req_url = match base_url {
         Some(b) if !b.trim().is_empty() => {
@@ -949,7 +957,7 @@ async fn ai_deepseek_chat(
         _ => DEEPSEEK_BASE_URL.to_string(),
     };
 
-    let mut req = client
+    let mut req = http_client()
         .post(req_url)
         .header("Content-Type", "application/json")
         .header("Accept", if stream { "text/event-stream" } else { "application/json" });

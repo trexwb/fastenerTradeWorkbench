@@ -470,6 +470,84 @@ function importJSON(event){
   event.target.value='';
 }
 
+/** 拖放导入 JSON 备份（Tauri 桌面端整窗拖入，复用 importParsedData 校验与二次确认） */
+function importFileByDrop(file){
+  if(!file)return;
+  let reader=new FileReader();
+  reader.onload=function(e){
+    (async function(){
+      try{
+        const data=JSON.parse(e.target.result);
+        await importParsedData(data);
+        toast('数据已导入：'+DB.orders.length+' 订单、'+DB.prices.length+' 价格、'+DB.units.length+' 单位','success');
+        render();
+      }catch(err){
+        if(err&&err.code==='IMPORT_CANCELLED'){} // 用户取消导入
+        else{toast('导入失败：'+(err&&err.message||err),'error');}
+      }
+    })();
+  };
+  reader.onerror=function(){toast('读取文件失败','error');};
+  reader.readAsText(file);
+}
+
+/* ---- 整窗拖放监听 + 高亮遮罩（仅 JSON 文件触发导入） ---- */
+let _dragDepth=0;
+function _dropOverlayEl(valid){
+  let el=document.getElementById('dropOverlay');
+  if(!el){
+    el=document.createElement('div');
+    el.id='dropOverlay';
+    el.innerHTML='<div class="drop-zone">'+
+      '<div class="drop-zone-icon"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>'+
+      '<div class="drop-zone-title">松开导入 JSON 备份</div>'+
+      '<div class="drop-zone-sub">导入将覆盖当前全部数据，含完整性校验与二次确认</div>'+
+      '</div>';
+    document.body.appendChild(el);
+  }
+  el.classList.toggle('invalid',!valid);
+  el.style.display='flex';
+}
+function _dropOverlayHide(){
+  const el=document.getElementById('dropOverlay');
+  if(el)el.style.display='none';
+}
+function _dropHasJson(e){
+  const items=e.dataTransfer&&e.dataTransfer.items;
+  if(!items)return false;
+  for(let i=0;i<items.length;i++){
+    if(items[i].kind!=='file')continue;
+    const f=items[i].getAsFile&&items[i].getAsFile();
+    if(f&&/\.json$/i.test(f.name||''))return true;
+  }
+  return false;
+}
+document.addEventListener('dragenter',function(e){
+  if(!(e.dataTransfer&&e.dataTransfer.types&&Array.prototype.indexOf.call(e.dataTransfer.types,'Files')>=0))return;
+  e.preventDefault();
+  _dragDepth++;
+  _dropOverlayEl(_dropHasJson(e));
+});
+document.addEventListener('dragover',function(e){
+  if(_dragDepth>0)e.preventDefault();
+});
+document.addEventListener('dragleave',function(e){
+  if(_dragDepth<=0)return;
+  _dragDepth--;
+  if(_dragDepth<=0){_dragDepth=0;_dropOverlayHide();}
+});
+document.addEventListener('drop',function(e){
+  if(_dragDepth<=0)return;
+  e.preventDefault();
+  _dragDepth=0;
+  _dropOverlayHide();
+  const files=e.dataTransfer&&e.dataTransfer.files;
+  if(!files||!files.length)return;
+  const f=files[0];
+  if(!/\.json$/i.test(f.name||'')){toast('仅支持导入 .json 备份文件','error');return;}
+  importFileByDrop(f);
+});
+
 /** 二次确认后清空所有数据库数据并重置为初始状态 */
 function clearAllData(){
   confirmModal('您是否已导出最新的 JSON 备份文件？\n\n如未导出请先取消并到数据管理页点「导出 JSON 备份」。',function(){

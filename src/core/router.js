@@ -847,10 +847,12 @@ document.addEventListener('click', function (e) {
   function _key(v){return LS_PREFIX+v;}
   function _hasSeen(v){try{return !!localStorage.getItem(_key(v));}catch(e){return false;}}
   function _markSeen(v){try{localStorage.setItem(_key(v),'1');}catch(e){}}
-  function _renderStep(view,stepIdx){
+  function _renderStep(view,stepIdx,overlayEl){
     const conf=CFG[view];if(!conf)return;
     const s=conf.steps[stepIdx];if(!s)return;
-    const overlay=document.querySelector('.coach-overlay');
+    // 必须用显式传入的 overlay 引用：dismiss 淡出期间 DOM 可能并存新旧两个 overlay，
+    // querySelector 会取到旧壳导致新 overlay 的 card 永不填充（遮罩锁死页面）
+    const overlay=overlayEl||document.querySelector('.coach-overlay');
     const hole=overlay.querySelector('.coach-hole');
     const card=overlay.querySelector('.coach-card');
 
@@ -1002,7 +1004,7 @@ document.addEventListener('click', function (e) {
     // ResizeObserver + rAF 重定位（当 target 元素是动态表格时）
     const reposition=function(){
       cancelAnimationFrame(state.raf);
-      state.raf=requestAnimationFrame(function(){_renderStep(state.view,state.step);});
+      state.raf=requestAnimationFrame(function(){_renderStep(state.view,state.step,state.el);});
     };
     window.addEventListener('resize',reposition);
     window.addEventListener('scroll',reposition,true);
@@ -1024,17 +1026,17 @@ document.addEventListener('click', function (e) {
       if(!force && _hasSeen(view))return;
       // 幂等：同 view 已挂着 overlay 就不要重新铺了（用户感知为出现两次）
       if(!force && state.view===view && document.querySelector('.coach-overlay'))return;
-      _ensureOverlay(view);
+      const ov=_ensureOverlay(view);
       state.view=view;state.step=0;
-      _renderStep(view,0);
+      _renderStep(view,0,ov);
     },
     next:function(){
       const n=CFG[state.view]&&CFG[state.view].steps.length;if(!n)return;
-      if(state.step<n-1){state.step++;_renderStep(state.view,state.step);}
+      if(state.step<n-1){state.step++;_renderStep(state.view,state.step,state.el);}
       else Coach.dismiss();
     },
     prev:function(){
-      if(state.step>0){state.step--;_renderStep(state.view,state.step);}
+      if(state.step>0){state.step--;_renderStep(state.view,state.step,state.el);}
     },
     dismiss:function(silent){
       if(state.onEsc){document.removeEventListener('keydown',state.onEsc);state.onEsc=null;}

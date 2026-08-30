@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.31';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.33';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名

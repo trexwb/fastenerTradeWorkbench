@@ -152,7 +152,19 @@ async function sendAIMessage(message,snapshot){
   let renderScheduled=false;
   // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
   const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
-  const scheduleRender=()=>{if(renderScheduled)return;renderScheduled=true;if(typeof requestAnimationFrame==='function'){requestAnimationFrame(renderBubble);}else{renderBubble();}};
+  // 流式渲染节流：rAF 之上再叠加「距上次渲染≥80ms 或 累计新增≥240 字符」双条件，
+  // 避免长回复时每帧都对全量内容重跑 renderAIMarkdown（O(n²) 解析导致打字机掉帧）
+  let _lastRenderAt=0,_lastRenderLen=0;
+  const scheduleRender=()=>{
+    const now=Date.now();
+    const len=liveMsg.content.length;
+    const due=now-_lastRenderAt>=80||len-_lastRenderLen>=240;
+    if(!due&&!renderScheduled){setTimeout(scheduleRender,Math.max(20,80-(now-_lastRenderAt)));return;}
+    if(renderScheduled)return;
+    renderScheduled=true;
+    const fire=()=>{_lastRenderAt=Date.now();_lastRenderLen=liveMsg.content.length;renderBubble();};
+    if(typeof requestAnimationFrame==='function'){requestAnimationFrame(fire);}else{fire();}
+  };
   try{
     // 知识库检索：主动检索模式下不自动注入（由模型按需调 query_knowledge 等工具）；
     // 仅当「主动检索」关闭（回退旧模式）或「自动注入兜底」开启时，发请求前注入一次 Top-N

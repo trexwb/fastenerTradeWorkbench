@@ -265,8 +265,8 @@ function viewSettlements(type){
   // 统计卡片（按当前主Tab）
   '<div class="stats" style="grid-template-columns:repeat(3,1fr)">'+
     '<div class="stat stat-static"><div class="k">'+(_settleTab==='receipt'?'应收总额':'应付总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
-    '<div class="stat stat-click" onclick="drillSettleTab(\'paid\')" role="button" tabindex="0"><div class="k">'+(_settleTab==='receipt'?'已收总额':'已付总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
-    '<div class="stat stat-click" onclick="drillSettleTab(\'unpaid\')" role="button" tabindex="0"><div class="k">'+(_settleTab==='receipt'?'未收总额':'未付总额')+'</div><div class="v" style="color:'+(tabTotal-tabDone>0?'var(--red)':'var(--gray)')+'">'+fmt(tabTotal-tabDone)+'</div></div>'+
+    '<div class="stat stat-click" onclick="drillSettleTab(\'paid\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"><div class="k">'+(_settleTab==='receipt'?'已收总额':'已付总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
+    '<div class="stat stat-click" onclick="drillSettleTab(\'unpaid\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"><div class="k">'+(_settleTab==='receipt'?'未收总额':'未付总额')+'</div><div class="v" style="color:'+(tabTotal-tabDone>0?'var(--red)':'var(--gray)')+'">'+fmt(tabTotal-tabDone)+'</div></div>'+
   '</div>'+
   // 子Tabs（已升级为唯一Tabs）
   '<div class="settle-tabs" style="display:flex;border-bottom:2px solid var(--line);margin-bottom:16px">'+
