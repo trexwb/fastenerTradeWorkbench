@@ -281,7 +281,7 @@ function viewInvoices(type){
         let rc=inv.receiveStatus||'未收票';
         statusTag='<span class="tag '+(rc==='已收票'?'ok':'gray')+'">'+escHtml(rc)+'</span>';
       }
-      let actBtns='<button class="btn xs" onclick="openInvEdit(\''+inv.id+'\')">'+icon('edit')+'编辑</button>';
+      let actBtns='<button class="btn xs" onclick="openInvEdit(\''+inv.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button>';
       let gap=_invTab==='issue'?(inv.receivable||0)-(inv.amount||0):(inv.payable||0)-(inv.amount||0);
       return '<tr>'+
         '<td class="m-hide-s2" style="font-size:12px;color:var(--gray)">结算 '+escHtml(inv.settleDate)+'</td>'+
@@ -307,15 +307,15 @@ function viewInvoices(type){
   return '<div class="toolbar">'+
     '<div class="search-box' + (_invSearch ? ' has-val' : '') + '" style="max-width:220px">'+
       '<a href="javascript:void(0)" data-search-fn="onInvSearch" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="invSearchInput" type="text" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\')onInvSearch(this.value)">'+
+      '<input id="invSearchInput" type="text" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onInvSearch(this.value)">'+
       '<span class="clear-btn" onclick="onInvSearch(\'\')">×</span>'+
     '</div>'+
     '<div class="spacer"></div>'+
   '</div>'+
   '<div class="stats" style="grid-template-columns:repeat(3,1fr)">'+
-    '<div class="stat"><div class="k">'+(_invTab==='issue'?'应开发票总额':'应收票总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
-    '<div class="stat"><div class="k">'+(_invTab==='issue'?'已开票总额':'已收票总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
-    '<div class="stat"><div class="k">'+(_invTab==='issue'?'未开票总额':'未收票总额')+'</div><div class="v" style="color:var(--red)">'+fmt(tabUndone)+'</div></div>'+
+    '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'应开发票总额':'应收票总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
+    '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'已开票总额':'已收票总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
+    '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'未开票总额':'未收票总额')+'</div><div class="v" style="color:var(--red)">'+fmt(tabUndone)+'</div></div>'+
   '</div>'+
   // 子Tabs
   '<div class="settle-tabs" style="display:flex;border-bottom:2px solid var(--line);margin-bottom:16px">'+

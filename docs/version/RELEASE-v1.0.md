@@ -2,7 +2,55 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.30**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.31**。
+
+---
+
+## v1.0.31 · 📝 待发布
+
+> **状态**: 📝 待发布（vite build 已通过；Tauri 打包待 CI 验证）
+> **发布日期**: 2026-08-30
+> **上一版本**: v1.0.30
+> **版本范围**: 样式遮挡与点击无效四技能全量复查 + 可访问性与交互反馈闭环修复
+
+---
+
+## 样式遮挡与点击无效全量复查 + 可访问性闭环（P1–P8 复核 + 新增修复）
+
+使用 frontend-dev + ui-ux-pro-max + frontend-ui-engineering + frontend-design 四技能对全项目进行样式层（z-index / pointer-events / 遮罩 / 下拉裁剪）与交互层（148 个行内 onclick 差集 / 关闭链路 / 输入法组合态）全量复查，并完成可访问性与交互反馈闭环修复。
+
+### 一、回归验证（历史修复全部保持有效）
+
+- P1 combo fitDrop 展开方向：有效，覆盖 20+ 实例，无双向裁剪
+- P2 Coach 遮罩点击透传：有效，高亮孔区域 dismiss 后透传 click
+- P3 ai-message-delete 误触：有效，opacity + pointer-events 双控
+- P4 折叠子菜单 Tab 焦点：有效，折叠时移出 Tab 链
+- P5 --z-cmd 层级变量化：有效，高于 drawer/modal
+- P6 统计卡手型分化：有效，stat-static / stat-click 分工明确
+- P7 区块标题手型：有效，可点/不可点区分
+- P8 12 处 Enter 输入法组合态防护：有效，全部带 isComposing
+- B1–B6 体验升级项（动效/焦点环/骨架屏等）：已落地，复核通过
+
+### 二、全量扫描结论
+
+- onclick 定义差集为空（148 个函数名全部有定义），无死引用、无空 onclick、无 .row-clickable 残留
+- modal / drawer / cmd 三层关闭链路完整，Esc 与遮罩点击判定正确
+- toast 容器无内嵌可点按钮；dropdown 无 overflow 裁剪；表头 sticky 不遮挡操作按钮
+- 构建验证：node --check 15 文件全部通过，vite build 成功
+
+### 三、本轮修复项
+
+1. **.row-clickable 死代码清理**：components.css 删除未使用的 `cursor:pointer` 规则
+2. **td-act 操作按钮可访问性**：移动端折叠为纯图标场景，为全部 td-act 按钮补 title / aria-label（bom/orders/prices/units/settlements/invoices/data 全模块），桌面端悬停提示同步受益
+3. **耗时操作 loading 反馈**：store.js nowBackup() 与 data.js importJSON() 接入 `.btn.loading` 态，执行中禁用点击，成功/失败/取消均恢复
+
+### 四、新发现（可及性/健壮性，建议后续版本修复）
+
+- **P9（可及性·中）**：settlements 统计卡声明 `role="button"` 但键盘 Enter/Space 无激活处理
+- **P10（可及性·轻）**：dashboard 统计卡未声明 role/tabindex，键盘不可达
+- **P11（健壮性·隐患）**：`.stat` 基础类仍默认 cursor:pointer，未来新增实例易复发手型误导
+
+**构建验证**：`vite build` 通过；本轮为不同根因新修复（可访问性 + 交互反馈），按 AGENTS.md §0 推进版本号至 v1.0.31（package.json / package-lock.json / tauri.conf.json / Cargo.toml / store.js / AGENTS.md 六处同步）。
 
 ---
 

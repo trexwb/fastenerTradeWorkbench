@@ -291,8 +291,9 @@ document.addEventListener('keydown',function(e){
   }
 
   /* 搜索框内 Enter 兜底触发搜索：优先读 data-search-fn（显式声明，函数改名不失效），
-     无属性时退回解析 onclick 字符串的旧逻辑（兼容未标注的搜索框） */
-  if(key==='Enter'){
+     无属性时退回解析 onclick 字符串的旧逻辑（兼容未标注的搜索框）。
+     输入法组合中不触发（选词确认时避免误搜索） */
+  if(key==='Enter'&&!event.isComposing){
     const inp2=document.activeElement;
     if(inp2&&inp2.closest&&inp2.closest('.search-box')){
       const sb=inp2.closest('.search-box');

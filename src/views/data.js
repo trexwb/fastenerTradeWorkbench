@@ -99,7 +99,7 @@ function renderBackupSection(){
         '</div>'+
         '<div style="background:var(--bg-tint)">'+
           '<div style="'+rowBase+'">'+midB('上次备份',lastTxt)+
-            '<button class="btn" style="flex:0 0 auto" onclick="nowBackup()">'+icon('zap','14')+'立即备份</button>'+
+            '<button class="btn" style="flex:0 0 auto" onclick="nowBackup(this)">'+icon('zap','14')+'立即备份</button>'+
           '</div>'+
           '<div style="'+rowBase+'">'+swB(cfg.remindEnabled,'_backupRemindToggled(this.checked)')+
             midB('备份提醒','超过设定时间未备份时提醒我，可一键立即备份')+selDays('backupRemindSel',cfg.remindIntervalDays,'_backupRemindIntervalChanged(this.value)')+
@@ -448,6 +448,8 @@ function exportJSON(){
 function importJSON(event){
   let file=event.target.files[0];
   if(!file)return;
+  const _btn=document.getElementById('importBtn');
+  if(_btn)_btn.classList.add('loading');
   let reader=new FileReader();
   reader.onload=function(e){
     (async function(){
@@ -458,9 +460,12 @@ function importJSON(event){
       }catch(err){
         if(err&&err.code==='IMPORT_CANCELLED'){} // 用户取消导入
         else{toast('导入失败：'+(err&&err.message||err),'error');}
+      }finally{
+        if(_btn)_btn.classList.remove('loading');
       }
     })();
   };
+  reader.onerror=function(){if(_btn)_btn.classList.remove('loading');toast('读取文件失败','error');};
   reader.readAsText(file);
   event.target.value='';
 }
@@ -677,8 +682,8 @@ function renderTrash(){
       const op=t.operator==='ai'?'AI':'用户';
       html+='<tr><td>'+escHtml(String(t.originalId))+'</td><td>'+time+'</td><td>'+op+'</td>'+
         '<td class="td-act">'+
-        '<button class="btn sm" onclick="restoreTrashItem(\''+escAttr(t.id)+'\')">恢复</button> '+
-        '<button class="btn sm" onclick="purgeTrashItem(\''+escAttr(t.id)+'\')">彻底删除</button>'+
+        '<button class="btn sm" onclick="restoreTrashItem(\''+escAttr(t.id)+'\')" title="恢复" aria-label="恢复">恢复</button> '+
+        '<button class="btn sm" onclick="purgeTrashItem(\''+escAttr(t.id)+'\')" title="彻底删除" aria-label="彻底删除">彻底删除</button>'+
         '</td></tr>';
     });
     html+='</tbody></table></div>';

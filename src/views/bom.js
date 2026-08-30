@@ -38,8 +38,8 @@ function viewBOM(){
       '<td class="m-hide-s2">'+escHtml(b.surface||'-')+'</td>'+
       '<td class="m-hide-s1">'+escHtml(b.material||'-')+'</td>'+
       '<td class="td-act">'+
-        '<button class="btn sm" onclick="openBOMForm('+idx+')">'+icon('edit','13')+'编辑</button>'+
-        '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')">'+icon('trash','13')+'删除</button>'+
+        '<button class="btn sm" onclick="openBOMForm('+idx+')" title="编辑" aria-label="编辑">'+icon('edit','13')+'编辑</button>'+
+        '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')" title="删除" aria-label="删除">'+icon('trash','13')+'删除</button>'+
       '</td>'+
     '</tr>';
   }).join('');
@@ -64,7 +64,7 @@ function viewBOM(){
   return '<div class="toolbar">'+
     '<div class="search-box'+(bomSearch?' has-val':'')+'">'+
       '<a href="javascript:void(0)" data-search-fn="onBOMSearch" onclick="onBOMSearch(document.getElementById(\'bomSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="bomSearchInput" type="text" tabindex="1" value="'+escAttr(bomSearch||'')+'" placeholder="搜索 SKU 或名称..." onkeydown="if(event.key===\'Enter\')onBOMSearch(this.value)">'+
+      '<input id="bomSearchInput" type="text" tabindex="1" value="'+escAttr(bomSearch||'')+'" placeholder="搜索 SKU 或名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onBOMSearch(this.value)">'+
       '<span class="clear-btn" onclick="onBOMSearch(\'\')">×</span>'+
     '</div>'+
     filterBadge+
@@ -167,8 +167,8 @@ function refreshBOMTable(){
       '<td class="m-hide-s2">'+escHtml(b.surface||'-')+'</td>'+
       '<td class="m-hide-s1">'+escHtml(b.material||'-')+'</td>'+
       '<td class="td-act">'+
-        '<button class="btn sm" onclick="openBOMForm('+idx+')">'+icon('edit','13')+'编辑</button>'+
-        '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')">'+icon('trash','13')+'删除</button>'+
+        '<button class="btn sm" onclick="openBOMForm('+idx+')" title="编辑" aria-label="编辑">'+icon('edit','13')+'编辑</button>'+
+        '<button class="btn sm danger" onclick="confirmBOMDel('+idx+')" title="删除" aria-label="删除">'+icon('trash','13')+'删除</button>'+
       '</td>'+
     '</tr>';
   }).join('');
