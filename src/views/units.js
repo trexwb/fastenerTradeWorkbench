@@ -52,7 +52,7 @@ function unitRowHTML(p){
     '<td class="m-hide-s1">'+escHtml(p.term||'-')+'</td>'+
     '<td class="m-hide-s1"><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
     '<td class="m-hide-s2 td-contacts">'+contacts+'</td>'+
-    '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')">'+icon('trash')+'删除</button></td>'+
+    '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')" title="删除" aria-label="删除">'+icon('trash')+'删除</button></td>'+
   '</tr>';
 }
 
@@ -94,7 +94,7 @@ function viewUnits(){
   return '<div class="toolbar">'+
     '<div class="search-box'+(unitSearch?' has-val':'')+'">'+
       '<a href="javascript:void(0)" data-search-fn="onUnitSearch" onclick="onUnitSearch(document.getElementById(\'unitSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="unitSearchInput" type="text" tabindex="1" value="'+escAttr(unitSearch)+'" placeholder="搜索单位名称、联系人、电话..." onkeydown="if(event.key===\'Enter\')onUnitSearch(this.value)">'+
+      '<input id="unitSearchInput" type="text" tabindex="1" value="'+escAttr(unitSearch)+'" placeholder="搜索单位名称、联系人、电话..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onUnitSearch(this.value)">'+
       '<span class="clear-btn" onclick="onUnitSearch(\'\')">×</span>'+
     '</div>'+
     '<div class="spacer"></div>'+
@@ -218,7 +218,7 @@ function unitForm(p){
   ];
   const termSel=termOptions.map(o=>'<option value="'+o.v+'"'+(p&&p.term===o.v?' selected':'')+'>'+o.l+'</option>').join('');
   const hasInvoice=isEdit&&p&&p.invoice&&(p.invoice.taxId||p.invoice.bank||p.invoice.accountNo);
-  return '<div class="unit-section"><div class="sec-hd">基本信息</div>'+
+  return '<div class="unit-section"><div class="sec-hd" style="cursor:default">基本信息</div>'+
     '<div class="sec-body">'+
       '<div class="field"><label class="f">单位名称 <span style="color:var(--red)">*</span></label><input id="f_name" tabindex="10" value="'+escAttr(p?p.name:'')+'" placeholder="请输入单位全称" style="font-size:14px"></div>'+
       '<div class="grid2">'+
@@ -252,7 +252,7 @@ function unitForm(p){
     '</div>'+
   '</div>'+
   '<div class="unit-section sec-expanded" id="contactsSection">'+
-    '<div class="sec-hd">联系人</div>'+
+    '<div class="sec-hd" style="cursor:default">联系人</div>'+
     '<div class="sec-body">'+
       '<div id="contactsBox">'+((p&&p.contacts&&p.contacts.length)?p.contacts:[{name:'',phone:'',wechat:'',sides:['供应']}]).map((c,i)=>contactRow(c,i)).join('')+'</div>'+
       '<button class="btn sm" type="button" onclick="addCRow()" style="margin-top:8px">'+icon('plus')+'添加联系人</button>'+

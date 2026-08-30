@@ -244,8 +244,8 @@ function viewSettlements(type){
       '<td style="color:'+(gap>0?'var(--red)':'var(--gray)')+'">'+fmt(gap)+'</td>'+
       '<td class="m-hide-s2">'+statusTag+'<div class="settle-progress-bar"><div class="settle-progress-fill" style="width:'+pct+'%;background:'+(pct>=100?'var(--green)':pct>0?'var(--pri)':'var(--red)')+'"></div></div></td>'+
       '<td class="td-act">'+
-        '<button class="btn xs" onclick="openSettleDetail(\''+d.unitId+'\',\''+type+'\')">'+icon('fileText')+'明细</button>'+
-        '<button class="btn xs primary" onclick="openNewSettlement(\''+d.unitId+'\',\''+type+'\')">'+icon('plus')+'新增结算</button>'+
+        '<button class="btn xs" onclick="openSettleDetail(\''+d.unitId+'\',\''+type+'\')" title="明细" aria-label="明细">'+icon('fileText')+'明细</button>'+
+        '<button class="btn xs primary" onclick="openNewSettlement(\''+d.unitId+'\',\''+type+'\')" title="新增结算" aria-label="新增结算">'+icon('plus')+'新增结算</button>'+
       '</td>'+
     '</tr>';
   }).join('');
@@ -256,7 +256,7 @@ function viewSettlements(type){
   return '<div class="toolbar">'+
     '<div class="search-box' + (_settleSearch ? ' has-val' : '') + '" style="max-width:220px">'+
       '<a href="javascript:void(0)" data-search-fn="onSettleSearch" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\')onSettleSearch(this.value)">'+
+      '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onSettleSearch(this.value)">'+
       '<span class="clear-btn" onclick="onSettleSearch(\'\')">×</span>'+
     '</div>'+
     '<div class="spacer"></div>'+
@@ -264,7 +264,7 @@ function viewSettlements(type){
   '</div>'+
   // 统计卡片（按当前主Tab）
   '<div class="stats" style="grid-template-columns:repeat(3,1fr)">'+
-    '<div class="stat"><div class="k">'+(_settleTab==='receipt'?'应收总额':'应付总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
+    '<div class="stat stat-static"><div class="k">'+(_settleTab==='receipt'?'应收总额':'应付总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
     '<div class="stat stat-click" onclick="drillSettleTab(\'paid\')" role="button" tabindex="0"><div class="k">'+(_settleTab==='receipt'?'已收总额':'已付总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
     '<div class="stat stat-click" onclick="drillSettleTab(\'unpaid\')" role="button" tabindex="0"><div class="k">'+(_settleTab==='receipt'?'未收总额':'未付总额')+'</div><div class="v" style="color:'+(tabTotal-tabDone>0?'var(--red)':'var(--gray)')+'">'+fmt(tabTotal-tabDone)+'</div></div>'+
   '</div>'+

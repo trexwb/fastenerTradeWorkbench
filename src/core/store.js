@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.30';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.31';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -1197,7 +1197,9 @@ async function performBackup(){
   return name;
 }
 /** 立即备份（UI 按钮触发） */
-async function nowBackup(){
+async function nowBackup(btn){
+  let _btn=btn||null;
+  if(_btn)_btn.classList.add('loading');
   try{
     const name=await performBackup();
     const c=backupCfgGet();c.lastBackupAt=Date.now();backupCfgSet(c);
@@ -1206,6 +1208,8 @@ async function nowBackup(){
   }catch(e){
     if(e.code==='NO_BACKUP_DIR'){toast('请先设置备份目录','error');}
     else{toast('备份失败：'+e.message,'error');}
+  }finally{
+    if(_btn)_btn.classList.remove('loading');
   }
   render();
 }

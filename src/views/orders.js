@@ -16,7 +16,7 @@ function renderOrderRow(o){
     '<td class="m-hide-s2">'+o.items.length+' 项</td>'+
     '<td>'+escHtml(fmtDelivery(o.delivery))+'</td>'+
     '<td><span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span></td>'+
-    '<td class="td-act"><button class="btn sm" onclick="goOrderView(\''+o.id+'\')">'+icon('fileText')+'查看</button><button class="btn sm" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑</button></td>'+
+    '<td class="td-act"><button class="btn sm" onclick="goOrderView(\''+o.id+'\')" title="查看" aria-label="查看">'+icon('fileText')+'查看</button><button class="btn sm" onclick="goOrderEdit(\''+o.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button></td>'+
   '</tr>';
 }
 /** 渲染采购订单列表空状态行 */
@@ -48,7 +48,7 @@ function viewOrders(){
   return '<div class="toolbar">'+
     '<div class="search-box'+(orderSearch?' has-val':'')+'">'+
       '<a href="javascript:void(0)" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="orderSearchInput" type="text" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\')onOrderSearch(this.value)">'+
+      '<input id="orderSearchInput" type="text" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onOrderSearch(this.value)">'+
       '<span class="clear-btn" onclick="onOrderSearch(\'\')">×</span>'+
     '</div>'+
     '<select id="orderStatusFilter" style="width:130px" onchange="onOrderStatusFilter(this.value)" tabindex="2">'+
@@ -903,7 +903,7 @@ function buildPriceMatchModalBody(idx,q){
   }).join(''):'<div class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
   return '<div class="search-box pm-search-box" style="max-width:100%;margin-bottom:12px">'+
     '<a href="javascript:void(0)" onclick="runPriceMatchFilter('+idx+')" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-    '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\')runPriceMatchFilter('+idx+')" autocomplete="off">'+
+    '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
     '<span class="clear-btn" onclick="clearPriceMatchFilter('+idx+')">×</span>'+
   '</div>'+
     '<div style="font-size:14px;color:var(--gray);margin-bottom:8px">共 '+availMatched.length+' 条匹配</div>'+
@@ -1392,7 +1392,7 @@ function parseOrderBatch(){
       '<td>'+fmt(r.salePrice)+'</td>'+
       '<td>'+fmt(r.qty*r.salePrice)+'</td>'+
       '<td><span class="tag '+(r.bomMatched?'ok':'warn')+'">'+(r.bomMatched?'已匹配':'未匹配')+'</span></td>'+
-      '<td class="td-act"><button class="btn sm danger" onclick="removeOrderBatchRow('+i+')">'+icon('x')+'</button></td>'+
+      '<td class="td-act"><button class="btn sm danger" onclick="removeOrderBatchRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
   }).join('');
   let preview=document.getElementById('orderBatchPreview');
@@ -1428,7 +1428,7 @@ function removeOrderBatchRow(idx){
       '<td>'+fmt(r.salePrice)+'</td>'+
       '<td>'+fmt(r.qty*r.salePrice)+'</td>'+
       '<td><span class="tag '+(r.bomMatched?'ok':'warn')+'">'+(r.bomMatched?'已匹配':'未匹配')+'</span></td>'+
-      '<td class="td-act"><button class="btn sm danger" onclick="removeOrderBatchRow('+i+')">'+icon('x')+'</button></td>'+
+      '<td class="td-act"><button class="btn sm danger" onclick="removeOrderBatchRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
   }).join('');
   let preview=document.getElementById('orderBatchPreview');
@@ -1575,7 +1575,7 @@ function renderSupplierQuotePreview(){
       '<td>'+fmt(r.price)+'</td>'+
       '<td>'+fmt(r.amount||(r.qty*r.price))+'</td>'+
       '<td><div id="qsup_'+i+'" class="combo" data-placeholder="搜索或输入供应商..." data-val="'+escAttr(r.supplierId||'')+'"></div></td>'+
-      '<td class="td-act"><button class="btn sm danger" onclick="removeQuoteRow('+i+')">'+icon('x')+'</button></td>'+
+      '<td class="td-act"><button class="btn sm danger" onclick="removeQuoteRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
   }).join('');
   preview.innerHTML=

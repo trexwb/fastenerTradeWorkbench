@@ -702,6 +702,8 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   inp.addEventListener('focus',()=>show(inp.value));
   inp.addEventListener('input',()=>{if(_selecting)return;showDebounced(inp.value);});
   inp.addEventListener('keydown',e=>{
+    // 输入法组合中跳过方向键/回车选择，避免拼音组词时误选中下拉项
+    if(e.isComposing)return;
     const q2=(inp.value||'').toLowerCase().trim();
     const hits=comboFilter(inp,options);
     if(e.key==='ArrowDown'){

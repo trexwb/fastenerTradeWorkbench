@@ -94,6 +94,8 @@ function openAIAssistant(){
 function aiContextName(){const names={dashboard:'概览',units:'关联单位',specs:'属性管理',bom:'BOM管理',prices:'签约报价',orders:'采购订单',settlements:'对账结算','settle-receipt':'收款记录','settle-payment':'付款记录',invoices:'发票管理','inv-issue':'开票记录','inv-receive':'收票记录',data:'数据管理'};return names[view]||'工作台';}
 function refreshAIStatus(){const status=document.getElementById('aiStatus');if(status)status.innerHTML=aiStatusLabel();const button=document.getElementById('aiTopbarBtn');if(button){const hasKey=AI.state.hasKey||!!(AI.state.apiKey&&String(AI.state.apiKey).trim());button.classList.toggle('online',hasKey);button.title=hasKey?('打开 AI 助手（'+AI.runtimeLabel()+'）'):'请先在 AI 设置中填写 API_KEY';}}
 function handleAIInputKey(event){
+  // 输入法组合中（选词/组词）不触发发送，避免拼音上屏即误发
+  if(event.isComposing)return;
   // Enter 直接发送；Ctrl/Cmd+Enter 与 Shift+Enter 均为换行（textarea 默认行为，不拦截）
   if(event.key==='Enter'&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){
     event.preventDefault();

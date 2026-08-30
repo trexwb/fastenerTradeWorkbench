@@ -24,7 +24,7 @@ function priceRowHTML(p){
     '<td><b style="color:var(--green)">'+fmt(p.price)+'</b></td>'+
     '<td class="m-hide-s1">'+escHtml(p.contact||'-')+'</td>'+
     '<td class="m-hide-s1">'+escHtml(p.validFrom)+'</td>'+
-    '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')">'+icon('trash')+'删除</button></td>'+
+    '<td class="td-act"><button class="btn sm" onclick="editPrice(\''+escAttr(p.id)+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delPrice(\''+escAttr(p.id)+'\')" title="删除" aria-label="删除">'+icon('trash')+'删除</button></td>'+
   '</tr>';
 }
 
@@ -61,7 +61,7 @@ function viewPrices(){
   const specFilt=SPEC_FIELDS.map(k=>'<div id="pf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val=""></div>').join('');
 
   return '<div class="toolbar">'+
-    '<div class="search-box" style="max-width:200px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\')doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box" style="max-width:200px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
     '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+
@@ -524,7 +524,7 @@ function renderPriceBatchPreview(data){
       '<td>'+escHtml(r.contact||'-')+'</td>'+
       '<td>'+escHtml(r.validFrom||'-')+'</td>'+
       '<td><span class="tag '+(r.bomMatched?'ok':'warn')+'">'+(r.bomMatched?'已匹配':(r.bomSku?'未匹配':'—'))+'</span></td>'+
-      '<td class="td-act"><button class="btn sm danger" onclick="removePriceBatchRow('+i+')">'+icon('x')+'</button></td>'+
+      '<td class="td-act"><button class="btn sm danger" onclick="removePriceBatchRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
   }).join('');
   let preview=document.getElementById('priceBatchPreview');

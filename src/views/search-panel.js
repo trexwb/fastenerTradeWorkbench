@@ -112,6 +112,8 @@ function cmdHighlight(){
 }
 
 function cmdInputKey(e){
+  // 输入法组合中不响应 Enter 选择，避免拼音上屏触发跳转
+  if(e.isComposing)return;
   const k=e.key;
   if(k==='Escape'){e.preventDefault();closeSearchPanel();return;}
   if(k==='ArrowDown'){e.preventDefault();if(_cmdRendered.length){_cmdSel=(_cmdSel+1)%_cmdRendered.length;cmdHighlight();}return;}
