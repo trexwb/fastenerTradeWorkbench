@@ -20,8 +20,8 @@
     "serve": "node scripts/serve.mjs"
   },
   "dependencies": {
-    "mammoth": "^1.12.1",
-    "pdfjs-dist": "^6.2.108",
+    "mammoth": "^1.12.2",
+    "pdfjs-dist": "^6.3.289",
     "vue": "^3.5.42"
   },
   "devDependencies": {
