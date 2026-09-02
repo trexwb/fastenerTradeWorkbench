@@ -125,6 +125,16 @@ fn is_local_endpoint(base_url: &str) -> bool {
         || b.starts_with("https://127.0.0.1") || b.starts_with("https://localhost")
 }
 
+/// 上游端点协议白名单：https 任意放行；http 仅允许本地回环（Ollama 类），
+/// 禁止向内网/明文 http 端点携带 API Key 外发（有限 SSRF / Key 泄露面收敛）
+fn valid_upstream_base_url(base_url: &str) -> bool {
+    let b = base_url.trim().to_lowercase();
+    if b.starts_with("https://") {
+        return true;
+    }
+    is_local_endpoint(base_url)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatMessage {
     role: String,
@@ -910,6 +920,13 @@ async fn ai_deepseek_chat(
         .as_ref()
         .map(|b| is_local_endpoint(b))
         .unwrap_or(false);
+    // 端点协议白名单：https 任意放行、http 仅限本地回环（R-S3：禁止内网/明文 http 携带 Key 外发）
+    if let Some(b) = base_url.as_ref() {
+        let b = b.trim();
+        if !b.is_empty() && !valid_upstream_base_url(b) {
+            return Err("自定义端点仅支持 https:// 或本地回环地址（如 Ollama http://127.0.0.1:11434/v1）".into());
+        }
+    }
     // Token 优先级：用户已保存的真实 Key > 本地端点占位（Ollama 兼容）> 报错
     // （oMLX 等本地服务会校验 Key 与自身配置一致，必须优先用真实 Key，不能一进本地就用占位）
     // Key 来源（明文方案）：前端每次请求随 body 传入（存 localStorage），Rust 不再读写 token 文件

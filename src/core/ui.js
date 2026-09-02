@@ -1,10 +1,6 @@
 // ui.js — Modal / Drawer
 /**
- * drawer 关闭动画时长(ms)，用于 closeDrawer 延迟移除 DOM 以避免动画被截断。
- * @type {number}
- */
-/**
- * 抽屉关闭动画时长（毫秒）
+ * 抽屉关闭动画时长（毫秒），用于 closeDrawer 延迟移除 DOM 以避免动画被截断。
  * @type {number}
  */
 const DRAWER_CLOSE_DELAY=320;

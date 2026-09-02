@@ -55,12 +55,12 @@ function viewDashboard(){
           if(od){const d=daysUntil(o.delivery);badge='逾期'+Math.abs(d)+'天';}
           else if(ap){badge='距交期'+daysUntil(o.delivery)+'天';}
           else{badge=o.status;}
-          return '<div class="today-item'+(od?' overdue':(ap?' approaching':''))+'" onclick="goOrder(\''+o.id+'\')" style="cursor:pointer">'+
+          return '<div class="today-item'+(od?' overdue':(ap?' approaching':''))+'" onclick="goOrder(\''+escJsStr(o.id)+'\')" style="cursor:pointer">'+
             '<div class="ti-info">'+
               '<div class="ti-title">'+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+' · '+escHtml(o.project||'')+' <span class="badge-'+(od?'red':(ap?'amber':''))+'">'+escHtml(badge)+'</span></div>'+
               '<div class="ti-meta">交期 '+escHtml(fmtDelivery(o.delivery))+' · '+o.items.length+' 项产品 · 状态：'+escHtml(o.status)+'</div>'+
             '</div>'+
-            '<button class="btn sm primary" onclick="event.stopPropagation();goOrder(\''+o.id+'\')">'+icon('chevronRight','14')+'处理</button>'+
+            '<button class="btn sm primary" onclick="event.stopPropagation();goOrder(\''+escJsStr(o.id)+'\')">'+icon('chevronRight','14')+'处理</button>'+
           '</div>';
         }).join('')+
       '</div>'+
@@ -97,7 +97,7 @@ function viewDashboard(){
       '<td>'+escHtml(fmtDelivery(o.delivery))+'</td>'+
       '<td><span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span></td>'+
       '<td>'+(o.status==='完成'||(o.status!=='未成交'&&o.status!=='取消'&&o.items.every(i=>isItemSourced(i)))?fmt(orderProfit(o)):'-')+'</td>'+
-      '<td><button class="btn sm" onclick="goOrder(\''+o.id+'\')">'+icon('fileText')+'查看</button></td>'+
+      '<td><button class="btn sm" onclick="goOrder(\''+escJsStr(o.id)+'\')">'+icon('fileText')+'查看</button></td>'+
     '</tr>';
   }).join('');
 

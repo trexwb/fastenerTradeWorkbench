@@ -2,7 +2,115 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.31**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.34**。
+
+---
+
+## v1.0.34 · 📝 待发布
+
+> **状态**: 📝 待发布（五轴代码审计修复完成；版本号 6 处已统一，构建与打包待 CI 验证）
+> **发布日期**: 2026-09-02
+> **上一版本**: v1.0.33
+> **版本范围**: 五轴代码审计安全修复（CSP / SSRF / XSS）+ 发布工作流密钥迁移与修复
+
+---
+
+## 五轴代码审计安全修复 + 发布工作流修复
+
+### 一、R-S2 · CSP 安全加固（src-tauri/tauri.conf.json）
+
+- CSP 追加 `object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'`，收紧桌面端资源加载与跳转策略
+
+### 二、R-S3 · SSRF 防护（src-tauri/src/lib.rs）
+
+- 新增 `valid_upstream_base_url` 端点校验，上游请求仅放行 https 与本地回环地址，收敛 SSRF 攻击面
+
+### 三、R-C1 · 外部数据 ID 清洗防 XSS（src/core/store.js / index.html + dashboard / invoices / units 视图）
+
+- `store.js` 新增 `sanitizeImportedIds` 对导入的外部 ID 做清洗
+- `dashboard.js` / `invoices.js` / `units.js` onclick id 拼接改用 `escJsStr` 转义，消除潜在 XSS
+
+### 四、发布工作流修复（.github/workflows）
+
+- 签名私钥从 GitHub secrets 迁移至 variables（ca5429e）
+- 修复 GitHub Actions 工作流变量引用错误（00bab22）
+
+**版本核验**：`scripts/check-version.mjs` 通过，6 处版本号一致为 v1.0.34（package.json / package-lock.json×2 / tauri.conf.json / Cargo.toml / store.js 回退值 / AGENTS.md）。
+
+---
+
+## v1.0.33 · 📝 待发布
+
+> **状态**: 📝 待发布（vite build 已通过；Tauri 打包待 CI 验证）
+> **发布日期**: 2026-08-30
+> **上一版本**: v1.0.31（跳号，无 v1.0.32）
+> **版本范围**: Tauri 桌面端体验优化 + 知识库/AI 性能优化 + 样式遮挡与可访问性闭环
+
+---
+
+## Tauri 桌面端体验优化 + 性能优化 + 样式/可访问性闭环
+
+### 一、Tauri 桌面端（src-tauri/src/lib.rs）
+
+- 全部 `#[tauri::command]` 改为 `async fn`，避免文件 I/O 阻塞主线程
+- 引入全局 `reqwest::Client` 单例（`OnceLock`）复用 HTTP 连接，AI 流式请求不再每次新建客户端
+- 原子写入临时文件改用「进程 ID ⊕ 原子序号」唯一命名，消除并发备份/保存时的临时文件冲突
+- 桌面端 UI/UX：吸顶表头、毛玻璃效果、拖放导入 JSON
+
+### 二、知识库性能优化（kb.js）
+
+- 重构文件读取逻辑，新增纯文本直读通道，md/txt 等文本类文件跳过 pdfjs/mammoth 解析链，提升加载性能
+
+### 三、AI 流式渲染优化（ai-chat.js）
+
+- 优化流式渲染节流机制，长回复时避免打字机掉帧
+
+### 四、Coach 引导修复（guide.js）
+
+- 修复 Coach 自动渲染空壳问题，解决遮罩锁死页面无法关闭的阻断
+
+### 五、统计卡可访问性（dashboard.js / settlements.js）
+
+- 统计卡补充 `role`/`tabindex` 与键盘 Enter/Space 激活，键盘可达
+
+### 六、样式遮挡清零（components.css + 11 视图）
+
+- 修复 11 个视图中的遮挡问题；修复列表页首行被 sticky 表头遮挡的问题
+
+### 七、订单状态流转调整（orders.js）
+
+- 允许「完成」状态回退到「送货中」或转「异常」，修复状态机单向锁死
+
+### 八、依赖更新（9ec7e37）
+
+- mammoth、pdfjs-dist 更新至最新版本
+
+**构建验证**：`npm run vite:build` 通过。
+
+---
+
+## 追加修复（2026-09-02 · 前端开发规范审计 · 不推进版本号）
+
+按「前端开发规范」Skill 对全项目业务代码（约 2 万行，排除 vendor）做全量规范审计，并对可安全修复项逐一修复。整体质量高，无 P0 阻断项。
+
+### 修复项
+
+1. **P1 深色主题硬编码颜色**（components.css）：命令面板 `--cmd-*`（`.cmd-input-box`/`.cmd-close`/`.cmd-row`/`.cmd-kbd`）与 AI 撤销条（`.ai-undo-bar`/`.ai-undo-btn`）硬编码 hex 收敛为三主题变量；清理 `var(--x,#fallback)` 死代码 fallback（--amber/--bg-tint/--gray/--line/--ink/--accent/--green 等）。
+
+2. **P2 var 残留清零**：router.js（746-747 外链点击处理）、guide.js（历史兼容空壳 4 处）共 6 处 `var` → `const`。
+
+3. **P3 重复 JSDoc 清理**：utils.js（MS_PER_DAY/TOAST_DURATION/TOAST_FADE/DRAFT_TYPES）、ui.js（DRAWER_CLOSE_DELAY）成对重复注释合并。
+
+4. **P3 roleBadge 未转义修复**：utils.js `roleBadge` 对角色名应用 `escHtml` 转义，消除潜在 XSS。
+
+### 判定不修复项（记录备查）
+
+- 行内样式约 466 处（含动态值，改动量大，属大范围重构，违反最小改动原则）
+- API Key 明文存 localStorage（用户已决策 v1.0.31+，已知接受项）
+- 生产 console 输出约 35 处（均诊断 warn/error/info，收敛为日志模块属重构）
+- kb.js 2 处 `@ts-ignore`（针对 webkitdirectory 等非标准 DOM 属性的有意抑制，保留）
+
+**构建验证**：`npm run vite:build` 通过（324 模块，无语法/引用错误）。本轮为代码规范/纯体验打磨（CSS 微调 + 注释清理 + 变量类型优化），按 AGENTS.md §0 不推进版本号，版本保持 v1.0.33。
 
 ---
 

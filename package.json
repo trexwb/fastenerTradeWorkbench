@@ -1,6 +1,6 @@
 {
   "name": "fastener-trade-workbench",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "private": true,
   "type": "module",
   "description": "紧固件贸易工作台 (Vue3 + Vite 开发，Tauri 桌面封装)",
@@ -20,8 +20,8 @@
     "serve": "node scripts/serve.mjs"
   },
   "dependencies": {
-    "mammoth": "^1.12.1",
-    "pdfjs-dist": "^6.2.108",
+    "mammoth": "^1.12.2",
+    "pdfjs-dist": "^6.3.289",
     "vue": "^3.5.42"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.33';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.34';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -95,6 +95,25 @@ function ensureDBFields(){
   }
   // v1.2.0→v1.3.0：旧「待签约」状态迁移为「报价中」
   DB.orders.forEach(o=>{if(o.status==='待签约')o.status='报价中';});
+}
+
+/* 外部数据（导入/绑定/备份恢复）ID 清洗：丢弃 ID 非法条目。
+ * 各业务实体的 id 会被直接内联进 DOM id 属性与 onclick 事件字符串，
+ * 外部 JSON 若携带引号/尖括号等字符将破坏 HTML/JS 上下文（R-C1 根修复）。 */
+const SAFE_ID_RE=/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+function sanitizeImportedIds(data){
+  const dropped={};
+  ['units','prices','orders','settlements','invoices','bom'].forEach(function(key){
+    if(!data||!Array.isArray(data[key]))return;
+    const kept=[];
+    data[key].forEach(function(x){
+      if(x&&typeof x==='object'&&typeof x.id==='string'&&SAFE_ID_RE.test(x.id)){kept.push(x);}
+      else{dropped[key]=(dropped[key]||0)+1;}
+    });
+    data[key]=kept;
+  });
+  const total=Object.keys(dropped).reduce(function(s,k){return s+dropped[k];},0);
+  return {dropped:dropped,total:total};
 }
 
 /* ---- 本地文件同步（File System Access API） ---- */
@@ -440,9 +459,18 @@ async function reconnectFile(){
  */
 function mergeFileData(fileData){
   if(!fileData||typeof fileData!=='object')return;
+  // 绑定/合并前先清洗外部文件中的非法 ID 条目（R-C1），避免脏数据进入合并
+  const sanitized=sanitizeImportedIds(fileData);
+  if(sanitized.total>0){
+    const detail=Object.keys(sanitized.dropped).map(k=>k+' '+sanitized.dropped[k]+' 条').join('、');
+    console.warn('[store] 已忽略'+sanitized.total+'条ID非法的外部记录：'+detail);
+    if(typeof toast==='function')toast('已忽略 '+sanitized.total+' 条 ID 非法的记录（'+detail+'），它们无法正常展示已自动剔除','warn');
+  }
   // 按 id 去重合并的辅助函数：IndexedDB 现有数据优先，文件中独有的条目追加
   const mergeById=(curArr,fileArr)=>{
     if(!Array.isArray(curArr)||!Array.isArray(fileArr))return;
+    const curKept=curArr.filter(x=>x&&typeof x.id==='string'&&SAFE_ID_RE.test(x.id));
+    if(curKept.length!==curArr.length)curArr.splice(0,curArr.length,curKept); // 顺带清理既有脏ID（防旧脏数据扩散）
     const seen=new Set(curArr.map(x=>x&&x.id).filter(Boolean));
     fileArr.forEach(x=>{if(x&&x.id&&!seen.has(x.id)){curArr.push(x);seen.add(x.id);}});
   };
@@ -502,6 +530,14 @@ async function loadFromFile(){
     const data=JSON.parse(text);
     // 导入数据不含回收站/操作历史（用户约束）：强制丢弃文件中可能存在的 trash/aiOps，本机保留空态由 ensureDBFields 补齐
     if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
+    // 文件数据进入本地库前先清洗非法 ID 条目（R-C1）
+    if(data&&typeof data==='object'&&!Array.isArray(data)){
+      const sanitized=sanitizeImportedIds(data);
+      if(sanitized.total>0){
+        console.warn('[store] 文件含'+sanitized.total+'条ID非法记录，已忽略：',sanitized.dropped);
+        if(typeof toast==='function')toast('文件中有 '+sanitized.total+' 条 ID 非法的记录已被忽略','warn');
+      }
+    }
     // 只要文件是合法 JSON 对象即进入处理（不再硬性要求 units/prices/orders 三字段齐全，
     // 避免结构不完整的数据文件被误判为"无数据"而触发反向覆盖清空）
     if(data&&typeof data==='object'&&!Array.isArray(data)){
@@ -1338,6 +1374,8 @@ async function restoreBackup(name){
 async function importParsedData(data){
   // 导入/恢复数据不含回收站与操作历史（用户约束）：强制丢弃
   if(data&&typeof data==='object'){delete data.trash;delete data.aiOps;}
+  // 覆盖前先清洗外部数据中的非法 ID 条目（R-C1），避免脏数据进入本地库
+  const sanitized=sanitizeImportedIds(data);
   if(!data.units||!data.prices||!data.orders){throw new Error('数据格式不正确，缺少必要字段');}
   if(!Array.isArray(data.units)||!data.units.every(function(u){return u&&u.id&&u.name;})){throw new Error('数据校验失败：关联单位数据不完整（缺少id或name）');}
   if(!Array.isArray(data.prices)){throw new Error('数据校验失败：价格数据格式错误');}
@@ -1348,7 +1386,8 @@ async function importParsedData(data){
   const badInv=(data.invoices||[]).filter(inv=>!(data.settlements||[]).some(s=>s.id===inv.settleId));
   const badCount=badUnits.length+badOrderRefs.length+badInv.length;
   let warnMsg='';
-  if(badCount>0){warnMsg='⚠ 数据完整性警告：'+badCount+' 条记录存在关联缺失（单位'+badUnits.length+'、订单引用'+badOrderRefs.length+'、发票关联'+badInv.length+'），恢复后相关页面可能报错，是否仍继续？\n\n';}
+  if(sanitized.total>0){warnMsg+='⚠ ID 安全清洗：'+sanitized.total+' 条记录因 ID 格式非法（'+Object.keys(sanitized.dropped).map(k=>k+' '+sanitized.dropped[k]+' 条').join('、')+'）已被忽略，无法恢复；\n\n';}
+  if(badCount>0){warnMsg+='⚠ 数据完整性警告：'+badCount+' 条记录存在关联缺失（单位'+badUnits.length+'、订单引用'+badOrderRefs.length+'、发票关联'+badInv.length+'），恢复后相关页面可能报错，是否仍继续？\n\n';}
   // 二次确认（用户可取消）
   const ok=await new Promise(function(resolve){
     confirmModal(warnMsg+'导入将覆盖当前所有数据，确认继续?',function(){closeModal();resolve(true);},'确认导入','取消',function(){resolve(false);});

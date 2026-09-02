@@ -16,7 +16,7 @@ function renderOrderRow(o){
     '<td class="m-hide-s2">'+o.items.length+' 项</td>'+
     '<td>'+escHtml(fmtDelivery(o.delivery))+'</td>'+
     '<td><span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span></td>'+
-    '<td class="td-act"><button class="btn sm" onclick="goOrderView(\''+o.id+'\')" title="查看" aria-label="查看">'+icon('fileText')+'查看</button><button class="btn sm" onclick="goOrderEdit(\''+o.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button></td>'+
+    '<td class="td-act"><button class="btn sm" onclick="goOrderView(\''+escJsStr(o.id)+'\')" title="查看" aria-label="查看">'+icon('fileText')+'查看</button><button class="btn sm" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button></td>'+
   '</tr>';
 }
 /** 渲染采购订单列表空状态行 */
@@ -145,20 +145,20 @@ function viewOrderDetail(){
     '<div style="margin-top:18px"><h3 style="font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('link','16')+'相关联系人</h3><div class="table-wrap"><table><thead><tr><th>姓名</th><th>公司</th><th>电话</th><th>微信号</th></tr></thead><tbody>'+contactRows+'</tbody></table></div></div>' : '';
   const nextBtnHTML=nextStepButton(o);
   const prevBtnHTML=prevStepButton(o);
-  const cancelBtnHTML=['待确认','寻货中','报价中'].includes(o.status)?'<button class="btn danger" title="将订单标记为「取消」状态，不可恢复正常流程" onclick="cancelOrderConfirm(\''+o.id+'\')">'+icon('x','16')+' 取消订单</button>':'';
-  const markAbnormalBtnHTML=['报价中','签约完成','送货中','完成'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+o.id+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
+  const cancelBtnHTML=['待确认','寻货中','报价中'].includes(o.status)?'<button class="btn danger" title="将订单标记为「取消」状态，不可恢复正常流程" onclick="cancelOrderConfirm(\''+escJsStr(o.id)+'\')">'+icon('x','16')+' 取消订单</button>':'';
+  const markAbnormalBtnHTML=['报价中','签约完成','送货中','完成'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+escJsStr(o.id)+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
-    '<button class="btn sm" onclick="exportOrder(\''+o.id+'\')">'+icon('download','16')+'导出Excel</button>'+
+    '<button class="btn sm" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
-    (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+o.id+'\')">'+icon('edit')+'编辑订单</button>')+
-    (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+o.id+'\')">'+icon('check','16')+' 订单完成</button>':'')+
+    (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑订单</button>')+
+    (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 订单完成</button>':'')+
     (function(){
       if(o.status!=='签约完成')return'';
       const rows=[];o.items.forEach(function(it){itemOpts(it).forEach(function(opt){rows.push(opt);});});
       if(!rows.length)return'';
-      return '<button class="btn primary" title="进入「送货中」状态。未全部收货会弹窗提醒，仍可强行进入后补录。" onclick="nextStepEnterDelivery(\''+o.id+'\')">'+icon('package','16')+' 进入送货</button>';
+      return '<button class="btn primary" title="进入「送货中」状态。未全部收货会弹窗提醒，仍可强行进入后补录。" onclick="nextStepEnterDelivery(\''+escJsStr(o.id)+'\')">'+icon('package','16')+' 进入送货</button>';
     }())+
     (locked?'':cancelBtnHTML)+
     markAbnormalBtnHTML+
@@ -166,7 +166,7 @@ function viewOrderDetail(){
   '</div>'+
   '<div class="card">'+
     '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+
-      '<button class="btn" style="margin-left:auto" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+o.id+'\')">'+icon('copy','16')+' 复制订单</button>'+
+      '<button class="btn" style="margin-left:auto" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+escJsStr(o.id)+'\')">'+icon('copy','16')+' 复制订单</button>'+
     '</h2>'+
     flowHTML+
     '<div class="grid2" style="margin-bottom:16px">'+
@@ -184,7 +184,7 @@ function viewOrderDetail(){
             '<div><label class="muted" style="font-size:12px">快递单号</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.tracking||'-')+'</div></div>'+
           '</div>'+
           '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px">'+
-            '<button class="btn" onclick="enterEditDelivery(\''+o.id+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
+            '<button class="btn" onclick="enterEditDelivery(\''+escJsStr(o.id)+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
           '</div>'+
         '</div>'+
         '<div id="delivery-edit-'+o.id+'" style="display:none">'+
@@ -194,8 +194,8 @@ function viewOrderDetail(){
           '</div>'+
           '<div style="margin-top:12px"><label class="f">送货时间</label><input id="del_time_'+o.id+'" type="date" tabindex="22" min="'+today()+'" style="width:220px" value="'+escAttr(o.delivery.time||'')+'"></div>'+
           '<div style="margin-top:12px;display:flex;gap:8px">'+
-            '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+o.id+'\')">保存</button>'+
-            '<button class="btn sm" onclick="cancelEditDelivery(\''+o.id+'\')">取消</button>'+
+            '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+escJsStr(o.id)+'\')">保存</button>'+
+            '<button class="btn sm" onclick="cancelEditDelivery(\''+escJsStr(o.id)+'\')">取消</button>'+
           '</div>'+
         '</div>'+
       '</div>':
@@ -209,7 +209,7 @@ function viewOrderDetail(){
         '</div>'+
         '<div style="margin-top:12px"><label class="f">送货时间</label><input id="del_time_'+o.id+'" type="date" tabindex="22" min="'+today()+'" style="width:220px"></div>'+
         '<div style="margin-top:12px">'+
-          '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+o.id+'\')">保存发货信息</button>'+
+          '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+escJsStr(o.id)+'\')">保存发货信息</button>'+
         '</div>'+
       '</div>'
     ):'')+
@@ -244,19 +244,19 @@ function changeOrderStatus(id,status){
 /** 根据当前状态返回专属「下一步」按钮 HTML。未完结状态返回按钮；完成/异常/取消/未成交返回空。 */
 function nextStepButton(o){
   if(o.status==='待确认'){
-    return '<button class="btn primary" title="校验产品列表与意向价后进入「寻货中」" onclick="nextStepStartSourcing(\''+o.id+'\')">'+icon('search','16')+' 开始寻货</button>';
+    return '<button class="btn primary" title="校验产品列表与意向价后进入「寻货中」" onclick="nextStepStartSourcing(\''+escJsStr(o.id)+'\')">'+icon('search','16')+' 开始寻货</button>';
   }
   if(o.status==='寻货中'){
-    return '<button class="btn primary" title="校验所有产品已分配（已确认）后进入「报价中」" onclick="nextStepFinishSourcing(\''+o.id+'\')">'+icon('check','16')+' 完成寻货</button>';
+    return '<button class="btn primary" title="校验所有产品已分配（已确认）后进入「报价中」" onclick="nextStepFinishSourcing(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 完成寻货</button>';
   }
   if(o.status==='报价中'){
     return '<div style="display:flex;gap:8px">'+
-      '<button class="btn primary" title="确认合同已签署，进入「签约完成」状态，可开始收货管理，合同修改可直接编辑订单" onclick="nextStepConfirmSign(\''+o.id+'\')">'+icon('check','16')+' 确认签约</button>'+
-      '<button class="btn" title="报价后客户未确认，标记为「未成交」，可随时一键恢复继续跟进" onclick="markOrderNoDeal(\''+o.id+'\')">'+icon('x','16')+' 标记未成交</button>'+
+      '<button class="btn primary" title="确认合同已签署，进入「签约完成」状态，可开始收货管理，合同修改可直接编辑订单" onclick="nextStepConfirmSign(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 确认签约</button>'+
+      '<button class="btn" title="报价后客户未确认，标记为「未成交」，可随时一键恢复继续跟进" onclick="markOrderNoDeal(\''+escJsStr(o.id)+'\')">'+icon('x','16')+' 标记未成交</button>'+
     '</div>';
   }
   if(o.status==='未成交'){
-    return '<button class="btn primary" title="一键恢复为「报价中」，继续跟进该订单" onclick="restoreOrderQuoting(\''+o.id+'\')">'+icon('refresh','16')+' 恢复为报价中</button>';
+    return '<button class="btn primary" title="一键恢复为「报价中」，继续跟进该订单" onclick="restoreOrderQuoting(\''+escJsStr(o.id)+'\')">'+icon('refresh','16')+' 恢复为报价中</button>';
   }
   return '';
 }
@@ -356,7 +356,7 @@ function prevStepButton(o){
   const idx=STATUS_FLOW.indexOf(o.status);
   if(idx<=0)return '';
   const prev=STATUS_FLOW[idx-1];
-  return '<button class="btn" title="返回上一步：'+escAttr(prev)+'" onclick="prevStepOrder(\''+o.id+'\',\''+prev+'\')">'+icon('arrowLeft','16')+' 上一步（'+prev+'）</button>';
+  return '<button class="btn" title="返回上一步：'+escAttr(prev)+'" onclick="prevStepOrder(\''+escJsStr(o.id)+'\',\''+prev+'\')">'+icon('arrowLeft','16')+' 上一步（'+prev+'）</button>';
 }
 /** 检查订单是否被结算记录引用（用于回退前校验，防孤儿结算/发票）
  * @param {string} id - 订单 ID

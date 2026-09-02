@@ -23,7 +23,7 @@
 # 自动更新：
 #   • bundle.createUpdaterArtifacts 生成更新产物与 .sig 签名
 #     （Windows: NSIS setup.exe；macOS: FastenerTradeWorkbench.app.tar.gz）
-#   • 签名私钥存 GitHub Secrets：TAURI_SIGNING_PRIVATE_KEY
+#   • 签名私钥存 GitHub Variables：TAURI_SIGNING_PRIVATE_KEY
 #     （私钥密码为空，无需 PASSWORD 变量；本地私钥 ~/.tauri/fastener-updater.key）
 #   • update-manifest job 汇总产物生成 latest.json 随 Release 发布，
 #     客户端经 plugins.updater.endpoints 指向 releases/latest/download/latest.json
@@ -75,8 +75,8 @@ jobs:
         # with-updater-key.mjs 在 CI=true 时自动覆盖 productName 为 ASCII
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ vars.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ vars.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 自检产物文件名（必须全 ASCII，否则覆盖未生效）
         shell: pwsh
@@ -137,8 +137,8 @@ jobs:
         # with-updater-key.mjs 在 CI=true 时自动覆盖 productName 为 ASCII
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ vars.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ vars.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make:dmg

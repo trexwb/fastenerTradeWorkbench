@@ -113,13 +113,8 @@ function icon(name,size){let k=name+'|'+(size||18);if(_iconCache[k])return _icon
    避免填写过程中退出/关闭/误操作导致数据丢失
    ========================================================= */
 /**
- * 表单草稿类型枚举，键名对应 saveDraft/loadDraft 的 type 参数。
- * @type {{unit:string,order:string,bom:string,price:string}}
- */
-/**
- * 表单草稿类型映射表
+ * 表单草稿类型映射表，键名对应 saveDraft/loadDraft/clearDraft/hasDraft 的 type 参数。
  * @type {Object.<string, string>}
- * @description 用于 saveDraft/loadDraft/clearDraft/hasDraft 的 type 参数
  */
 const DRAFT_TYPES={unit:'unit',order:'order',bom:'bom',price:'price'};
 /**
@@ -358,29 +353,17 @@ function restorePriceDraft(d){
    常量
    ========================================================= */
 /**
- * 一天的毫秒数常量，用于日期天数差计算。
- * @type {number}
- */
-/**
- * 每天毫秒数（24 * 60 * 60 * 1000）
+ * 一天的毫秒数（24 * 60 * 60 * 1000），用于日期天数差计算。
  * @type {number}
  */
 const MS_PER_DAY=86400000;
 /**
- * Toast 提示默认显示时长(ms)。
- * @type {number}
- */
-/**
- * Toast 消息显示时长（毫秒）
+ * Toast 提示显示时长（毫秒）。
  * @type {number}
  */
 const TOAST_DURATION=2600;
 /**
- * Toast 淡出动画时长(ms)。
- * @type {number}
- */
-/**
- * Toast 消息淡出动画时长（毫秒）
+ * Toast 淡出动画时长（毫秒）。
  * @type {number}
  */
 const TOAST_FADE=300;
@@ -571,7 +554,7 @@ function orderIntent(o){return o.items.reduce((a,it)=>a+(it.salePrice||0)*(it.qt
  * @param {Array<string>} roles - 角色数组（如 ['采购商']）
  * @returns {string} 角色标签 HTML 片段
  */
-function roleBadge(roles){return roles.map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+r+'</span>').join(' ');}
+function roleBadge(roles){return roles.map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+escHtml(r)+'</span>').join(' ');}
 /**
  * 将日期字符串（YYYY-MM-DD）转换为 Date 对象，时间归零。
  * @param {string} s - 日期字符串
