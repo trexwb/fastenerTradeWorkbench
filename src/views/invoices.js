@@ -281,7 +281,7 @@ function viewInvoices(type){
         let rc=inv.receiveStatus||'未收票';
         statusTag='<span class="tag '+(rc==='已收票'?'ok':'gray')+'">'+escHtml(rc)+'</span>';
       }
-      let actBtns='<button class="btn xs" onclick="openInvEdit(\''+inv.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button>';
+      let actBtns='<button class="btn xs" onclick="openInvEdit(\''+escJsStr(inv.id)+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button>';
       let gap=_invTab==='issue'?(inv.receivable||0)-(inv.amount||0):(inv.payable||0)-(inv.amount||0);
       return '<tr>'+
         '<td class="m-hide-s2" style="font-size:12px;color:var(--gray)">结算 '+escHtml(inv.settleDate)+'</td>'+

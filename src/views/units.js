@@ -52,7 +52,7 @@ function unitRowHTML(p){
     '<td class="m-hide-s1">'+escHtml(p.term||'-')+'</td>'+
     '<td class="m-hide-s1"><span class="tag '+(p.rating==='主力'?'info':(p.rating==='新客'?'warn':'gray'))+'">'+escHtml(p.rating||'-')+'</span></td>'+
     '<td class="m-hide-s2 td-contacts">'+contacts+'</td>'+
-    '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+p.id+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+p.id+'\')" title="删除" aria-label="删除">'+icon('trash')+'删除</button></td>'+
+    '<td class="td-act"><button class="btn sm" onclick="editUnit(\''+escJsStr(p.id)+'\')" title="编辑" aria-label="编辑">'+icon('edit')+'编辑</button><button class="btn sm danger" onclick="delUnit(\''+escJsStr(p.id)+'\')" title="删除" aria-label="删除">'+icon('trash')+'删除</button></td>'+
   '</tr>';
 }
 
