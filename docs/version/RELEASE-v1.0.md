@@ -2,7 +2,40 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.33**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.34**。
+
+---
+
+## v1.0.34 · 📝 待发布
+
+> **状态**: 📝 待发布（五轴代码审计修复完成；版本号 6 处已统一，构建与打包待 CI 验证）
+> **发布日期**: 2026-09-02
+> **上一版本**: v1.0.33
+> **版本范围**: 五轴代码审计安全修复（CSP / SSRF / XSS）+ 发布工作流密钥迁移与修复
+
+---
+
+## 五轴代码审计安全修复 + 发布工作流修复
+
+### 一、R-S2 · CSP 安全加固（src-tauri/tauri.conf.json）
+
+- CSP 追加 `object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'`，收紧桌面端资源加载与跳转策略
+
+### 二、R-S3 · SSRF 防护（src-tauri/src/lib.rs）
+
+- 新增 `valid_upstream_base_url` 端点校验，上游请求仅放行 https 与本地回环地址，收敛 SSRF 攻击面
+
+### 三、R-C1 · 外部数据 ID 清洗防 XSS（src/core/store.js / index.html + dashboard / invoices / units 视图）
+
+- `store.js` 新增 `sanitizeImportedIds` 对导入的外部 ID 做清洗
+- `dashboard.js` / `invoices.js` / `units.js` onclick id 拼接改用 `escJsStr` 转义，消除潜在 XSS
+
+### 四、发布工作流修复（.github/workflows）
+
+- 签名私钥从 GitHub secrets 迁移至 variables（ca5429e）
+- 修复 GitHub Actions 工作流变量引用错误（00bab22）
+
+**版本核验**：`scripts/check-version.mjs` 通过，6 处版本号一致为 v1.0.34（package.json / package-lock.json×2 / tauri.conf.json / Cargo.toml / store.js 回退值 / AGENTS.md）。
 
 ---
 
