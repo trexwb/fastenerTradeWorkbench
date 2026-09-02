@@ -75,8 +75,8 @@ jobs:
         # with-updater-key.mjs 在 CI=true 时自动覆盖 productName 为 ASCII
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ variables.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ variables.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ vars.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ vars.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 自检产物文件名（必须全 ASCII，否则覆盖未生效）
         shell: pwsh
@@ -137,8 +137,8 @@ jobs:
         # with-updater-key.mjs 在 CI=true 时自动覆盖 productName 为 ASCII
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ variables.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ variables.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ vars.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ vars.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make:dmg
