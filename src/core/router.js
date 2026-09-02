@@ -743,8 +743,8 @@ function bindView(){
    ═══════════════════════════════════════════════════════════════ */
 document.addEventListener('click', function (e) {
   if (typeof IS_TAURI_RUNTIME === 'undefined' || !IS_TAURI_RUNTIME) return;
-  var t = e.target;
-  var a = t && t.closest ? t.closest('a[target="_blank"]') : null;
+  const t = e.target;
+  const a = t && t.closest ? t.closest('a[target="_blank"]') : null;
   if (!a || !a.href) return;
   e.preventDefault();
   window.__TAURI__.core.invoke('open_external', { url: a.href })['catch'](function (err) {

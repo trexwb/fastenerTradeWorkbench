@@ -20,8 +20,8 @@
 
 (function(){
   // —— 唯一命名空间（原样保留，与旧写入的 localStorage key 保持一致）——
-  var _GUIDE_KEY_PREFIX = 'wb_fastener_guide_';
-  var _GUIDE_PARENT = {
+  const _GUIDE_KEY_PREFIX = 'wb_fastener_guide_';
+  const _GUIDE_PARENT = {
     'settle-receipt':'settlements','settle-payment':'settlements',
     'inv-issue':'invoices','inv-receive':'invoices',
   };
@@ -32,10 +32,10 @@
    */
   window.dismissModuleGuide = function(key, runAction){
     try{
-      var k = _GUIDE_PARENT[key] || key;
+      const k = _GUIDE_PARENT[key] || key;
       if(k) localStorage.setItem(_GUIDE_KEY_PREFIX + k, '1');
     }catch(e){}
-    var el = document.querySelector('.module-guide');
+    const el = document.querySelector('.module-guide');
     if(el){
       try{el.style.transition='opacity .18s,transform .18s';el.style.opacity='0';el.style.transform='translateY(-8px)';}catch(_){}
       setTimeout(function(){try{el.remove();}catch(_){}}, 180);
