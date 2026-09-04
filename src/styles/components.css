@@ -595,6 +595,11 @@ input.alloc-input{width:90px;}
 .ai-message-delete{display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--gray);padding:2px;border-radius:var(--radius-sm);cursor:pointer;opacity:0;pointer-events:none;transition:.15s;}
 .ai-message:hover .ai-message-delete,.ai-message-delete:focus-visible{opacity:1;pointer-events:auto;}
 .ai-message-delete:hover{color:var(--red);background:var(--red-l);}
+/* 消息操作区「复制/刷新」：与删除按钮同置于 meta 行、同 hover 显隐，位于删除按钮之前 */
+.ai-message-op{display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--gray);padding:2px;border-radius:var(--radius-sm);cursor:pointer;opacity:0;pointer-events:none;transition:.15s;line-height:1;}
+.ai-message:hover .ai-message-op,.ai-message-op:focus-visible{opacity:1;pointer-events:auto;}
+.ai-message-op:hover{color:var(--pri);background:var(--pri-l);}
+.ai-message-op.is-copied{opacity:1;pointer-events:auto;color:var(--green);background:transparent;}
 .ai-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:48px 24px;color:var(--gray);border:1px dashed var(--line);border-radius:var(--radius-lg);background:var(--card);}
 .ai-empty-icon{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--pri-l);color:var(--pri);margin-bottom:2px;}
 .ai-empty strong{font-size:15px;color:var(--ink);}

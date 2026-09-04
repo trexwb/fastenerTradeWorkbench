@@ -2,7 +2,40 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.35**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.36**。
+
+---
+
+## v1.0.36 · 📝 待发布
+
+> **状态**: 📝 待发布（AI 助手交互增强；版本号 6 处已统一，构建与打包待 CI 验证）
+> **发布日期**: 2026-09-04
+> **上一版本**: v1.0.35
+> **版本范围**: AI 消息复制/刷新按钮（防误点 + 仅末条可刷新）+ 抽屉草稿保留 + 本地模型截断续写双保险（自动续写 + 手动继续生成）
+
+---
+
+## AI 助手交互增强 + 本地模型截断续写双保险
+
+### 一、AI 消息操作区「复制 / 刷新」按钮（src/views/ai-chat.js / src/styles/components.css）
+
+- **复制**：每条 AI 消息删除按钮前新增「复制」按钮（`.ai-message-op`，hover 显隐，复用删除按钮交互样式），点击将消息内容按 **Markdown 原文**写入剪贴板（`copyAIMessage(id)`，成功后图标短暂变绿提示）
+- **刷新（重新生成）**：AI 回复消息新增「刷新」按钮，点击走 `sendAIMessage` 的 `replaceId` 通道**原位替换**该条回复
+- **防误点确认**：刷新点击先弹 `confirmModal` 确认（提示原内容不可恢复），确认回调内**复检会话末尾**，等待期间会话若变化则取消操作并 toast 提示
+- **仅末条可刷新**：刷新按钮仅在「会话最后一条普通 AI 消息」上渲染（`DB.aiChats` 顺序判定，wf / wfStepOf 消息不展示），逻辑层 `regenerateAIMessage` 再做末尾兜底复检——双层校验避免中间消息重生成导致后续上下文错乱
+
+### 二、关闭抽屉保留草稿（src/views/ai-chat.js）
+
+- AI 助手抽屉关闭不再清空输入框，未发送内容通过 localStorage 实时持久化（key=`wb_fastener_ai_draft`，常量 `AI_DRAFT_KEY`），再次打开自动回填恢复
+- `sendAIMessage` 发送成功、`runAIQuickAction` 无 prompt 快捷操作、`openAIWithMessage` 等主动清空/回写处同步 `removeItem`/写草稿——明确区分「关闭抽屉」与「发送后清空」，不误伤正常清空逻辑
+
+### 三、本地模型截断续写双保险（src/core/ai.js / src/views/ai-chat.js）
+
+- **服务端截断线索收集**：`webChat` 新增 `truncated` 字段，收集服务端 `finish_reason=length` 及 oMLX/llama.cpp 等本地端点的 `stop_reason`/`truncated` 扩展字段（部分本地端点 max_tokens 截断时 finish_reason 仍为 stop）
+- **自动启发式续写**：`aiWriteLoop` 的 `_needContinue` 增加本地端点启发式判定（末尾悬空 / 代码围栏奇数 / 行内未闭合 / 表格未成形 / 链接未闭合 + 服务端截断线索），本地端点（baseUrl 127.0.0.1/localhost）命中即自动续写，至多 `AI_CONTINUE_MAX=3` 轮；**仅本地端点启用宽松启发式，云端保持严格判据**
+- **手动「继续生成」按钮**：疑似截断消息气泡下新增 `truncatedBar`「疑似不完整」提示条与「继续生成」按钮，`continueAIMessage(id, fromHint)` 断点续写原位追加，不覆盖已输出内容（同样最多 3 轮、历史超 6000 字截最近 3 条）
+
+**版本核验**：`scripts/check-version.mjs` 通过，6 处版本号一致为 v1.0.36（package.json / package-lock.json×2 / tauri.conf.json / Cargo.toml / store.js 回退值 / AGENTS.md）。
 
 ---
 

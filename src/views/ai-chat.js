@@ -3,6 +3,8 @@ let _aiCurrentSnapshot='';
 let _aiSendGateAt=0; // 发送防抖门槛：300ms 窗口内的重复触发直接忽略（Enter 连击/快速双击）
 let _wfRunning=false;   // 执行计划是否正在逐步运行（防止并发启动多个计划）
 let _aiActiveWfId=null; // 正在运行/待确认的执行计划 id（供写入确认弹窗取消时感知并中止计划）
+// AI 输入框草稿持久化：关闭抽屉不销毁会话，输入内容实时写 localStorage，重开自动恢复；发送成功/主动清空时同步清除
+const AI_DRAFT_KEY='wb_fastener_ai_draft';
 /* ===== AI 消息 Markdown 渲染：markdown-it + DOMPurify + highlight.js =====
  * npm 依赖由 src/main.js 顶层挂到 window.__MD_DEPS（raw-eval 全局脚本无法直接 import）。
  * 终态（renderAIMarkdown）与流式（renderAIMarkdownStream）两条路径：
@@ -127,16 +129,28 @@ function aiStatusLabel(){
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
 function aiMessageHTML(message){
-  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
+  const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';
+  // 2026-09-04：消息操作区新增「复制」「刷新（仅 AI 回复）」按钮，均位于删除按钮之前（hover 展示，见 .ai-message-op）。
+  // 刷新仅允许作用于「会话最后一条」普通 AI 回复（避免中间消息重生成导致后续上下文错乱）：以 DB.aiChats 顺序判定，末尾为其它消息时不展示刷新。
+  const _dbAll=DB.aiChats||[];const _mIdx=_dbAll.findIndex(x=>x.id===message.id);const _mIsLast=_mIdx>=0&&_mIdx===_dbAll.length-1;
+  // 2026-09-04：手动「继续」约束——仅当该 assistant 消息之后不存在更新的用户提问（避免从中途补齐破坏后续上下文），
+  // 且消息确有可接续文本；truncated 消息的入口由气泡下提示条承担（meta 不再重复放继续按钮）。
+  const _mNoLaterUser=_mIdx<0||!_dbAll.slice(_mIdx+1).some(x=>x.role==='user');
+  const _mHasText=!!(message.content&&String(message.content).trim());
+  const _mContinuable=!isUser&&!message.wfStepOf&&!message.wf&&_mNoLaterUser&&_mHasText;
+  const actionButtons=(message.id&&!message.pending)?'<button type="button" class="ai-message-op" title="复制消息内容（Markdown 文本）" aria-label="复制'+roleLabel+'消息" onclick="copyAIMessage(\''+escJsStr(message.id)+'\',this)">'+icon('copy','13')+'</button>'+((!isUser&&!message.wfStepOf&&!message.wf&&_mIsLast)?'<button type="button" class="ai-message-op" title="重新生成该条回复（需确认；仅会话最后一条消息支持）" aria-label="重新生成'+roleLabel+'回复" onclick="regenerateAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+'</button>':'')+((!_mContinuable||message.truncated)?'':'<button type="button" class="ai-message-op" title="从断点继续补齐该回复（仅当其后没有新提问）" aria-label="继续生成'+roleLabel+'回复" onclick="continueAIMessage(\''+escJsStr(message.id)+'\')">'+icon('play','13')+'</button>'):'';
+  const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   // 2026-09-04：user 消息同样按 Markdown 渲染（renderAIMarkdown 内部先 escHtml 再解析，安全）；assistant 额外渲染「依据」引用
   const content=isUser?renderAIMarkdown(message.content):aiRenderCite(renderAIMarkdown(message.content));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
   const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
+  // 2026-09-04：疑似截断轻提示（含手动继续入口）。消息对象带 truncated 标记（自动续写后仍不完整 / 本地模型内容疑似中断）且其后无新提问时展示；重开抽屉/刷新渲染同样可见
+  const truncatedBar=(!isUser&&message.id&&message.truncated&&_mNoLaterUser&&_mHasText&&!message.pending)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="continueAIMessage(\''+escJsStr(message.id)+'\')">'+icon('chevronRight','13')+' 继续生成</button><span class="ai-undo-hint">该回复疑似不完整，可能已在中途截断，可点击继续从中断处补齐</span></div>':'';
   // 执行计划卡：assistant 消息带 wf 时在气泡下方渲染（从 DB.aiWorkflows 实时读状态，运行中自动刷新）
   const wfCard=(!isUser&&message.wf&&message.wf.id)?'<div class="ai-wf-wrap" data-wf-wrap="'+escAttr(message.wf.id)+'">'+aiWorkflowCardHTML(message.wf.id)+'</div>':'';
   const stepTag=(!isUser&&message.wfStepOf)?'<div class="ai-step-tag">'+escHtml((message.wfStepTitle||'执行步骤')+(message.wfStepDone?' · 完成':' · 执行中'))+'</div>':'';
   // 气泡用独立角色类 .user-bubble / .assistant-bubble，两侧样式互不耦合（见 components.css）
-  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble '+(isUser?'user-bubble':'assistant-bubble')+'">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+stepTag+wfCard+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
+  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+actionButtons+deleteButton+'</div><div class="ai-bubble '+(isUser?'user-bubble':'assistant-bubble')+'">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+stepTag+wfCard+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+truncatedBar+'</article>';
 }
 /** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
 function aiRenderCite(html){
@@ -277,6 +291,16 @@ function openAIAssistant(){
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
+  // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，并实时写 localStorage（关闭/重开均不丢）
+  const draftInput=document.getElementById('aiInput');
+  if(draftInput){
+    let draft='';
+    try{draft=localStorage.getItem(AI_DRAFT_KEY)||'';}catch(e){}
+    if(draft)draftInput.value=draft;
+    draftInput.addEventListener('input',function(){
+      try{localStorage.setItem(AI_DRAFT_KEY,this.value);}catch(e){}
+    });
+  }
   // 后台回复仍在进行时（弹窗中途关过再重开）：发送按钮保持「停止」态并标记忙碌，禁止重复提交
   if(AI.state.chatting)setAISendingUI(true);
 }
@@ -291,7 +315,7 @@ function handleAIInputKey(event){
     requestAISend();
   }
 }
-function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';input.focus();return;}input.value=action.prompt;requestAISend();}
+function runAIQuickAction(id){const action=AI.QUICK_ACTIONS.find(item=>item.id===id);const input=document.getElementById('aiInput');if(!action||!input)return;if(!action.prompt){input.value='';try{localStorage.removeItem(AI_DRAFT_KEY);}catch(e){}input.focus();return;}input.value=action.prompt;requestAISend();}
 // 全局搜索面板注入的附加上下文（一次有效）
 let _aiExtraContext='';
 function openAIWithMessage(text,extraContext){
@@ -299,7 +323,11 @@ function openAIWithMessage(text,extraContext){
   _aiExtraContext=extraContext||'';
   setTimeout(function(){
     const input=document.getElementById('aiInput');
-    if(input){input.value=text||'';requestAISend();}
+    if(!input)return;
+    input.value=text||'';
+    // 外部带入的问题同样写草稿：若发送因缺 Key/过长等被拦截，关闭重开仍能找回该内容
+    try{localStorage.setItem(AI_DRAFT_KEY,input.value);}catch(e){}
+    requestAISend();
   },60);
 }
 function requestAISend(){
@@ -323,20 +351,54 @@ function requestAISend(){
   const body='<p class="note">以下是本次将发送给 AI 的脱敏数据快照，不含联系人电话、地址、税号或银行账户。</p><pre class="ai-preview">'+escHtml(_aiCurrentSnapshot)+'</pre>';
   modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}sendAIMessage(message,_aiCurrentSnapshot);},true);
 }
-async function sendAIMessage(message,snapshot){
+async function sendAIMessage(message,snapshot,options){
   if(_wfRunning){toast('执行计划正在运行，请先完成或停止后再提问','info');return;}
-  const input=document.getElementById('aiInput');const messages=document.getElementById('aiMessages');const history=AI.getHistory();if(!messages)return;if(input)input.value='';
-  // 发送时移除欢迎区（欢迎区仅在打开面板且无对话时渲染；发送后必须清除，否则与消息并存）
-  const _welcome=document.querySelector('#aiMessages .ai-empty');
-  if(_welcome)_welcome.remove();
-  const userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
-  // 助手消息改为「创建即入库 + 流式增量防抖落盘」：关闭弹窗 / 中断 / 退出应用都不丢已生成的部分
-  // （修复：接口未完全返回时关闭 AI 弹窗，重开对话内容丢失的问题）
-  const liveMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),snapshot:snapshot||'',pending:true};
-  DB.aiChats.push(liveMsg);
-  if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
-  saveDBDebounced(400);
-  messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
+  const input=document.getElementById('aiInput');const messages=document.getElementById('aiMessages');if(!messages)return;
+  const replaceId=(options&&options.replaceId)||'';
+  const dbAll=DB.aiChats||[];
+  let history=AI.getHistory();
+  let userMessage=null;let liveMsg=null;
+  if(replaceId){
+    // —— 重新生成模式（regenerateAIMessage 入口）：不新增消息，复用目标 assistant 消息原位重发替换 ——
+    const m=dbAll.find(x=>x.id===replaceId);
+    if(!m||m.role!=='assistant'){toast('未找到可重新生成的消息','warning');return;}
+    const mi=dbAll.findIndex(x=>x.id===replaceId);
+    let u=null;
+    for(let i=mi-1;i>=0;i--){if(dbAll[i].role==='user'){u=dbAll[i];break;}}
+    if(!u||!String(u.content||'').trim()){toast('未找到该条回复对应的提问，无法重新生成','warning');return;}
+    // 请求上下文取目标消息之前（最多 20 条，剔除本次提问本身），不把目标回复及其后对话喂给模型，避免"看到自己/未来内容"
+    const start=Math.max(0,mi-20);
+    history=dbAll.slice(start,mi).filter(x=>x.id!==u.id).map(x=>({role:x.role,content:x.content}));
+    message=String(u.content||'');
+    let snap=String((m.retry&&m.retry.snapshot)||m.snapshot||u.snapshot||'');
+    if(!snap){try{snap=AI.buildPreview(message,'');}catch(e){}}
+    snapshot=snap||'';
+    // 清掉旧附属态并置为生成中：w(计划卡/步骤)不允许刷新（按钮已不展示），retry/retryError/undo 需移除避免悬挂
+    delete m.wf;delete m.wfStepOf;delete m.wfStepTitle;delete m.wfStepDone;
+    delete m.retry;delete m.retryError;
+    m.content='';m.pending=true;
+    saveDBDebounced(300);
+    const art=document.querySelector('[data-ai-id="'+replaceId+'"]');
+    if(art){
+      let sib=art.nextElementSibling;
+      while(sib&&sib.classList&&sib.classList.contains('ai-undo-bar')){const nx=sib.nextElementSibling;sib.remove();sib=nx;}
+      art.outerHTML=aiMessageHTML(m);
+    }
+    liveMsg=m;userMessage=u;
+  }else{
+    // 发送时移除欢迎区（欢迎区仅在打开面板且无对话时渲染；发送后必须清除，否则与消息并存）
+    const _welcome=document.querySelector('#aiMessages .ai-empty');
+    if(_welcome)_welcome.remove();
+    if(input){input.value='';try{localStorage.removeItem(AI_DRAFT_KEY);}catch(e){}} // 发送后清空输入框并清除草稿，下次打开不回填已发内容
+    userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
+    // 助手消息改为「创建即入库 + 流式增量防抖落盘」：关闭弹窗 / 中断 / 退出应用都不丢已生成的部分
+    // （修复：接口未完全返回时关闭 AI 弹窗，重开对话内容丢失的问题）
+    liveMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),snapshot:snapshot||'',pending:true};
+    DB.aiChats.push(liveMsg);
+    if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
+    saveDBDebounced(400);
+    messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
+  }
   setAISendingUI(true);
   aiScrollBottom(true);
   let renderScheduled=false;
@@ -386,6 +448,9 @@ async function sendAIMessage(message,snapshot){
     if(res.content)liveMsg.content=res.content;      // 以模型最终返回为准
     if(!liveMsg.content)liveMsg.content='(操作已处理)'; // 流式中断时保留已累积内容兜底
     liveMsg.pending=false;
+    // 2026-09-04：截断标记落盘——模型返回 truncated（自动续写达上限仍不完整 / 服务端扩展截断线索）时标记，供气泡下「疑似不完整 → 继续生成」提示；完整回复/重生成则清除
+    if(res.truncated&&String(liveMsg.content||'').trim())liveMsg.truncated=true;
+    else if(Object.prototype.hasOwnProperty.call(liveMsg,'truncated'))delete liveMsg.truncated;
     // 模型发起执行计划：为消息挂 wf 卡（草稿待确认），直接收尾，不产生撤销条
     if(res.wfId){
       liveMsg.wf={id:res.wfId};
@@ -449,6 +514,137 @@ async function retryAIMessage(id){
   if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;}
   if(!document.getElementById('aiMessages'))openAIAssistant(); // 弹窗未开时先打开（重开弹窗点击历史按钮场景）
   await sendAIMessage(m.retry.text,m.retry.snapshot||'');
+}
+/** 复制单条消息（原始 Markdown 文本写入剪贴板）
+ *  @param {string} id - 消息 ID
+ *  @param {Element} btnEl - 触发按钮（成功后短暂变 ✓ 反馈） */
+function copyAIMessage(id,btnEl){
+  const m=(DB.aiChats||[]).find(x=>x.id===id);
+  if(!m){toast('未找到该条消息','warning');return;}
+  const text=String(m.content||'');
+  if(!text.trim()){toast('该条消息暂无内容可复制','info');return;}
+  aiCopyText(text,function(ok){
+    if(!ok){toast('复制失败，请手动框选复制','error');return;}
+    if(btnEl&&btnEl.isConnected){btnEl.classList.add('is-copied');btnEl.innerHTML=icon('check','13');setTimeout(()=>{if(!btnEl.isConnected)return;btnEl.classList.remove('is-copied');btnEl.innerHTML=icon('copy','13');},1400);}
+    toast('已复制到剪贴板','success');
+  });
+}
+/** 重新生成（刷新）某条 AI 回复：基于其对应的用户提问重新请求模型并原位替换该条内容
+ *  - 仅允许作用于「会话最后一条」AI 回复：中间消息重生成会让其后的对话上下文错乱（按钮渲染已按此过滤，此处兜底复检）
+ *  - 点击先弹确认（复用 confirmModal），确认后才发起；确认瞬间再次复检会话末尾，避免等待期间会话变化
+ *  - 复用 sendAIMessage 的 replaceId 通道（不新增消息、保持原消息位置；流式/失败重试/撤销条与普通发送一致）
+ *  - 执行计划卡 / 执行步骤消息不提供刷新（按钮渲染已排除） */
+async function regenerateAIMessage(id){
+  const dbAll=DB.aiChats||[];
+  const idx=dbAll.findIndex(x=>x.id===id);
+  const m=idx>=0?dbAll[idx]:null;
+  if(!m||m.role!=='assistant')return;
+  if(idx!==dbAll.length-1){toast('仅会话最后一条消息可重新生成，请先删除其后消息或直接重问','warning');return;}
+  if(m.pending){toast('该回复正在生成中','info');return;}
+  if(_wfRunning){toast('执行计划正在运行，请先完成或停止后再提问','info');return;}
+  if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;}
+  if(!AI.state.hasKey&&!AI.state.apiKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
+  const qIdx=idx-1;const qMsg=qIdx>=0?dbAll[qIdx]:null;
+  const qText=(qMsg&&qMsg.role==='user')?String(qMsg.content||''):'';
+  if(!qText.trim()){toast('未找到该条回复对应的提问，无法重新生成','warning');return;}
+  let qTip='“'+String(qText).slice(0,60)+(String(qText).length>60?'…':'”');
+  confirmModal('确认重新生成这条 AI 回复？将基于'+qTip+'重新请求模型，并替换当前回复内容（原内容不可恢复）。仅会话最后一条消息支持此操作。',()=>{
+    const arr=DB.aiChats||[];
+    if(arr.findIndex(x=>x.id===id)!==arr.length-1){closeModal();toast('会话状态已变化，该消息已不是最后一条，已取消重新生成','warning');return;}
+    closeModal();
+    sendAIMessage('','',{replaceId:id});
+  },'重新生成');
+}
+/** 手动「继续生成」某条 AI 回复（b 方案：断点续写）
+ *  - 不替换原内容：把已输出部分作为 assistant 上下文回填，请求模型从中断处继续，流式原位追加到同一气泡（沿用 data-ai-id 渲染 + saveDBDebounced 落盘）
+ *  - 约束与自动续写一致：无工具调用（tools:[]）、最多 3 轮、每轮结束若仍 length/断流则自动再续；最终仍残缺时保留 truncated 标记供 UI 提示
+ *  - 仅普通 AI 回复（非 wf/wfStepOf）、非生成中、非执行计划运行中；且该条之后不存在更新的用户提问（从中途补齐会破坏后续上下文）
+ *  - fromHint=true：疑似截断提示条入口，直接执行；默认 false：meta 操作区入口，弹确认防误触 */
+async function continueAIMessage(id,fromHint){
+  const dbAll=DB.aiChats||[];
+  const idx=dbAll.findIndex(x=>x.id===id);
+  const m=idx>=0?dbAll[idx]:null;
+  if(!m||m.role!=='assistant')return;
+  if(m.wf||m.wfStepOf){toast('执行计划 / 执行步骤消息不支持继续生成','info');return;}
+  if(m.pending){toast('该回复正在生成中','info');return;}
+  if(_wfRunning){toast('执行计划正在运行，请先完成或停止后再提问','info');return;}
+  if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;}
+  if(!AI.state.hasKey&&!AI.state.apiKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
+  // 该条之后已有新的用户提问 → 继续补齐会让后续对话上下文错位（按钮渲染已按此过滤，此处兜底复检）
+  if(dbAll.slice(idx+1).some(x=>x.role==='user')){toast('该回复之后已有新的提问，继续补齐可能影响后续上下文，建议直接重问','warning');return;}
+  const half=String(m.content||'');
+  if(!half.trim()){toast('该回复暂无内容可继续','info');return;}
+  if(!fromHint){
+    confirmModal('确认从断点继续补齐这条 AI 回复？将保留当前已输出的内容，请求模型从疑似中断处继续追加，不会覆盖或删除已有内容。',()=>{closeModal();continueAIMessage(id,true);},'继续生成');
+    return;
+  }
+  // 组装上下文：截至该条之前的最多 20 条 user/assistant 历史（不含该条自身与之后的未来内容）。
+  // 本地小模型上下文有限：若拼接历史过长（>6000 字）只保留最近 3 条并显式标注省略，避免请求超窗失败
+  const start=Math.max(0,idx-20);
+  const ctxAll=dbAll.slice(start,idx).filter(x=>(x.role==='user'||x.role==='assistant')&&x.id!==id&&String(x.content||'').trim())
+    .map(x=>({role:x.role,content:String(x.content||'')}));
+  let ctx=ctxAll;
+  const _ctxChars=ctxAll.reduce((s,x)=>s+String(x.content).length,0);
+  if(_ctxChars>6000&&ctxAll.length>3){ctx=[{role:'user',content:'（为节省上下文，此前的 '+Math.max(0,ctxAll.length-3)+' 条对话历史已省略，以下为最近对话）'}].concat(ctxAll.slice(-3));}
+  const SYSTEM='你是紧固件贸易工作台的 AI 助手。用户会话中有一条回复疑似在中途被截断，下面给出了该回复已输出的部分。请你直接从上次中断处继续输出：只输出接续内容，不要重复已输出的内容，也不要复述本提示，也不要调用任何工具。';
+  const PROMPT='你的上一条回复内容疑似被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。';
+  // 生成中态：隐藏 meta 操作按钮、显示光标，聊天区按钮切「停止」
+  const art0=document.querySelector('[data-ai-id="'+escJsStr(id)+'"]');
+  m.pending=true;
+  saveDBDebounced(300);
+  if(art0)art0.outerHTML=aiMessageHTML(m);
+  setAISendingUI(true);
+  aiScrollBottom(true);
+  let renderScheduled=false;
+  let _lastRenderAt=0,_lastRenderLen=m.content.length,_lastRenderMs=16;
+  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+escJsStr(id)+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){const t0=Date.now();bubble.innerHTML=renderAIMarkdownStream(m.content)+'<span class="ai-cursor">▍</span>';_lastRenderMs=Math.max(8,Math.min(500,Date.now()-t0));aiScrollBottom();}};
+  const scheduleRender=()=>{
+    const now=Date.now();
+    const len=m.content.length;
+    const minGap=Math.max(80,_lastRenderMs*2);
+    const minGrow=Math.max(240,minGap*6);
+    const due=now-_lastRenderAt>=minGap||len-_lastRenderLen>=minGrow;
+    if(!due&&!renderScheduled){setTimeout(scheduleRender,Math.max(20,minGap-(now-_lastRenderAt)));return;}
+    if(renderScheduled)return;
+    renderScheduled=true;
+    const fire=()=>{_lastRenderAt=Date.now();_lastRenderLen=m.content.length;renderBubble();};
+    if(typeof requestAnimationFrame==='function'){requestAnimationFrame(fire);}else{fire();}
+  };
+  let bad=false;
+  try{
+    // 至多 3 轮：本轮仍 length / 未收到结束信号 / 服务端 truncated 线索 → 自动再续，直至完整或达上限
+    for(let i=0;i<3;i++){
+      const askMsgs=[{role:'system',content:SYSTEM}].concat(ctx,[{role:'assistant',content:m.content},{role:'user',content:PROMPT}]);
+      const baseLen=m.content.length;
+      const rr=await AI.chat(askMsgs,chunk=>{if(!chunk)return;m.content+=chunk;scheduleRender();saveDBDebounced(800);},{tools:[]});
+      // 若服务端整轮返回比流式累积更完整（丢包兜底），按基准长度对齐防重复/防缺
+      const full=(rr&&rr.content)?String(rr.content):'';
+      if(full&&m.content.length<baseLen+full.length){
+        m.content=m.content.slice(0,baseLen)+full;
+        if(renderScheduled)renderBubble();
+      }
+      if(renderScheduled)renderBubble();
+      bad=!(rr&&rr.gotEndSignal&&rr.finishReason==='stop'&&!rr.truncated);
+      if(!bad)break;
+    }
+    if(bad)m.truncated=true;
+    else if(Object.prototype.hasOwnProperty.call(m,'truncated'))delete m.truncated;
+  }catch(error){
+    const added=m.content.length>half.length;
+    const note=(error&&error.name==='AbortError')
+      ?('已停止继续生成'+(added?'，已继续补齐的部分已保留':'')+'。')
+      :('继续生成失败：'+((error&&error.message)?error.message:JSON.stringify(error))+(added?'（已继续补齐的部分已保留）':''));
+    if(added)m.content=(m.content||'')+'\n\n'+note;
+    else toast(note,'error');
+    if(added)toast('部分续写已追加，可继续点击「继续生成」或手动处理','warning');
+  }finally{
+    m.pending=false;
+    saveDB();
+    const art=document.querySelector('[data-ai-id="'+escJsStr(id)+'"]');
+    if(art)art.outerHTML=aiMessageHTML(m);
+    setAISendingUI(false);
+    aiScrollBottom();
+  }
 }
 /** 撤销本批 AI 操作（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
  *  @param {string} batchId - aiOps 批次 ID
