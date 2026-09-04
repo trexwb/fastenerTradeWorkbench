@@ -75,7 +75,7 @@ async function kbShowFile(nameOrRel){
   modal('知识库原文 · '+nameOrRel,html,'关闭',()=>closeModal(),true);
 }
 function aiWelcomeHTML(){return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong><p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p><p style="font-size:13px;color:var(--gray)">当前运行：'+escHtml(AI.runtimeLabel())+'</p></article>';}
-function aiScrollBottom(){const box=document.getElementById('aiMessages');if(box)box.scrollTop=box.scrollHeight;}
+function aiScrollBottom(force){const box=document.getElementById('aiMessages');if(!box)return;const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<200;if(force||nearBottom)box.scrollTop=box.scrollHeight;}
 function openAIAssistant(){
   if(document.querySelector('.drawer-wrap'))closeDrawer();
   const actions=AI.QUICK_ACTIONS.map(action=>'<button type="button" class="ai-action" onclick="runAIQuickAction(\''+action.id+'\')">'+escHtml(action.label)+'</button>').join('');
@@ -87,7 +87,7 @@ function openAIAssistant(){
     '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
-  openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom();});
+  openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
   // 后台回复仍在进行时（弹窗中途关过再重开）：发送按钮保持「停止」态并标记忙碌，禁止重复提交
   if(AI.state.chatting)setAISendingUI(true);
 }
@@ -148,18 +148,21 @@ async function sendAIMessage(message,snapshot){
   saveDBDebounced(400);
   messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
   setAISendingUI(true);
-  aiScrollBottom();
+  aiScrollBottom(true);
   let renderScheduled=false;
   // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
-  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';aiScrollBottom();}};
-  // 流式渲染节流：rAF 之上再叠加「距上次渲染≥80ms 或 累计新增≥240 字符」双条件，
-  // 避免长回复时每帧都对全量内容重跑 renderAIMarkdown（O(n²) 解析导致打字机掉帧）
-  let _lastRenderAt=0,_lastRenderLen=0;
+  let _lastRenderAt=0,_lastRenderLen=0,_lastRenderMs=16;
+  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){const t0=Date.now();bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';_lastRenderMs=Math.max(8,Math.min(500,Date.now()-t0));aiScrollBottom();}};
+  // 流式渲染节流：rAF 之上再叠加「距上次渲染≥间隔 或 累计新增≥阈值」双条件。
+  // 间隔与累计阈值随上次全量渲染耗时自适应放大：长回答后期单次渲染变慢时自动降低渲染频率，
+  // 避免每帧都对全量内容重跑 renderAIMarkdown + innerHTML 重建（O(n²)）导致主线程堆积、界面像卡住
   const scheduleRender=()=>{
     const now=Date.now();
     const len=liveMsg.content.length;
-    const due=now-_lastRenderAt>=80||len-_lastRenderLen>=240;
-    if(!due&&!renderScheduled){setTimeout(scheduleRender,Math.max(20,80-(now-_lastRenderAt)));return;}
+    const minGap=Math.max(80,_lastRenderMs*2);        // 渲染耗时越高，下次渲染间隔越长
+    const minGrow=Math.max(240,minGap*6);              // 累积新增字符阈值同步放大
+    const due=now-_lastRenderAt>=minGap||len-_lastRenderLen>=minGrow;
+    if(!due&&!renderScheduled){setTimeout(scheduleRender,Math.max(20,minGap-(now-_lastRenderAt)));return;}
     if(renderScheduled)return;
     renderScheduled=true;
     const fire=()=>{_lastRenderAt=Date.now();_lastRenderLen=liveMsg.content.length;renderBubble();};
@@ -210,7 +213,7 @@ async function sendAIMessage(message,snapshot){
     const errMsg=(error&&error.message)?error.message:(error?JSON.stringify(error):'未知错误');
     // 中断/出错不再整段丢弃已生成的部分，仅在末尾追加说明并立即落盘
     const note=error&&error.name==='AbortError'
-      ?((AI.state.abortReason==='timeout'?'请求超时（120 秒未完成）':'已停止生成')+(liveMsg.content?'，以上为已生成部分':'')+'。')
+      ?((AI.state.abortReason==='timeout'?'请求超时（长时间未收到完整响应）':'已停止生成')+(liveMsg.content?'，以上为已生成部分':'')+'。')
       :'请求失败：'+errMsg+(liveMsg.content?'（以上为已生成部分）':'');
     liveMsg.content=(liveMsg.content?liveMsg.content+'\n\n':'')+note;
     liveMsg.pending=false;
@@ -308,8 +311,9 @@ function confirmOpsModal(toolCalls,pendingEl){
       if(!approvedOps.length){settle({cancelled:true,approvedOps:[]});return;}
       settle({cancelled:false,approvedOps});
     },true);
-    // 关闭路径统一接管：取消按钮 / X / 遮罩点击 / 全局 Esc（keyboard.js 调 closeModal 移除弹窗但不 resolve）
+    // 关闭路径统一接管：取消按钮 / X / 全局 Esc（keyboard.js 调 closeModal 移除弹窗但不 resolve）
     // 任何路径关闭都视为取消——否则 aiWriteLoop 永久 await，AI.state.chatting 锁死直到刷新页面
+    // v1.x：禁止点击遮罩层关闭 Dialog（防误触取消审批），遮罩点击不再触发 settleCancel
     const mask=document.getElementById('_mask');
     const settleCancel=function(){if(settled)return;settled=true;closeModal();settle({cancelled:true,approvedOps:[]});};
     if(mask){
@@ -317,7 +321,6 @@ function confirmOpsModal(toolCalls,pendingEl){
       if(cancelBtn){cancelBtn.onclick=settleCancel;}
       const xBtn=mask.querySelector('.mh .x');
       if(xBtn)xBtn.onclick=settleCancel;
-      mask.onclick=function(e){if(e.target===mask)settleCancel();};
       // Esc 兕底：全局 Esc 走 closeModal() 直接移除 _mask，用 MutationObserver 监听移除后兜底取消
       const app=document.getElementById('app');
       if(app&&typeof MutationObserver==='function'){
@@ -527,7 +530,7 @@ async function openAISettings(){
       {label:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
       {label:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},
       {label:'本地 Ollama',base:'http://127.0.0.1:11434/v1',model:'qwen2.5'},
-      {label:'本地 oMLX',base:'http://127.0.0.1:8000/v1',model:'qwen2.5'}
+      {label:'本地 oMLX',base:'http://127.0.0.1:11434/v1',model:'Qwen3.5-9B-MLX-4bit'}
     ];
     window._providerPresets=presets;
     window._presetIndexOf=function(url){

@@ -35,7 +35,7 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
   if(oldMask)oldMask.remove();
   const m=document.createElement('div');
   m.className='mask';m.id='_mask';
-  m.onclick=function(e){if(e.target===m)closeModal();};
+  // 禁止点击遮罩层关闭 Dialog：避免误触背景导致表单内容丢失，仅能通过按钮/右上角 X 关闭
   const extraHtml=(extraBtn&&extraOnOk)?'<button type="button" class="btn extra" id="_modalExtra">'+escHtml(extraBtn)+'</button>':'';
   /* v1.0.28：主按钮为「关闭」语义时（纯关弹窗无副作用，如设置弹窗、知识库原文）不渲染取消按钮，避免冗余双按钮 */
   const cancelHtml=(okText==='关闭')?'':'<button type="button" class="btn" id="_modalCancel">取消</button>';
@@ -81,7 +81,7 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
   /* msg 默认按纯文本转义渲染（white-space:pre-line 保证纯文本调用里的 \n 正确换行）；
      仅调用方显式传入 html=true 且内容已自行 escHtml 或为可信静态模板时，才按 HTML 渲染 */
   const safeMsg=html?String(msg):escHtml(String(msg));
-  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
   document.getElementById('_modalOk').onclick=()=>{
     // confirmModal 的 onOk 也可能需要读 DOM 或 async，与 modal() 同样处理
     if(onOk){

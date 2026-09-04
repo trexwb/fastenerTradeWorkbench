@@ -10,6 +10,37 @@
   <link rel="icon" type="image/x-icon" href="./images/favicon.ico" />
   <link rel="icon" type="image/png" sizes="192x192" href="./images/favicon.png" />
   <link rel="apple-touch-icon" href="./images/favicon.png" />
+  <meta name="theme-color" content="#3b5998" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="紧固件贸易工作台" />
+  <script>
+    // PWA：仅 http/https 部署环境（GitHub Pages 等）启用。
+    // file:// 双击运行不注入 manifest（unique origin 下加载会触发 CORS 拦截）、
+    // 不注册 SW（file:// 下浏览器禁用 SW）；Tauri 桌面版跳过 SW 注册。
+    (function () {
+      var isHttp = location.protocol === 'http:' || location.protocol === 'https:';
+      if (!isHttp) return;
+      // manifest：注入 link 标签，供「添加到主屏幕 / 安装」识别
+      var m = document.createElement('link');
+      m.rel = 'manifest';
+      m.href = './manifest.json';
+      document.head.appendChild(m);
+      // Service Worker：Tauri 桌面运行时跳过（避免在 tauri.localhost 注册残留 SW）
+      if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') return;
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function () {});
+        // 新 SW 接管页面时刷新一次，确保用户立即使用最新版本
+        var refreshed = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (refreshed) return;
+          refreshed = true;
+          window.location.reload();
+        });
+      });
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>

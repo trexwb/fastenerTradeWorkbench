@@ -16,7 +16,9 @@ const MAX_MESSAGE_BYTES: usize = 30_000;
 const MAX_TOOL_MESSAGE_BYTES: usize = 200_000; // tool 消息（查询结果 JSON）上限
 const MAX_TOKENS: u32 = 4096;
 const MAX_DATA_BYTES: usize = 128 * 1024 * 1024; // 主数据文件大小上限 128MB
-const REQUEST_TIMEOUT_SECS: u64 = 180;
+const CONNECT_TIMEOUT_SECS: u64 = 30;   // TCP 建连超时：仅连接阶段计时
+const FIRST_CHUNK_TIMEOUT_SECS: u64 = 120; // 首行响应超时：请求发出后首个数据行迟迟不来（"请求开始"计时）
+const IDLE_TIMEOUT_SECS: u64 = 90; // 流式行空闲超时：距上一条 SSE 数据超过该时长视为断流（正常长回答持续吐字不会触发；无整体总超时）
 const RESPONSE_BODY_CAP: usize = 2_000_000; // 2MB
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -894,8 +896,11 @@ struct UpstreamChunk {
 static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 fn http_client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
+        // 流式响应不设 reqwest 整体超时（.timeout 会在长回答超过固定时长时整条掐断）：
+        // 只兜底 TCP 建连；等待首行 / 行间断流由 ai_deepseek_chat 读取循环的
+        // FIRST_CHUNK_TIMEOUT_SECS / IDLE_TIMEOUT_SECS 看门狗判定。
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
             .build()
             .expect("构建 HTTP 客户端失败")
     })
@@ -1035,12 +1040,20 @@ async fn ai_deepseek_chat(
         byte_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
     );
     let mut lines = tokio::io::BufReader::new(reader).lines();
+    // 超时策略：无"全程总计时"——只要行持续输出就不掐断（reqwest 已去掉整体 .timeout）。
+    // 仅两类计时：首行等待 FIRST_CHUNK_TIMEOUT_SECS（请求开始无响应），
+    // 收到首行后每行间空闲 IDLE_TIMEOUT_SECS（流中途断流）。
+    let mut first_line = true;
 
-    while let Some(line) = lines
-        .next_line()
-        .await
-        .map_err(|e| format!("读取流式响应失败: {e}"))?
+    while let Some(line) = tokio::time::timeout(
+        Duration::from_secs(if first_line { FIRST_CHUNK_TIMEOUT_SECS } else { IDLE_TIMEOUT_SECS }),
+        lines.next_line(),
+    )
+    .await
+    .map_err(|_| "AI 响应空闲超时（长时间未收到新内容）".to_string())?
+    .map_err(|e| format!("读取流式响应失败: {e}"))?
     {
+        first_line = false;
         if !line.starts_with("data:") {
             continue;
         }

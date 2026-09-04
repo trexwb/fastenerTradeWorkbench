@@ -10,7 +10,8 @@ const AI=(function(){
   const ALLOWED_MODELS=new Set(PRESET_MODELS);
   const DEFAULT_BASE_URL='https://api.deepseek.com/v1';   // OpenAI 兼容端点，可在设置中修改（如 Ollama http://127.0.0.1:11434/v1）
   const STREAM_EVENT='ai:deepseek:chunk';
-  const REQUEST_TIMEOUT_MS=120000; // 单次请求总超时（含流式全程）；超时后自动 abort，前端给出「重新提交」入口
+  const FIRST_CHUNK_TIMEOUT_MS=120000; // 首块响应超时：仅"请求发出→收到第一个数据块"计时，收包后即失效（不再累计总时长）
+  const IDLE_TIMEOUT_MS=90000;     // 流式空闲超时：距上次收到任何数据块超过该时长视为断流（abortReason='timeout'）
   const WEB_KEY_STORAGE='wb_fastener_ai_key';   // API_KEY 明文存 localStorage（三端统一，用户决策 v1.0.31+）
   const WEB_API_URL=DEFAULT_BASE_URL+'/chat/completions';   // 默认端点（可配置）
   const WEB_BASE_STORAGE='wb_fastener_ai_base';   // Base URL 存 localStorage
@@ -324,8 +325,26 @@ const AI=(function(){
     }
     if(!res.body||!res.body.getReader)throw new Error('当前浏览器不支持流式响应');
     const reader=res.body.getReader();const decoder=new TextDecoder();let buffer='';
+    // 超时策略：无"全程总计时"——只要有响应持续输出就永不掐断（此前 10 分钟总兜底仍会在超长回答时误杀）。
+    // 仅两类计时：①首块超时 FIRST_CHUNK_TIMEOUT_MS（请求发出后首个数据块迟迟不来）；
+    // ②空闲超时 IDLE_TIMEOUT_MS（收到过数据后中途超过该时长无新数据 = 断流）。收到首个数据块即进入纯空闲看门狗模式。
+    let _idleTimer=null,_gotFirstChunk=false;
+    const _clearIdle=function(){if(_idleTimer){clearTimeout(_idleTimer);_idleTimer=null;}};
     while(true){
-      const {done,value}=await reader.read();
+      let chunk;
+      try{
+        chunk=await Promise.race([
+          reader.read(),
+          new Promise(function(_,reject){
+            _idleTimer=setTimeout(function(){
+              state.abortReason='timeout'; // 复用超时语义：前端显示「请求超时」+ 重新提交入口
+              reject(Object.assign(new Error('AI 响应空闲超时（长时间未收到新内容）'),{name:'AbortError',aiIdleTimeout:true}));
+            },_gotFirstChunk?IDLE_TIMEOUT_MS:FIRST_CHUNK_TIMEOUT_MS);
+          })
+        ]);
+      }finally{_clearIdle();}
+      if(!chunk.done)_gotFirstChunk=true;
+      const done=chunk.done,value=chunk.value;
       if(done)break;
       buffer+=decoder.decode(value,{stream:true});
       let idx;
@@ -418,14 +437,19 @@ const AI=(function(){
       // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
       const controller=new AbortController();
       state.abortController=controller;
-      // 请求总超时：到时未完成自动 abort（abortReason='timeout'，与手动停止区分）
-      const timeoutTimer=setTimeout(function(){
-        if(state.abortController===controller){state.abortReason='timeout';try{controller.abort();}catch(e){}}
-      },REQUEST_TIMEOUT_MS);
+      // 无"全程总计时"：流式持续有响应即不设上限，不在这里挂整体超时。
+      // 请求发出后等首包 / 流中途断流分别由 webChat 内的 FIRST_CHUNK_TIMEOUT_MS / IDLE_TIMEOUT_MS 看门狗判定；
+      // AbortController 仅保留给用户手动停止（abort()）使用。
       try{return await webChat(messages,onChunk,controller.signal,options);}
-      finally{clearTimeout(timeoutTimer);state.abortController=null;}
+      finally{state.abortController=null;}
     }catch(e){
       // 阶段4：错误处理边界 —— 分类网络错误/流式中断/tauri 命令异常，给出友好提示
+      // 桌面版 Rust 行级空闲超时以 String err 抛回（无法携带 AbortError name），统一转成 AbortError + timeout 语义
+      const _em=e&&e.message?String(e.message):'';
+      if(!(e&&e.name==='AbortError')&&/空闲超时/.test(_em)){
+        state.abortReason='timeout';
+        const _ae=new Error(_em);_ae.name='AbortError';throw _ae;
+      }
       throw _friendlyError(e);
     }finally{state.chatting=false;state.abortController=null;}
   }
