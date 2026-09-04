@@ -16,7 +16,7 @@ function ensureAiMdDeps(){
   try{
     _aiHljs=deps.hljs||null;
     _aiPurify=deps.DOMPurify||null;
-    const md=deps.markdownit({
+    const md=new (deps.markdownit)({
       html:false,          // 原始 HTML 一律转义（输出纯净 md 语法）
       linkify:true,
       breaks:true,         // AI 单换行习惯 → <br>，贴近旧版逐行渲染观感
