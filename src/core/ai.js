@@ -4,6 +4,9 @@ const AI=(function(){
   const HISTORY_CONTEXT_LIMIT=20;   // 携带更多历史上下文（超长时自动压缩）
   const HISTORY_CONTEXT_CHARS=20000; // 上下文总字符阈值，超过触发一次压缩
   const HEALTH_INTERVAL_MS=30000;
+  // 工作流（多步长任务分步执行）常量
+  const WF_MAX_STEPS=8;             // 单计划最多步骤
+  const WF_HISTORY_LIMIT=40;        // DB.aiWorkflows 保留条数
   const DEFAULT_MODEL='deepseek-v4-flash';
   // 预置推荐模型（不强制限制，设置中可自定义任意 OpenAI 兼容模型名）
   const PRESET_MODELS=['deepseek-v4-flash','deepseek-v4-pro','gpt-4o-mini','gpt-4o','qwen-plus','glm-4-flash','llama3','qwen2.5'];
@@ -141,7 +144,10 @@ const AI=(function(){
       '6. 一条 tool_call 只起草一次操作；多个独立操作可并行起草（多个 tool_calls），但同一条记录不要在同一轮中既修改又删除。\n'+
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
       '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n'+
-      '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n\n'+
+      '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n'+
+      '10. 【多步长任务 → flow_start_workflow】当用户目标需要连续多轮工具调用、且无法在单轮对话中可靠完成（例如：批量录入多条记录、需要对多个对象逐个执行同一种写入、跨模块串联多个业务动作、存在先后依赖的流程性任务）时：先在 content 中用简短文字说明整体计划，然后调用 flow_start_workflow(goal, steps) 将其拆分为 2-8 个可验证的小步骤提交给用户确认；步骤之间要让前序为后续留下可复用的 ID/名称/金额。系统会生成执行计划卡片，用户确认后分步执行，每步写入仍需逐条确认。\n'+
+      '   适用示范（每条都可拆成独立步骤）：a) 依次为 3 个新客户建档并各录 1 条签约报价；b) 新建 5 个订单并逐个寻货分配供应商；c) 本月对账结算 + 开票录入。\n'+
+      '   不适用示范：单次查询、单条记录起草、纯文本分析（这类直接走常规对话即可，不要调用 flow_start_workflow）。\n\n'+
       (kbReady?
       '【知识库主动检索工具】（用户已绑定本地知识库目录时可用的工具，未绑定时工具返回 ok:false）\n'+
       '- query_knowledge(query, topN?, fileFilter?)：检索本地知识库（md/txt/pdf/docx），返回命中片段（含文件名/章节/页码/片段/得分）。\n'+
@@ -489,7 +495,8 @@ const AI=(function(){
    *  onConfirm(toolCalls) → Promise<{cancelled:boolean, approvedOps:array}>：确认弹窗回调（由 ai-chat.js 实现）
    *  返回值：{content:string, lastToolResults:array}
    */
-  async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
+  async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId,opts){
+    // opts：{noWfTools:boolean} —— 工作流步骤执行内部轮次传 true，禁止模型再发起子工作流
     const messages=[...initialMessages];
     let lastToolResults=[];
     let lastBatchIds=[];    // 本轮所有写入批次 ID（供对话内一键撤销整轮，复用持久化 undoBatch）
@@ -513,10 +520,14 @@ const AI=(function(){
         }
       }
       // 工具可用性动态过滤：知识库未绑定/未启用时，不把 KB 工具带给模型（模型无从发起 → 无提案弹窗）
+      // 工作流内部轮次（opts.noWfTools）不透出 flow_start_workflow，禁止步骤内再嵌套发起子工作流
       const kbSet=(typeof AIT!=='undefined'&&AIT.KB_TOOL_NAMES)?AIT.KB_TOOL_NAMES:null;
       const kbAvailable=(typeof KB!=='undefined'&&KB.state.bound&&KB.state.enabled);
+      const noWfTools=!!(opts&&opts.noWfTools);
       const toolsDef=(typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]).filter(function(t){
-        if(!(kbSet&&kbSet.has(t.function&&t.function.name)))return true;
+        const tName=t&&t.function&&t.function.name;
+        if(noWfTools&&tName==='flow_start_workflow')return false;
+        if(!(kbSet&&kbSet.has(tName)))return true;
         return kbAvailable;
       });
       const res=await chat(messages,onChunk,{tools:toolsDef});
@@ -530,6 +541,21 @@ const AI=(function(){
       const calls=res.toolCalls.map(function(tc){
         return {id:tc.id||uid('TC'),name:tc.name,args:(tc.args&&typeof tc.args==='object')?tc.args:{}};
       });
+      // 工作流计划发起拦截：flow_start_workflow 不进入 query/flow/write 常规分流。
+      // 校验通过 → 创建 DB.aiWorkflows 草稿并返回 wfId（UI 展示计划卡 + 确认弹窗后再逐步执行）；
+      // 校验失败 → 把错误作为 tool 响应回填，让模型下一轮自纠。
+      const wfStartCalls=(opts&&opts.noWfTools)?[]:calls.filter(tc=>tc.name==='flow_start_workflow');
+      if(wfStartCalls.length){
+        const wfTry=wfCreateDraft(wfStartCalls[0].args,aiChatId);
+        if(wfTry.ok){
+          if(typeof toast==='function')toast('已生成执行计划，请确认后开始','info');
+          return {content:(res.content&&String(res.content).trim())?res.content:'已生成执行计划，等待确认后分步执行。',wfId:wfTry.wfId,lastToolResults:[],lastBatchIds:[],lastBatchId:null};
+        }
+        // 计划参数不合法：回填错误并让模型自纠（同轮其他调用一并忽略，避免部分执行造成计划/操作错位）
+        messages.push({role:'assistant',content:res.content||'',tool_calls:calls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args)}}))});
+        messages.push({role:'tool',tool_call_id:wfStartCalls[0].id,content:JSON.stringify({ok:false,error:wfTry.error})});
+        continue;
+      }
       // 阶段3：分流 —— query/flow 类自动执行（不经弹窗），write/delete 类走确认弹窗
       // 阶段4：flow 类（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）自动执行
       // P0 修复：flowSet 防护 AIT 未加载或 FLOW_TOOL_NAMES 为 undefined 的场景
@@ -599,8 +625,151 @@ const AI=(function(){
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }
-    return {content:'',lastToolResults,lastBatchIds,lastBatchId};
+    return {content:'',lastToolResults,lastBatchIds,lastBatchId,wfId:undefined,wfStepId:undefined,wfDone:undefined};
   }
+  // ===== 工作流引擎（多步长任务分步执行：持久化草稿 → 确认 → 逐步执行 → 收束/完成） =====
+  /** 取工作流（按 id；同时容忍 chatId 关联记录） */
+  function wfFind(wfId){
+    if(!wfId)return null;
+    return ((typeof DB!=='undefined'&&Array.isArray(DB.aiWorkflows))?DB.aiWorkflows:[]).find(w=>w&&w.id===wfId)||null;
+  }
+  /** 持久化：脏数组保护 + 新单排前 + 保留上限 */
+  function wfPersist(){
+    if(typeof DB==='undefined')return;
+    if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[];
+    DB.aiWorkflows.sort((a,b)=>(b&&b.createdAt||0)-(a&&a.createdAt||0));
+    if(DB.aiWorkflows.length>WF_HISTORY_LIMIT)DB.aiWorkflows.length=WF_HISTORY_LIMIT;
+    if(typeof saveDB==='function')saveDB();
+  }
+  /** 校验并生成执行计划草稿（flow_start_workflow 拦截入口；不入库任何业务操作） */
+  function wfCreateDraft(rawArgs,chatId){
+    const args=(rawArgs&&typeof rawArgs==='object')?rawArgs:{};
+    const goal=String(args.goal||'').trim();
+    if(!goal)return {ok:false,error:'goal 不能为空'};
+    if(goal.length>600)return {ok:false,error:'goal 过长（<=600 字）'};
+    if(!Array.isArray(args.steps)||args.steps.length<2||args.steps.length>WF_MAX_STEPS)return {ok:false,error:'steps 需为 2-'+WF_MAX_STEPS+' 步的数组'};
+    const steps=[];
+    for(let i=0;i<args.steps.length;i++){
+      const s=args.steps[i]||{};
+      const title=String(s.title||'').trim();
+      if(!title)return {ok:false,error:'steps['+i+'].title 不能为空'};
+      if(title.length>80)return {ok:false,error:'steps['+i+'].title 过长（<=40 字）'};
+      const description=(s.description===undefined||s.description===null)?'':String(s.description).trim();
+      if(description.length>500)return {ok:false,error:'steps['+i+'].description 过长（<=400 字）'};
+      steps.push({title,description,status:'pending',summary:''});
+    }
+    const now=Date.now();
+    const wf={id:uid('WF'),chatId:String(chatId||''),status:'draft',goal,steps,current:-1,createdAt:now,updatedAt:now};
+    if(typeof DB==='undefined')DB={aiWorkflows:[]};
+    if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[];
+    DB.aiWorkflows.push(wf);
+    wfPersist();
+    return {ok:true,wfId:wf.id};
+  }
+  /** 用户确认计划 → 转为 active（尚未开始执行任何步骤） */
+  function wfConfirm(wfId,chatId){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在（可能已被清理），请重新发起'};
+    if(wf.status!=='draft')return {ok:false,error:'计划当前状态不可确认：'+wf.status};
+    wf.chatId=String(chatId||wf.chatId||'');
+    wf.status='active';wf.current=-1;wf.startedAt=Date.now();wf.updatedAt=Date.now();
+    wf.steps.forEach(s=>{s.status='pending';s.summary='';});
+    wfPersist();
+    return {ok:true};
+  }
+  /** 推进到下一步（active 且顺序执行；正在执行的步骤未结束时不允许重复推进） */
+  function wfStepStart(wfId){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    if(wf.status!=='active')return {ok:false,error:'计划未处于执行中（当前状态：'+(wf.status||'unknown')+'）'};
+    if(wf.current>=0&&wf.steps[wf.current]&&wf.steps[wf.current].status==='active')return {ok:false,error:'上一步骤尚未结束'};
+    let idx=wf.current+1;
+    while(idx<wf.steps.length&&wf.steps[idx].status==='done')idx++;
+    if(idx>=wf.steps.length){
+      wf.status='done';wf.completedAt=Date.now();wf.updatedAt=Date.now();
+      wfPersist();
+      return {ok:true,finished:true};
+    }
+    wf.steps[idx].status='active';wf.current=idx;wf.updatedAt=Date.now();
+    wfPersist();
+    return {ok:true,stepIdx:idx,step:{title:wf.steps[idx].title,description:wf.steps[idx].description}};
+  }
+  /** 步骤完成：记录收束摘要（含该步产生的 aiOps batchId，供整步一键撤销）；全部完成后计划置 done */
+  function wfStepDone(wfId,summary,batchIds){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    if(wf.status!=='active'||wf.current<0||!wf.steps[wf.current]||wf.steps[wf.current].status!=='active')return {ok:false,error:'没有进行中的步骤可标记完成'};
+    const st=wf.steps[wf.current];
+    st.status='done';
+    st.summary=(summary===undefined||summary===null)?'':String(summary).slice(0,500);
+    if(Array.isArray(batchIds)&&batchIds.length){
+      st.batchIds=(st.batchIds||[]).concat(batchIds.filter(Boolean));
+      if(st.batchIds.length>WF_MAX_STEPS*2)st.batchIds=st.batchIds.slice(-WF_MAX_STEPS*2);
+    }
+    wf.updatedAt=Date.now();
+    if(wf.current>=wf.steps.length-1){wf.status='done';wf.completedAt=Date.now();}
+    wfPersist();
+    return {ok:true,finished:wf.status==='done'};
+  }
+  /** 中止执行（出错/超轮次等）；status 可指定 'aborted' 或 'cancelled' */
+  function wfAbort(wfId,reason,status){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    wf.status=status||'aborted';
+    wf.endReason=String(reason||'');
+    if(wf.current>=0&&wf.steps[wf.current]&&wf.steps[wf.current].status==='active')wf.steps[wf.current].status='pending';
+    wf.updatedAt=Date.now();
+    wfPersist();
+    return {ok:true};
+  }
+  /** 删除聊天记录时清理其关联工作流（避免孤儿计划占用） */
+  function wfCleanupChat(chatId){
+    if(!chatId||typeof DB==='undefined'||!Array.isArray(DB.aiWorkflows))return;
+    const before=DB.aiWorkflows.length;
+    DB.aiWorkflows=DB.aiWorkflows.filter(w=>w.chatId!==chatId);
+    if(DB.aiWorkflows.length!==before&&typeof saveDB==='function')saveDB();
+  }
+  /** 由 AI 主循环执行一个步骤：组装"前序收束+步骤指令"上下文，调用 writeFn 执行，
+   *  结束后依据 writeFn 返回（lastBatchIds/content）自动将本步标记 done（或中止），
+   *  返回 {ok,stepIdx,result,finished}，供外层决定续跑下一步或收尾。 */
+  async function runWorkflowStep(wfId,writeFn){
+    if(typeof writeFn!=='function')return {ok:false,error:'执行器不可用'};
+    const started=wfStepStart(wfId);
+    if(!started.ok)return started;
+    if(started.finished)return {ok:true,finished:true};
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    const doneSteps=wf.steps.filter((s,i)=>i<wf.current&&s.status==='done');
+    const step=wf.steps[wf.current];
+    let stepPrompt='你正在执行一个经过用户确认的多步执行计划（当前第'+(wf.current+1)+'/'+wf.steps.length+'步）。\n\n【计划总目标】'+wf.goal+'\n';
+    if(doneSteps.length){
+      stepPrompt+='\n【已完成步骤收束（供衔接参考，后续步骤可复用其中出现的 ID/名称/金额）】\n'+
+        doneSteps.map((s,i)=>'步骤'+(i+1)+'《'+s.title+'》：'+(s.summary||'（无产出说明）')).join('\n')+'\n';
+    }
+    stepPrompt+='\n【当前步骤 '+(wf.current+1)+'/'+wf.steps.length+'】《'+step.title+'》\n'+(step.description||'');
+    const msgs=[{role:'system',content:stepPrompt}];
+    const result=await writeFn(msgs);
+    if(result&&result.wfRequestAbort){
+      wfAbort(wfId,result.wfRequestAbort,'aborted');
+      return {ok:false,stepIdx:wf.current,result,finished:false,error:'已中止：'+result.wfRequestAbort};
+    }
+    if(result&&result.wfDone){
+      // 模型已在单轮内完成了全部目标：将计划整体置 done（当前步及后续步骤直接标记完成）
+      const wfAll=wfFind(wfId);
+      if(wfAll){
+        wfAll.steps.forEach(s=>{if(s.status==='pending'||s.status==='active')s.status='done';});
+        wfAll.status='done';wfAll.completedAt=Date.now();wfAll.updatedAt=Date.now();
+        wfPersist();
+      }
+      return {ok:true,stepIdx:wf.current,result,finished:true};
+    }
+    const batchIds=(result&&Array.isArray(result.lastBatchIds))?result.lastBatchIds:[];
+    const summary=result&&result.content?String(result.content).slice(0,500):'';
+    const done=wfStepDone(wfId,summary,batchIds);
+    if(!done.ok)return {ok:false,stepIdx:wf.current,result,finished:false,error:done.error};
+    return {ok:true,stepIdx:wf.current,result,finished:done.finished};
+  }
+
   /** 撤销指定批次的 AI 工具改动（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
    *  返回已撤销条数（供 UI 提示）；batchId 无效或已撤销返回 0 */
   function undoLastBatch(batchId){
@@ -639,6 +808,7 @@ const AI=(function(){
     state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
     chat,aiWriteLoop,abort,setModel,setProvider,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft,
-    undoLastBatch
+    undoLastBatch,
+    wfFind,wfCreateDraft,wfConfirm,wfStepStart,wfStepDone,wfAbort,wfCancel:wfAbort,wfCleanupChat,runWorkflowStep
   };
 })();

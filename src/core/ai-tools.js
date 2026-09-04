@@ -769,6 +769,30 @@ const AIT=(function(){
           required:['query']
         }
       }
+    },
+    // 阶段5：工作流计划发起（多步长任务专用；由 aiWriteLoop 拦截并创建 DB.aiWorkflows 草稿，
+    // 不进入 runFlow/executeOps —— 本 schema 仅用于让模型知晓该工具存在）
+    {
+      type:'function',
+      function:{
+        name:'flow_start_workflow',
+        description:'（多步任务专用）将长任务拆分为可确认、可追踪、可暂停续跑的工作流计划。适合需要连续多轮工具调用、单轮上下文无法一次完成的目标（如批量录入多个订单/单位/报价、跨模块的流程性任务、循环处理同类数据）。调用后系统会创建一张「执行计划」卡片并弹出确认，用户确认后才开始逐步执行；每步仍是一次独立对话轮次，写入/删除操作仍需逐条确认，步骤间的中间数据会自动收束成摘要，避免长任务超 token 上限。调用前请在 content 中先用简短文字说明整体计划。',
+        parameters:{
+          type:'object',
+          properties:{
+            goal:{type:'string',description:'工作流总目标：一句话说明要达成的最终状态（应能被外部验证）'},
+            steps:{type:'array',description:'执行步骤列表，2-8 步。每步对应一次独立模型轮次，应满足：① 每步只做一件可验证的小事；② 前序步骤为后续步骤留下可复用的关键 ID/名称/金额等衔接信息；③ 不要在第 1 步就做完整个任务；④ 同类多记录操作拆成多步而非一轮塞入全部写入。',items:{
+              type:'object',
+              properties:{
+                title:{type:'string',description:'步骤标题（<=40 字）'},
+                description:{type:'string',description:'本步要做什么、依据什么、产出什么；写明后续步骤需要引用的关键 ID/名称/金额（<=400 字）'}
+              },
+              required:['title','description']
+            }}
+          },
+          required:['goal','steps']
+        }
+      }
     }
   ];
 
@@ -827,7 +851,9 @@ const AIT=(function(){
     query_knowledge:{label:'检索知识库',tagCls:'info',kind:'query'},
     list_kb_files:{label:'列出KB文件',tagCls:'info',kind:'query'},
     get_kb_file:{label:'查阅KB原文',tagCls:'info',kind:'query'},
-    search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'}
+    search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'},
+    // 工作流计划发起（kind: flow；由 aiWriteLoop 拦截为工作流创建，不真正执行 UI 动作）
+    flow_start_workflow:{label:'发起执行计划',tagCls:'info',kind:'flow'}
   };
 
   /** 阶段4：功能层工具名集合（用于 aiWriteLoop 分流，自动执行不经弹窗） */
@@ -1173,6 +1199,21 @@ const AIT=(function(){
       const inv=DB.invoices.find(x=>x.id===args.invoiceId);
       if(!inv)return {ok:false,error:'发票不存在：'+args.invoiceId};
       return {ok:true,preview:{invoiceId:args.invoiceId,type:inv.type,unitName:inv.unitName||unitNameSafe(inv.unitId),amount:inv.amount}};
+    },
+    // 工作流计划发起校验（kind: flow；只校验结构与数量，不真正执行；由 aiWriteLoop 拦截创建草稿）
+    flow_start_workflow(args){
+      if(!String((args&&args.goal)||'').trim())return {ok:false,error:'goal 不能为空'};
+      if(String(args.goal).length>600)return {ok:false,error:'goal 过长（<=600 字）'};
+      const steps=Array.isArray(args.steps)?args.steps:[];
+      if(steps.length<2)return {ok:false,error:'steps 至少 2 步（2-8 步）'};
+      if(steps.length>8)return {ok:false,error:'steps 最多 8 步'};
+      for(let i=0;i<steps.length;i++){
+        const s=steps[i]||{};
+        if(!String(s.title||'').trim())return {ok:false,error:'steps['+i+'].title 不能为空'};
+        if(String(s.title).length>80)return {ok:false,error:'steps['+i+'].title 过长（<=40 字）'};
+        if(s.description!==undefined&&s.description!==null&&String(s.description).length>500)return {ok:false,error:'steps['+i+'].description 过长（<=400 字）'};
+      }
+      return {ok:true,preview:{goal:String(args.goal).trim(),stepCount:steps.length}};
     },
     // ===== 阶段4：功能层工具校验（轻量校验，仅确认目标存在） =====
     navigate_view(args){

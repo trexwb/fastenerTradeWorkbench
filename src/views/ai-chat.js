@@ -1,6 +1,8 @@
 // views/ai-chat.js — AI 助手抽屉（DeepSeek 直连：Tauri 桌面版走 Rust 命令，浏览器版前端直连）
 let _aiCurrentSnapshot='';
 let _aiSendGateAt=0; // 发送防抖门槛：300ms 窗口内的重复触发直接忽略（Enter 连击/快速双击）
+let _wfRunning=false;   // 执行计划是否正在逐步运行（防止并发启动多个计划）
+let _aiActiveWfId=null; // 正在运行/待确认的执行计划 id（供写入确认弹窗取消时感知并中止计划）
 /** 将连续的 markdown 表格行渲染为真 <table>（第二行为 |---| 分隔行时识别表头）
  * @param {string[]} rows - 形如 "|a|b|" 的表格行数组（已 HTML 转义）
  * @param {Function} inline - 行内标记处理函数（code/strong/em）
@@ -49,7 +51,10 @@ function aiMessageHTML(message){
   const content=isUser?escHtml(message.content):aiRenderCite(renderAIMarkdown(message.content));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
   const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
-  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
+  // 执行计划卡：assistant 消息带 wf 时在气泡下方渲染（从 DB.aiWorkflows 实时读状态，运行中自动刷新）
+  const wfCard=(!isUser&&message.wf&&message.wf.id)?'<div class="ai-wf-wrap" data-wf-wrap="'+escAttr(message.wf.id)+'">'+aiWorkflowCardHTML(message.wf.id)+'</div>':'';
+  const stepTag=(!isUser&&message.wfStepOf)?'<div class="ai-step-tag">'+escHtml((message.wfStepTitle||'执行步骤')+(message.wfStepDone?' · 完成':' · 执行中'))+'</div>':'';
+  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+stepTag+wfCard+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
 }
 /** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
 function aiRenderCite(html){
@@ -73,6 +78,108 @@ async function kbShowFile(nameOrRel){
     return '<details'+(bi===0?' open':'')+'><summary>分块 '+(bi+1)+mtag+'</summary><pre class="kb-block">'+escHtml(b.text)+'</pre></details>';
   }).join('')+'</div>';
   modal('知识库原文 · '+nameOrRel,html,'关闭',()=>closeModal(),true);
+}
+// ===== 执行计划（工作流）卡片 =====
+/** 渲染执行计划卡（实时读取 DB.aiWorkflows 中最新状态；无计划返回提示占位） */
+function aiWorkflowCardHTML(wfId){
+  const wf=AI.wfFind(wfId);
+  if(!wf)return '<div class="ai-wf-card"><div class="ai-wf-goal note">（该执行计划已清理）</div></div>';
+  const statusMap={draft:['等待确认','wf-status-draft'],active:['执行中','wf-status-active'],done:['已完成','wf-status-done'],aborted:['已中止','wf-status-aborted'],cancelled:['已取消','wf-status-cancelled']};
+  const st=statusMap[wf.status]||[wf.status,'wf-status-draft'];
+  const stepsHtml=wf.steps.map(function(s,idx){
+    const cls=s.status==='done'?'wf-step done':(s.status==='active'?'wf-step active':'wf-step');
+    const stateDot=cls.indexOf('done')>=0?'<span class="wf-dot ok"></span>':cls.indexOf('active')>=0?'<span class="wf-dot run"></span>':'<span class="wf-dot"></span>';
+    const sum=(s.status==='done'&&s.summary)?'<div class="wf-step-sum">'+escHtml(s.summary)+'</div>':'';
+    const desc=(s.status!=='done'&&s.description)?'<div class="wf-step-desc">'+escHtml(s.description)+'</div>':'';
+    return '<div class="'+cls+'">'+stateDot+'<div class="wf-step-main"><div class="wf-step-title">步骤'+(idx+1)+' · '+escHtml(s.title)+'</div>'+desc+sum+'</div></div>';
+  }).join('');
+  let actions='';
+  if(wf.status==='draft'){
+    actions='<button type="button" class="btn sm primary" onclick="workflowStart(\''+wf.id+'\')">开始执行</button><button type="button" class="btn sm ghost danger" onclick="workflowCancel(\''+wf.id+'\')">放弃计划</button>';
+  }else if(wf.status==='active'){
+    actions='<span class="ai-wf-live">'+icon('refresh','13')+' 步骤执行中…</span><button type="button" class="btn sm ghost danger" onclick="workflowStop(\''+wf.id+'\')">停止</button>';
+  }
+  return '<div class="ai-wf-card '+wf.status+'" data-wf="'+escAttr(wf.id)+'">'+
+    '<div class="ai-wf-head"><span class="ai-wf-ico">'+icon('doc','15')+'</span><span class="ai-wf-label">执行计划</span><span class="ai-wf-status '+st[1]+'">'+st[0]+'</span></div>'+
+    '<div class="ai-wf-goal">'+escHtml(wf.goal)+'</div>'+stepsHtml+'<div class="ai-wf-actions">'+actions+'</div></div>';
+}
+/** 刷新卡片（不重建整条消息） */
+function workflowCardRefresh(wfId){
+  const wrap=document.querySelector('[data-wf-wrap="'+wfId+'"]');
+  if(wrap)wrap.innerHTML=aiWorkflowCardHTML(wfId);
+}
+/** 开始执行（按钮） */
+async function workflowStart(wfId){
+  if(_wfRunning){toast('已有执行计划正在运行，请先完成或停止','info');return;}
+  const wf=AI.wfFind(wfId);if(!wf)return;
+  if(wf.status!=='draft'){toast('计划已不在待确认状态','info');return;}
+  if(AI.state.chatting){toast('AI 正在处理其他请求，请稍后再启动执行计划','warning');return;}
+  // 定位该计划所属会话的 user 消息 id（引擎 wfCreateDraft 时已记录 wf.chatId，优先沿用；
+  // 旧数据缺失时才回退到卡片前最近的 user 消息，用于删除消息时的关联清理）
+  const dbChats=(typeof DB!=='undefined'&&Array.isArray(DB.aiChats))?DB.aiChats:[];
+  let chatId=wf.chatId||'';
+  if(!chatId){
+    for(let i=dbChats.length-1;i>=0;i--){const m=dbChats[i];if(!m)continue;if(m.wf&&m.wf.id===wfId)continue;if(m.role==='user'){chatId=m.id;break;}}
+  }
+  const c=AI.wfConfirm(wfId,chatId);
+  if(!c.ok){toast(c.error,'warning');return;}
+  workflowCardRefresh(wfId);
+  runWorkflowSteps(wfId,chatId);
+}
+/** 放弃/停止（按钮） */
+function workflowCancel(wfId){const wf=AI.wfFind(wfId);if(!wf)return;AI.wfAbort(wfId,'用户放弃','cancelled');workflowCardRefresh(wfId);toast('已放弃该执行计划','success');}
+async function workflowStop(wfId){AI.abort();AI.wfAbort(wfId,'用户停止','aborted');workflowCardRefresh(wfId);}
+/** 步骤流式渲染节流（串行步骤不会并发，单实例全局计时即可） */
+let _stepRenderAt=0,_stepRenderTimer=null;
+function workflowStreamRender(stepId,text){
+  const doRender=()=>{_stepRenderTimer=null;_stepRenderAt=Date.now();const el=document.querySelector('[data-ai-id="'+stepId+'"]');if(el){const b=el.querySelector('.ai-bubble');if(b)b.innerHTML=renderAIMarkdown(text)+'<span class="ai-cursor">▍</span>';}aiScrollBottom();};
+  if(Date.now()-_stepRenderAt>=80)doRender();
+  else if(!_stepRenderTimer)_stepRenderTimer=setTimeout(doRender,80);
+}
+/** 逐步执行主循环：每步创建独立消息气泡 → runWorkflowStep（内部 aiWriteLoop，不开启新聊天）→ 收束 → 自动续跑 */
+async function runWorkflowSteps(wfId,chatId){
+  _wfRunning=true;_aiActiveWfId=wfId;
+  const box=document.getElementById('aiMessages');
+  try{
+    let guard=0;
+    while(guard++<24){
+      const wf=AI.wfFind(wfId);
+      if(!wf||wf.status!=='active')break;
+      // 创建本步骤气泡（流式写入此气泡）
+      const stepMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),pending:true,wfStepOf:wfId,wfStepTitle:(wf.current>=0&&wf.steps[wf.current])?wf.steps[wf.current].title:'执行中',wfStepDone:false};
+      DB.aiChats.push(stepMsg);if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50);
+      if(box)box.insertAdjacentHTML('beforeend',aiMessageHTML(stepMsg));
+      aiScrollBottom(true);
+      const r=await AI.runWorkflowStep(wfId,async(msgs)=>{
+        const onConfirm=async(toolCalls)=>{const rr=await confirmOpsModal(toolCalls,null);if(rr&&rr.cancelled&&_aiActiveWfId)AI.wfAbort(_aiActiveWfId,'用户取消写入确认','cancelled');return rr;};
+        return AI.aiWriteLoop(msgs,chunk=>{stepMsg.content+=chunk;workflowStreamRender(stepMsg.id,stepMsg.content);saveDBDebounced(600);},onConfirm,chatId,{noWfTools:true});
+      });
+      const wfNow=AI.wfFind(wfId);
+      const stepReal=(wfNow&&wfNow.current>=0&&wfNow.steps[wfNow.current])?wfNow.steps[wfNow.current]:null;
+      stepMsg.wfStepDone=!!(r&&r.ok&&!r.error);
+      stepMsg.wfStepTitle=(r&&r.ok&&stepReal)?stepReal.title:(stepMsg.wfStepTitle||'');
+      stepMsg.pending=false;
+      if(!stepMsg.content&&r&&r.result&&r.result.content&&String(r.result.content).trim())stepMsg.content=r.result.content;
+      if(!stepMsg.content)stepMsg.content='(步骤已处理)';
+      saveDB();
+      const el=document.querySelector('[data-ai-id="'+stepMsg.id+'"]');
+      if(el)el.outerHTML=aiMessageHTML(stepMsg);
+      workflowCardRefresh(wfId);
+      if(!r||!r.ok){if(!(wfNow&&(wfNow.status==='cancelled'||wfNow.status==='aborted')))toast((r&&r.error)?r.error:'步骤执行失败','error');break;}
+      if(r.finished){toast('执行计划已完成','success');break;}
+    }
+  }catch(error){
+    const errName=error&&error.name==='AbortError';
+    const wfCur=AI.wfFind(wfId);
+    if(!(wfCur&&(wfCur.status==='cancelled'||wfCur.status==='aborted'))){toast(errName?'已停止执行':'执行计划出错：'+((error&&error.message)||''),errName?'warning':'error');}
+    if(errName){const wfNow=AI.wfFind(wfId);if(wfNow&&wfNow.status==='active')AI.wfAbort(wfId,'已停止','aborted');}
+    workflowCardRefresh(wfId);
+  }finally{
+    _wfRunning=false;_aiActiveWfId=null;
+    workflowCardRefresh(wfId);
+    aiScrollBottom(true);
+    setAISendingUI(false);
+  }
 }
 function aiWelcomeHTML(){return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong><p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p><p style="font-size:13px;color:var(--gray)">当前运行：'+escHtml(AI.runtimeLabel())+'</p></article>';}
 function aiScrollBottom(force){const box=document.getElementById('aiMessages');if(!box)return;const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<200;if(force||nearBottom)box.scrollTop=box.scrollHeight;}
@@ -135,6 +242,7 @@ function requestAISend(){
   modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}sendAIMessage(message,_aiCurrentSnapshot);},true);
 }
 async function sendAIMessage(message,snapshot){
+  if(_wfRunning){toast('执行计划正在运行，请先完成或停止后再提问','info');return;}
   const input=document.getElementById('aiInput');const messages=document.getElementById('aiMessages');const history=AI.getHistory();if(!messages)return;if(input)input.value='';
   // 发送时移除欢迎区（欢迎区仅在打开面板且无对话时渲染；发送后必须清除，否则与消息并存）
   const _welcome=document.querySelector('#aiMessages .ai-empty');
@@ -185,12 +293,26 @@ async function sendAIMessage(message,snapshot){
     }catch(e){console.warn('KB retrieve failed',e);}
     const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message}]);
     // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
-    const onConfirm=async(toolCalls)=>confirmOpsModal(toolCalls,null);
+    // 写入确认被用户取消时：若正处于执行计划运行中，一并中止该计划（步骤无法继续推进）
+    const onConfirm=async(toolCalls)=>{
+      const rr=await confirmOpsModal(toolCalls,null);
+      if(rr&&rr.cancelled&&_aiActiveWfId){AI.wfAbort(_aiActiveWfId,'用户取消写入确认','cancelled');toast('已中止执行计划','info');}
+      return rr;
+    };
     const res=await AI.aiWriteLoop(request,chunk=>{liveMsg.content+=chunk;scheduleRender();saveDBDebounced(800);},onConfirm,userMessage.id);
     if(renderScheduled)renderBubble();
     if(res.content)liveMsg.content=res.content;      // 以模型最终返回为准
     if(!liveMsg.content)liveMsg.content='(操作已处理)'; // 流式中断时保留已累积内容兜底
     liveMsg.pending=false;
+    // 模型发起执行计划：为消息挂 wf 卡（草稿待确认），直接收尾，不产生撤销条
+    if(res.wfId){
+      liveMsg.wf={id:res.wfId};
+      saveDB();
+      if(typeof render==='function')render();
+      const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
+      if(art)art.outerHTML=aiMessageHTML(liveMsg);
+      return;
+    }
     saveDB();
     // 工具执行成功时在消息下方附「撤销本批」条（复用持久化 undoBatch，刷新不失效，不误伤手动改动）
     let undoBar='';
@@ -612,7 +734,15 @@ function applyProviderPreset(i){
   document.querySelectorAll('.ai-preset-chip').forEach(function(ch){ch.classList.toggle('active',String(ch.getAttribute('data-i'))===String(i));});
   aiEndpointHint();
 }
-function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];saveDB();closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
+function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];if(typeof AI!=='undefined'&&AI.wfCleanupChat){DB.aiWorkflows=[];saveDB();}else{saveDB();}closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
 function deleteAIMessage(id){
   const message=(DB.aiChats||[]).find(item=>item.id===id);if(!message)return;
-  confirmModal('确认删除这条 '+(message.role==='user'?'提问':'回复')+' 记录？此操作不可恢复。',()=>{DB.aiChats=DB.aiChats.filter(item=>item.id!==id);saveDB();closeModal();const item=document.querySelector('[data-ai-id="'+id+'"]');if(item)item.remove();const box=document.getElementById('aiMessages');if(box&&!box.children.length){box.innerHTML=aiWelcomeHTML();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';}toast('对话记录已删除','success');},'删除记录');}
+  confirmModal('确认删除这条 '+(message.role==='user'?'提问':'回复')+' 记录？此操作不可恢复。',()=>{
+    DB.aiChats=DB.aiChats.filter(item=>item.id!==id);
+    // 删除用户提问或其携带的执行计划卡时，同步清理关联的 DB.aiWorkflows 计划（避免孤儿占用）
+    if(typeof AI!=='undefined'&&AI.wfCleanupChat&&typeof DB!=='undefined'&&Array.isArray(DB.aiWorkflows)){
+      if(message.role==='user')AI.wfCleanupChat(message.id);
+      else if(message.wf&&message.wf.id)DB.aiWorkflows=DB.aiWorkflows.filter(w=>w&&w.id!==message.wf.id);
+    }
+    saveDB();closeModal();const item=document.querySelector('[data-ai-id="'+id+'"]');if(item)item.remove();const box=document.getElementById('aiMessages');if(box&&!box.children.length){box.innerHTML=aiWelcomeHTML();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';}toast('对话记录已删除','success');
+  },'删除记录');}
