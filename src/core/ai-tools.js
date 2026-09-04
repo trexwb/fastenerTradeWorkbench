@@ -1339,7 +1339,7 @@ const AIT=(function(){
       }));
       // P2/R2 修复：delivery 结构统一（date/time 双写交期、address 由 deliveryAddress 补齐，与视图层口径一致）；
       // createdAt/updatedAt 沿用 now()，与视图层订单创建/更新（orders.js createdAt:now()/updatedAt:now()）口径统一
-      const o={id:uid('O'),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:args.deliveryAddress||''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
+      const o={id:genOrderNo(),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:args.deliveryAddress||''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
       DB.orders.push(o);
       saveDB();
       const op=recordAiOp({op:'create',type:'order',targetId:o.id,before:null,after:_snap(o),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});

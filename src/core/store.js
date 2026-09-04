@@ -98,6 +98,19 @@ function ensureDBFields(){
   DB.orders.forEach(o=>{if(o.status==='待签约')o.status='报价中';});
 }
 
+/** 生成系统统一采购订单编号：PO+YYMMDD+'-'+3位序号（如 PO260905-001）
+ *  - 唯一编号入口：手动新建/保存（orders.js saveOrder）、复制订单（orders.js copyOrder）、
+ *    AI 创建订单（ai-tools.js create_order）三处统一调用，彻底消除双轨；
+ *  - 使用 DB.orderSeq 独立序号递增，避免删除订单后序号重复；
+ *  - 严禁在 AI 执行器内用 uid('O') 之类自造单号，AI 单与手动单必须同源。
+ */
+function genOrderNo(){
+  DB.orderSeq=(DB.orderSeq||1);
+  const seq=DB.orderSeq;
+  DB.orderSeq=seq+1;
+  return 'PO'+today().slice(2,4)+today().slice(5,7)+today().slice(8,10)+'-'+String(seq).padStart(3,'0');
+}
+
 /* 外部数据（导入/绑定/备份恢复）ID 清洗：丢弃 ID 非法条目。
  * 各业务实体的 id 会被直接内联进 DOM id 属性与 onclick 事件字符串，
  * 外部 JSON 若携带引号/尖括号等字符将破坏 HTML/JS 上下文（R-C1 根修复）。 */

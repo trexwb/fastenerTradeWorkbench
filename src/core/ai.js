@@ -15,6 +15,7 @@ const AI=(function(){
   const STREAM_EVENT='ai:deepseek:chunk';
   const FIRST_CHUNK_TIMEOUT_MS=120000; // 首块响应超时：仅"请求发出→收到第一个数据块"计时，收包后即失效（不再累计总时长）
   const IDLE_TIMEOUT_MS=90000;     // 流式空闲超时：距上次收到任何数据块超过该时长视为断流（abortReason='timeout'）
+  const AI_CONTINUE_MAX=3;         // 单条回复因「输出长度截断/未收到流结束指令」自动续写的最大次数（防无限循环）
   const WEB_KEY_STORAGE='wb_fastener_ai_key';   // API_KEY 明文存 localStorage（三端统一，用户决策 v1.0.31+）
   const WEB_API_URL=DEFAULT_BASE_URL+'/chat/completions';   // 默认端点（可配置）
   const WEB_BASE_STORAGE='wb_fastener_ai_base';   // Base URL 存 localStorage
@@ -295,6 +296,8 @@ const AI=(function(){
     const authKey=key||(localBase?'ollama':'');
     state.webBuf='';
     state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
+    let _lastFinishReason=''; // 最近一次出现的 finish_reason（''/stop/length/…），供上层识别「输出长度截断」
+    let _gotEndSignal=false;  // 是否收到过明确的流结束指令（finish_reason 或 [DONE]）；未收到即视为异常中断
     const reqBody={
       model:state.model,
       messages:messages.map(function(m){
@@ -313,15 +316,31 @@ const AI=(function(){
       // tool_choice 默认 auto：让模型自主决定是否调用工具，避免强制调用导致纯分析场景失败
     }
     let res;
-    try{
-      res=await fetch(apiChatUrl(),{
-        method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
-      body:JSON.stringify(reqBody),
-        signal:signal
-      });
-    }catch(err){
-      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(err&&err.message?err.message:JSON.stringify(err)));
+    // 本地/远端端点偶发不可达（如本地推理服务加载中、系统网络瞬断）会使 fetch 直接 reject
+    // （TypeError / ERR_INTERNET_DISCONNECTED / Failed to fetch）。对纯网络层失败自动重试：
+    // 共 3 次尝试（0ms/600ms/1600ms 退避），吸收服务瞬时不可达窗口；HTTP 错误码（401/429 等）不重试。
+    const NET_RETRY_MAX=2;
+    let _netErr=null;
+    for(let _try=0;_try<=NET_RETRY_MAX;_try++){
+      if(_try>0){
+        await new Promise(function(_r){setTimeout(_r,_try===1?600:1600);});
+      }
+      try{
+        res=await fetch(apiChatUrl(),{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
+          body:JSON.stringify(reqBody),
+          signal:signal
+        });
+        break;
+      }catch(err){
+        _netErr=err;
+        if(signal&&signal.aborted)break; // 用户手动停止：不重试，立即上抛
+        if(_try===NET_RETRY_MAX)break;    // 已达重试上限，最后一次失败保留原始错误
+      }
+    }
+    if(!res){
+      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(_netErr&&_netErr.message?_netErr.message:JSON.stringify(_netErr)));
     }
     if(!res.ok){
       let detail='';
@@ -351,7 +370,22 @@ const AI=(function(){
       }finally{_clearIdle();}
       if(!chunk.done)_gotFirstChunk=true;
       const done=chunk.done,value=chunk.value;
-      if(done)break;
+      if(done){
+        // EOF 边界：把缓冲区内残留的最后一行也解析一次（SSE 行若恰在流尾未带换行符，
+        // 如 `data: [DONE]`，不能漏判结束信号，否则会被误认为「未收到结束指令」触发续写）
+        const tail=(buffer||'').trim();
+        if(tail){
+          if(tail.startsWith('data:')){
+            const rawTail=tail.slice(5).trim();
+            if(rawTail==='[DONE]'){_gotEndSignal=true;}
+            else if(rawTail){
+              try{const jT=JSON.parse(rawTail);const choiceT=jT.choices&&jT.choices[0];if(choiceT&&choiceT.finish_reason){_lastFinishReason=choiceT.finish_reason;_gotEndSignal=true;}}catch(_){}
+            }
+          }
+          buffer='';
+        }
+        break;
+      }
       buffer+=decoder.decode(value,{stream:true});
       let idx;
       while((idx=buffer.indexOf('\n'))>=0){
@@ -368,10 +402,15 @@ const AI=(function(){
           continue;
         }
         const raw=line.slice(5).trim();
-        if(!raw||raw==='[DONE]')continue;
+        if(!raw)continue;
+        // [DONE] 为 OpenAI 兼容流的标准结束标记：记录已收到结束指令（是否截断由 finish_reason 判定）
+        if(raw==='[DONE]'){_gotEndSignal=true;continue;}
         try{
           const j=JSON.parse(raw);
-          const delta=j.choices&&j.choices[0]&&j.choices[0].delta;
+          const choice=j.choices&&j.choices[0];
+          // 流结束信号：finish_reason（stop=正常完成 / length=达到输出长度上限被截断），可作为结束标记
+          if(choice&&choice.finish_reason){_lastFinishReason=choice.finish_reason;_gotEndSignal=true;}
+          const delta=choice&&choice.delta;
           if(!delta)continue;
           // 1) content delta：照常给对话区流式显示
           if(typeof delta.content==='string'&&delta.content){
@@ -386,7 +425,7 @@ const AI=(function(){
       }
     }
     // 流结束：tool_calls 累积槽 → 解析为最终数组（argsStr 容错解析）
-    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc)};
+    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc),finishReason:_lastFinishReason||'',gotEndSignal:_gotEndSignal};
   }
 
   /** 单次对话入口（兼容只读与带工具两种模式）
@@ -437,7 +476,9 @@ const AI=(function(){
             state.chunkBuf=full;
           }
           // tauri 模式：由监听累积的 tool_calls delta 解析为最终数组（与浏览器版同构）
-          return {content:state.chunkBuf,toolCalls:_finalizeToolCalls(state.tauriToolAcc)};
+          // 结束信号：Rust 目前只透传文本增量、不透传 finish_reason，命令正常返回即视为收到结束信号（gotEndSignal=true），
+          // 避免桌面版因「未收到结束指令」误触发续写；输出长度截断的自动续写目前仅浏览器直连模式支持（Rust 侧可后续扩展）。
+          return {content:state.chunkBuf,toolCalls:_finalizeToolCalls(state.tauriToolAcc),finishReason:null,gotEndSignal:true};
         }finally{_cleanupStreamListener();}
       }
       // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
@@ -531,7 +572,40 @@ const AI=(function(){
         if(!(kbSet&&kbSet.has(tName)))return true;
         return kbAvailable;
       });
-      const res=await chat(messages,onChunk,{tools:toolsDef});
+      // 断流半截保护：chat() 在流式中途抛出的异常（网络瞬断/空闲超时）不直接上抛——
+      // 只要本次已输出过半截内容，就把半截归一为「未收到流结束指令」的结果，走下方统一续写逻辑补齐；
+      // 仅在两种情况下原样上抛：① 用户手动停止（abortReason==='manual'，不应擅自续写）；
+      // ② 全程无任何输出（首包即失败，没有可接续的上文，交由 UI 提示重试）。
+      let res;
+      try{
+        res=await chat(messages,onChunk,{tools:toolsDef});
+      }catch(err){
+        const _partial=String(state.webBuf||state.chunkBuf||'');
+        if(state.abortReason==='manual'||!_partial)throw err;
+        res={content:_partial,toolCalls:[],finishReason:'',gotEndSignal:false};
+      }
+      // —— 输出长度截断 / 断流 自动续写（后台无缝接续，用户无感） ——
+      // 触发判据（与 AI 兼容流协议一致）：
+      //   1) finish_reason==='length'：模型达到输出长度上限被截断（OpenAI 兼容流会在最后一个 chunk 携带）；
+      //   2) 流已自然读到 EOF，但整条流从未收到结束指令（finish_reason/[DONE]）：视为异常中断。
+      // 安全边界：用户手动停止已在上方 catch 原样上抛，不会走到此处 → 不误触发；
+      // 空闲超时/网络错误若带半截内容，已在上方归一为断流结果进入本续写通道；
+      // 有 tool_calls 的轮次不续写（保持 assistant(tool_calls)→tool 协议连续性）；
+      // 无任何已生成文本不续写（没有可接续的上文，避免模型从头重写造成重复）。
+      let _aiContinueCount=0;
+      const _needContinue=(r)=>!!r&&(!r.toolCalls||!r.toolCalls.length)&&(r.finishReason==='length'||!r.gotEndSignal)&&String(r.content||'').length>0;
+      while(_aiContinueCount<AI_CONTINUE_MAX&&_needContinue(res)){
+        // 已生成部分作为 assistant 上下文回填 → 模型从中断处无缝接续，不会重复开头
+        messages.push({role:'assistant',content:res.content||''});
+        messages.push({role:'user',content:'你的上一条回复因输出长度限制被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。'});
+        _aiContinueCount++;
+        const contRes=await chat(messages,onChunk,{tools:[]});
+        const contText=(contRes&&contRes.content)?contRes.content:'';
+        if(contText){res.content=(res.content||'')+contText;}   // 拼接到同一消息，UI/落盘均呈连续追加
+        res.finishReason=(contRes&&contRes.finishReason)?contRes.finishReason:'';
+        res.gotEndSignal=!!(contRes&&contRes.gotEndSignal);
+        if(contRes&&contRes.toolCalls&&contRes.toolCalls.length){res.toolCalls=contRes.toolCalls;break;} // 理论不出现；真出现则交由下方工具分流
+      }
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
         return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};

@@ -3,42 +3,122 @@ let _aiCurrentSnapshot='';
 let _aiSendGateAt=0; // 发送防抖门槛：300ms 窗口内的重复触发直接忽略（Enter 连击/快速双击）
 let _wfRunning=false;   // 执行计划是否正在逐步运行（防止并发启动多个计划）
 let _aiActiveWfId=null; // 正在运行/待确认的执行计划 id（供写入确认弹窗取消时感知并中止计划）
-/** 将连续的 markdown 表格行渲染为真 <table>（第二行为 |---| 分隔行时识别表头）
- * @param {string[]} rows - 形如 "|a|b|" 的表格行数组（已 HTML 转义）
- * @param {Function} inline - 行内标记处理函数（code/strong/em）
- * @returns {string} 表格 HTML
- */
-function aiMarkdownTableHTML(rows,inline){
-  const cells=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>inline(c.trim()));
-  const hasSep=rows.length>1&&/^\|[\s:|-]+\|$/.test(rows[1]);
-  let head='',body='';
-  rows.forEach(function(r,ri){
-    if(hasSep&&ri===1)return; // 跳过分隔行
-    if(hasSep&&ri===0){head='<thead><tr>'+cells(r).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead>';return;}
-    body+='<tr>'+cells(r).map(c=>'<td>'+c+'</td>').join('')+'</tr>';
-  });
-  return '<div class="ai-table-wrap"><table class="ai-table">'+head+(body?'<tbody>'+body+'</tbody>':'')+'</table></div>';
+/* ===== AI 消息 Markdown 渲染：markdown-it + DOMPurify + highlight.js =====
+ * npm 依赖由 src/main.js 顶层挂到 window.__MD_DEPS（raw-eval 全局脚本无法直接 import）。
+ * 终态（renderAIMarkdown）与流式（renderAIMarkdownStream）两条路径：
+ * 流式先裁掉“未成形表格尾”（孤立表头 / 半截分隔行），补齐后再整块渲染，避免表格闪烁。 */
+let _aiMd=null,_aiPurify=null,_aiHljs=null,_aiMdFailed=false;
+function ensureAiMdDeps(){
+  if(_aiMd)return true;
+  if(_aiMdFailed)return false;
+  const deps=window.__MD_DEPS;
+  if(!deps||!deps.markdownit){_aiMdFailed=true;console.warn('window.__MD_DEPS 未就绪，AI 消息退化为纯文本');return false;}
+  try{
+    _aiHljs=deps.hljs||null;
+    _aiPurify=deps.DOMPurify||null;
+    const md=deps.markdownit({
+      html:false,          // 原始 HTML 一律转义（输出纯净 md 语法）
+      linkify:true,
+      breaks:true,         // AI 单换行习惯 → <br>，贴近旧版逐行渲染观感
+      typographer:false,
+      highlight:function(str,lang){
+        let codeHtml='';
+        try{
+          if(_aiHljs){
+            const l=String(lang||'').trim().split(/\s+/)[0]||'';
+            if(l&&_aiHljs.getLanguage(l))codeHtml=_aiHljs.highlight(str,{language:l,ignoreIllegals:true}).value;
+            else codeHtml=_aiHljs.highlightAuto(str,['javascript','typescript','python','sql','bash','json','html','css','xml','vue']).value;
+          }
+        }catch(e){codeHtml='';}
+        if(!codeHtml)codeHtml=escHtml(str);
+        const l0=String(lang||'').trim().split(/\s+/)[0]||'';
+        // 返回必须以 <pre 开头，markdown-it 才会原样使用（不重复包 pre/code）
+        return '<pre class="hljs ai-code-pre"'+(l0?' data-lang="'+escAttr(l0)+'"':'')+'>'+
+          '<button type="button" class="ai-code-copy" title="复制代码">复制</button>'+
+          '<code>'+codeHtml+'</code></pre>';
+      }
+    });
+    // 表格输出沿用既有 .ai-table-wrap/.ai-table 结构与样式
+    md.renderer.rules.table_open=function(){return '<div class="ai-table-wrap"><table class="ai-table">';};
+    md.renderer.rules.table_close=function(){return '</table></div>';};
+    // 外链新窗口打开 + noopener
+    const defaultLink=md.renderer.rules.link_open||function(tokens,idx,options,env,self){return self.renderToken(tokens,idx,options);};
+    md.renderer.rules.link_open=function(tokens,idx,options,env,self){
+      tokens[idx].attrSet('target','_blank');
+      tokens[idx].attrSet('rel','noopener noreferrer');
+      return defaultLink(tokens,idx,options,env,self);
+    };
+    _aiMd=md;
+    return true;
+  }catch(e){_aiMdFailed=true;console.warn('markdown-it 初始化失败',e);return false;}
 }
+/** 流式缓冲：剔除文本尾部尚未成形的表格候选块（孤立表头 / 半截分隔行），
+ *  等后续 chunk 补齐后再整块渲染，避免“裸文本→表格”闪变。只用于流式路径。 */
+function cutIncompleteTableTail(text){
+  const src=String(text==null?'':text);
+  if(!src)return '';
+  const lines=src.split('\n');
+  let end=lines.length;
+  while(end>0&&lines[end-1].trim()==='')end--;           // 跳过结尾空行
+  if(end===0)return '';
+  let start=end;
+  while(start>0&&/^\s*\|/.test(lines[start-1]))start--;   // 收集尾部连续“表格候选”行
+  if(start===end)return src;                              // 尾部无表行：全量渲染
+  const block=lines.slice(start,end);
+  // 成形判据：分隔行与表头列数一致、且每格均为纯分隔语法（:---: / --- / :--），
+  // markdown-it 才会真正渲染成表格；否则视为“还没写完”继续裁掉待补齐
+  const cellCount=r=>String(r||'').trim().replace(/^\|/,'').replace(/\|$/,'').split('|').length;
+  const sepCells=String((block[1]||'').trim()).replace(/^\|/,'').replace(/\|$/,'').split('|').map(s=>s.trim());
+  if(block.length>=2&&sepCells.length===cellCount(block[0])&&sepCells.length>0&&sepCells.every(c=>/^:?-{1,}:?$/.test(c)))return src; // 表头+分隔已成形
+  let cut=start;
+  while(cut>0&&lines[cut-1].trim()==='')cut--;            // 连同前导空行裁掉，待补齐后整块出现
+  return lines.slice(0,cut).join('\n');
+}
+/** AI 消息 Markdown → 安全 HTML（终态：历史气泡 / 用户消息等一次性完整渲染） */
 function renderAIMarkdown(text){
-  const escaped=escHtml(text||'');
-  const inline=value=>value.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
-  const lines=escaped.split('\n');let html='';let i=0;
-  while(i<lines.length){
-    const line=lines[i];
-    if(/^&gt;\s?/.test(line)){html+='<blockquote>'+inline(line.replace(/^&gt;\s?/,''))+'</blockquote>';i++;continue;}
-    if(/^[-*]\s+/.test(line)||/^\d+\.\s+/.test(line)){
-      const ordered=/^\d+\.\s+/.test(line);const items=[];
-      while(i<lines.length&&(ordered?/^\d+\.\s+/.test(lines[i]):/^[-*]\s+/.test(lines[i]))){items.push('<li>'+inline(lines[i].replace(ordered?/^\d+\.\s+/:/^[-*]\s+/,''))+'</li>');i++;}
-      html+=(ordered?'<ol>':'<ul>')+items.join('')+(ordered?'</ol>':'</ul>');continue;
-    }
-    if(/^\|.+\|$/.test(line)){
-      const rows=[];
-      while(i<lines.length&&/^\|.+\|$/.test(lines[i])){rows.push(lines[i].trim());i++;}
-      html+=aiMarkdownTableHTML(rows,inline);continue;
-    }
-    html+=line?'<p>'+inline(line)+'</p>':'';i++;
+  const src=String(text==null?'':text).replace(/\r\n/g,'\n');
+  if(!ensureAiMdDeps())return src?('<p>'+escHtml(src).replace(/\n/g,'<br>')+'</p>'):'';
+  try{
+    let html=_aiMd.render(src);
+    if(_aiPurify)html=_aiPurify.sanitize(html,{ADD_TAGS:['button'],ADD_ATTR:['data-lang']});
+    return html;
+  }catch(e){
+    console.warn('markdown 渲染失败，降级纯文本',e);
+    return src?('<p>'+escHtml(src).replace(/\n/g,'<br>')+'</p>'):'';
   }
-  return html;
+}
+/** AI 消息 Markdown 流式渲染：先裁掉未成形表格尾，再走完整渲染（供生成中气泡使用） */
+function renderAIMarkdownStream(text){
+  return renderAIMarkdown(cutIncompleteTableTail(text));
+}
+/* 代码块「复制」按钮：document 级事件委托。
+ * （DOMPurify 会剥离内联 onclick，故不能在 sanitize 过的 HTML 里绑事件属性。） */
+function aiCopyText(text,onDone){
+  try{
+    if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).then(()=>onDone&&onDone(true),()=>onDone&&onDone(false));return;}
+  }catch(e){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0';
+    document.body.appendChild(ta);ta.select();
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    onDone&&onDone(ok);
+  }catch(e){onDone&&onDone(false);}
+}
+if(!window.__aiCodeCopyBound){
+  window.__aiCodeCopyBound=true;
+  document.addEventListener('click',function(e){
+    const btn=e.target&&e.target.closest?e.target.closest('.ai-code-copy'):null;
+    if(!btn)return;
+    e.preventDefault();
+    const pre=btn.closest('.ai-code-pre');
+    const codeEl=pre?pre.querySelector('code'):null;
+    if(!codeEl)return;
+    const txt=codeEl.textContent||'';
+    aiCopyText(txt,function(ok){toast(ok?'代码已复制':'复制失败，请手动框选复制',ok?'success':'error');});
+  },false);
 }
 function aiStatusLabel(){
   // 2026-08-29：hasKey + apiKey 双重检查，防止初始化时序导致 hasKey=false 但 Key 实际已保存
@@ -48,13 +128,15 @@ function aiStatusLabel(){
 }
 function aiMessageHTML(message){
   const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
-  const content=isUser?escHtml(message.content):aiRenderCite(renderAIMarkdown(message.content));
+  // 2026-09-04：user 消息同样按 Markdown 渲染（renderAIMarkdown 内部先 escHtml 再解析，安全）；assistant 额外渲染「依据」引用
+  const content=isUser?renderAIMarkdown(message.content):aiRenderCite(renderAIMarkdown(message.content));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
   const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
   // 执行计划卡：assistant 消息带 wf 时在气泡下方渲染（从 DB.aiWorkflows 实时读状态，运行中自动刷新）
   const wfCard=(!isUser&&message.wf&&message.wf.id)?'<div class="ai-wf-wrap" data-wf-wrap="'+escAttr(message.wf.id)+'">'+aiWorkflowCardHTML(message.wf.id)+'</div>':'';
   const stepTag=(!isUser&&message.wfStepOf)?'<div class="ai-step-tag">'+escHtml((message.wfStepTitle||'执行步骤')+(message.wfStepDone?' · 完成':' · 执行中'))+'</div>':'';
-  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+stepTag+wfCard+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
+  // 气泡用独立角色类 .user-bubble / .assistant-bubble，两侧样式互不耦合（见 components.css）
+  return '<article class="ai-message '+(isUser?'user':'assistant')+'"'+(message.id?' data-ai-id="'+escAttr(message.id)+'"':'')+'><div class="ai-message-meta"><span>'+roleLabel+'</span>'+deleteButton+'</div><div class="ai-bubble '+(isUser?'user-bubble':'assistant-bubble')+'">'+content+(message.pending?'<span class="ai-cursor">▍</span>':'')+'</div>'+stepTag+wfCard+(message.snapshot?'<details class="ai-snapshot"><summary>查看发送内容</summary><pre>'+escHtml(message.snapshot)+'</pre></details>':'')+retryBar+'</article>';
 }
 /** 将回答中的「依据：文件名」标注渲染为可点击引用（点击在弹窗查看原文分块） */
 function aiRenderCite(html){
@@ -260,7 +342,7 @@ async function sendAIMessage(message,snapshot){
   let renderScheduled=false;
   // 按 data-ai-id 实时定位气泡渲染：弹窗关闭再打开也能命中新 DOM（旧实现缓存节点，弹窗重建后写入失效节点）
   let _lastRenderAt=0,_lastRenderLen=0,_lastRenderMs=16;
-  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){const t0=Date.now();bubble.innerHTML=renderAIMarkdown(liveMsg.content)+'<span class="ai-cursor">▍</span>';_lastRenderMs=Math.max(8,Math.min(500,Date.now()-t0));aiScrollBottom();}};
+  const renderBubble=()=>{renderScheduled=false;const el=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');const bubble=el?el.querySelector('.ai-bubble'):null;if(bubble){const t0=Date.now();bubble.innerHTML=renderAIMarkdownStream(liveMsg.content)+'<span class="ai-cursor">▍</span>';_lastRenderMs=Math.max(8,Math.min(500,Date.now()-t0));aiScrollBottom();}};
   // 流式渲染节流：rAF 之上再叠加「距上次渲染≥间隔 或 累计新增≥阈值」双条件。
   // 间隔与累计阈值随上次全量渲染耗时自适应放大：长回答后期单次渲染变慢时自动降低渲染频率，
   // 避免每帧都对全量内容重跑 renderAIMarkdown + innerHTML 重建（O(n²)）导致主线程堆积、界面像卡住

@@ -497,10 +497,7 @@ function copyOrder(id){
   confirmModal(
     '确认复制订单 '+src.id+'？<br><span class="muted" style="font-size:12px">将生成新的「待确认」订单，保留客户/对接人/项目/产品明细（规格/数量/意向价）及供应商分配与报价；复制后可在编辑中按需删除供应商分配或调整报价。</span>',
     function(){
-      DB.orderSeq=(DB.orderSeq||1);
-      const seq=DB.orderSeq;
-      DB.orderSeq=seq+1;
-      const newId='PO'+today().slice(2,4)+today().slice(5,7)+today().slice(8,10)+'-'+String(seq).padStart(3,'0');
+      const newId=genOrderNo();
       const o={
         id:newId,
         buyerId:src.buyerId,
@@ -1268,11 +1265,8 @@ async function saveOrder(){
     if(status==='未成交'){
       toast('未成交仅可从「报价中」订单标记进入，请先在详情页操作','warning');return;
     }
-    // 使用 orderSeq 独立序号生成器，避免删除订单后序号重复
-    DB.orderSeq=(DB.orderSeq||1);
-    const seq=DB.orderSeq;
-    DB.orderSeq=seq+1;
-    const id='PO'+today().slice(2,4)+today().slice(5,7)+today().slice(8,10)+'-'+String(seq).padStart(3,'0');
+    // 统一编号：genOrderNo() 内部维护 DB.orderSeq 独立序号，避免删除订单后序号重复
+    const id=genOrderNo();
     const o={id,buyerId,buyerContact,project,delivery,status,remark,items:_fItems.map(it=>({...it,options:(it.options||[]).map(o=>({...o}))})),createdAt:now()};
     DB.orders.push(o);
     clearDraft(DRAFT_TYPES.order);
