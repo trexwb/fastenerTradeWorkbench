@@ -125,7 +125,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             toStatus:{type:'string',enum:['待确认','寻货中','报价中','未成交','签约完成','送货中','异常','完成','取消'],description:'目标状态（必填）'}
           },
           required:['orderId','toStatus']
@@ -198,7 +198,7 @@ const AIT=(function(){
           type:'object',
           properties:{
             status:{type:'string',enum:['待确认','寻货中','报价中','未成交','签约完成','送货中','异常','完成','取消'],description:'按状态筛选（可选）'},
-            keyword:{type:'string',description:'订单号/采购商/项目关键词（可选）'}
+            keyword:{type:'string',description:'单号/采购商/项目关键词（可选；单号即系统订单编号，如 PO260805-001）'}
           }
         }
       }
@@ -336,7 +336,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             buyerId:{type:'string',description:'新采购商 ID（可选）'},
             project:{type:'string',description:'新项目（可选）'},
             deliveryDate:{type:'string',description:'新交期（可选）'},
@@ -354,7 +354,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             sku:{type:'string',description:'SKU（可选）'},
             name:{type:'string',description:'产品名称（必填）'},
             spec:{type:'string',description:'规格文本（可选）'},
@@ -377,7 +377,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填，从 query_orders 获取）'},
             name:{type:'string',description:'新名称（可选）'},
             spec:{type:'string',description:'新规格（可选）'},
@@ -399,7 +399,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'}
           },
           required:['orderId','itemId']
@@ -414,7 +414,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             priceId:{type:'string',description:'价格库报价 ID（必填，从 query_prices 获取）'},
             allocQty:{type:'number',description:'分配数量（必填，>0）'}
@@ -431,7 +431,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             unitName:{type:'string',description:'供应商名称（必填，已存在则复用）'},
             contact:{type:'string',description:'联系人姓名（可选，电话不通过此工具填写）'},
@@ -451,7 +451,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             optionId:{type:'string',description:'分配记录 ID（必填，从 query_orders 的 items[].options 获取）'}
           },
@@ -577,7 +577,7 @@ const AIT=(function(){
         description:'起草软删除采购订单（走回收站，可恢复；含全部产品明细与寻货分配）。'+PROPOSAL_NOTE,
         parameters:{
           type:'object',
-          properties:{orderId:{type:'string',description:'目标订单 ID（必填）'}},
+          properties:{orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'}},
           required:['orderId']
         }
       }
@@ -631,7 +631,7 @@ const AIT=(function(){
           type:'object',
           properties:{
             viewName:{type:'string',enum:['dashboard','units','specs','bom','prices','orders','settlements','invoices','data','settle-receipt','settle-payment','inv-issue','inv-receive'],description:'目标视图名（必填）'},
-            orderId:{type:'string',description:'订单 ID（可选，仅 viewName=orders 时生效，导航到订单详情）'}
+            orderId:{type:'string',description:'订单单号（可选，系统订单编号，如 PO260805-001；仅 viewName=orders 时生效，导航到订单详情）'}
           },
           required:['viewName']
         }
@@ -644,7 +644,7 @@ const AIT=(function(){
         description:'导出采购订单为 Excel 文件（触发浏览器下载，按订单状态自动选择导出模板）。此工具立即执行，不需确认。',
         parameters:{
           type:'object',
-          properties:{orderId:{type:'string',description:'目标订单 ID（必填）'}},
+          properties:{orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'}},
           required:['orderId']
         }
       }

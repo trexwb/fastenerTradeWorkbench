@@ -652,7 +652,7 @@ async function openAISettings(){
       {label:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
       {label:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},
       {label:'本地 Ollama',base:'http://127.0.0.1:11434/v1',model:'qwen2.5'},
-      {label:'本地 oMLX',base:'http://127.0.0.1:11434/v1',model:'Qwen3.5-9B-MLX-4bit'}
+      {label:'本地 oMLX',base:'http://127.0.0.1:8000/v1',model:'Qwen3.5-9B-MLX-4bit'}
     ];
     window._providerPresets=presets;
     window._presetIndexOf=function(url){

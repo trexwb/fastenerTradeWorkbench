@@ -140,7 +140,7 @@ const AI=(function(){
       '2. 金额、利润、余额、排名一律以本地快照为准，不要自行重算或编造数字。\n'+
       '3. 状态流转必须守 STATUS_FLOW（待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成）；只能前进到下一站，或转入「异常」「取消」分支；「未成交」是从「报价中」分支出的状态，可恢复回「报价中」；「完成」可回退到「送货中」或转「异常」；「异常」「取消」为终态不可再流转。\n'+
       '4. 联系人电话、税号、银行账号、地址等信息：直接取自用户对话内容，用户提供即可填入 create_unit 参数（contactName/phone/taxId/address/bank/accountNo）；未提供的字段省略。\n'+
-      '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。\n'+
+      '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。订单的「单号/订单编号」即系统订单 ID（如 PO260805-001），本系统没有独立「客户单号/客户 PO 号」字段：用户说单号、订单号时一律指向系统订单编号，不要臆造客户侧的另一套单号，也不要暗示存在隐藏单号字段。\n'+
       '6. 一条 tool_call 只起草一次操作；多个独立操作可并行起草（多个 tool_calls），但同一条记录不要在同一轮中既修改又删除。\n'+
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
       '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n'+
@@ -473,7 +473,8 @@ const AI=(function(){
     const msg=String(e.message||e);
     // 网络错误（fetch 抛 TypeError，多半是断网/DNS/CORS）
     if(e.name==='TypeError'||/Failed to fetch|\bNetworkError\b|loadfailed/i.test(msg)){
-      return new Error('网络连接失败，请检查网络后重试');
+      try{console.error('[AI 诊断] 原始错误：',e);}catch(_){}
+      return new Error('网络连接失败，请检查网络后重试（原始错误：'+msg.slice(0,300)+'）');
     }
     // Tauri 命令调用异常
     if(/tauri|invoke|非 Tauri 运行时/i.test(msg)){
