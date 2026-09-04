@@ -137,7 +137,7 @@ const AIT=(function(){
       type:'function',
       function:{
         name:'query_units',
-        description:'查询关联单位列表（脱敏：不返回联系人电话/微信/税号/银行账号/地址）。用于查找 unitId、了解供应商/采购商库存。',
+        description:'查询关联单位列表（返回单位与联系人姓名/侧别，脱敏：不返回联系人电话/微信/税号/银行账号/地址）。用于查找 unitId、了解供应商/采购商库存、确认联系人姓名。',
         parameters:{
           type:'object',
           properties:{
@@ -1706,8 +1706,8 @@ const AIT=(function(){
         let list=DB.prices.slice();
         if(args.unitId)list=list.filter(p=>p.unitId===args.unitId);
         if(args.spec)list=list.filter(p=>(p.spec||'').includes(args.spec));
-        // 脱敏：不返回 contact（联系人姓名电话）
-        const result=list.slice(0,200).map(p=>({id:p.id,unitId:p.unitId,unitName:unitNameSafe(p.unitId),bomSku:p.bomSku,spec:p.spec,type:p.type,standard:p.standard,diameter:p.diameter,hardness:p.hardness,surface:p.surface,material:p.material,price:p.price,validFrom:p.validFrom}));
+        // contact 字段为纯姓名（无电话等联系方式），允许返回
+        const result=list.slice(0,200).map(p=>({id:p.id,unitId:p.unitId,unitName:unitNameSafe(p.unitId),contact:p.contact||'',bomSku:p.bomSku,spec:p.spec,type:p.type,standard:p.standard,diameter:p.diameter,hardness:p.hardness,surface:p.surface,material:p.material,price:p.price,validFrom:p.validFrom}));
         return JSON.stringify({ok:true,count:result.length,items:result});
       }
       if(name==='query_orders'){
@@ -1719,7 +1719,7 @@ const AIT=(function(){
         list.forEach(o=>{
           if(Array.isArray(o.items))o.items.forEach(it=>{if(!it.id)it.id=uid('OI');});
         });
-        // 脱敏：不返回 delivery.address / buyerContact 电话
+        // 脱敏：不返回 delivery.address；buyerContact 为对接人纯姓名，允许返回
         const result=list.slice(0,50).map(o=>{
           const sales=(o.items||[]).reduce((s,it)=>s+((Number(it.salePrice)||0)*(Number(it.qty)||0)),0);
           const cost=(o.items||[]).reduce((s,it)=>s+((it.options||[]).reduce((ss,opt)=>ss+((Number(opt.price)||0)*(Number(opt.allocQty)||0)),0)),0);
