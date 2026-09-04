@@ -298,6 +298,7 @@ const AI=(function(){
     state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
     let _lastFinishReason=''; // 最近一次出现的 finish_reason（''/stop/length/…），供上层识别「输出长度截断」
     let _gotEndSignal=false;  // 是否收到过明确的流结束指令（finish_reason 或 [DONE]）；未收到即视为异常中断
+    let _serverTruncFlag=false; // 本地服务扩展截断线索：部分本地端点（oMLX/llama.cpp 等）max_tokens 截断时 finish_reason 仍为 stop，会另带 stop_reason/truncated 等扩展字段，此处统一收集
     const reqBody={
       model:state.model,
       messages:messages.map(function(m){
@@ -379,7 +380,10 @@ const AI=(function(){
             const rawTail=tail.slice(5).trim();
             if(rawTail==='[DONE]'){_gotEndSignal=true;}
             else if(rawTail){
-              try{const jT=JSON.parse(rawTail);const choiceT=jT.choices&&jT.choices[0];if(choiceT&&choiceT.finish_reason){_lastFinishReason=choiceT.finish_reason;_gotEndSignal=true;}}catch(_){}
+              try{const jT=JSON.parse(rawTail);const choiceT=jT.choices&&jT.choices[0];if(choiceT&&choiceT.finish_reason){_lastFinishReason=choiceT.finish_reason;_gotEndSignal=true;}
+                // 本地服务扩展截断线索（尾行同样收集，防漏判）
+                if((jT.truncated===true)||(jT.stop_reason&&jT.stop_reason!=='stop')||(choiceT&&choiceT.stop_reason&&choiceT.stop_reason!=='stop'))_serverTruncFlag=true;
+              }catch(_){}
             }
           }
           buffer='';
@@ -410,6 +414,8 @@ const AI=(function(){
           const choice=j.choices&&j.choices[0];
           // 流结束信号：finish_reason（stop=正常完成 / length=达到输出长度上限被截断），可作为结束标记
           if(choice&&choice.finish_reason){_lastFinishReason=choice.finish_reason;_gotEndSignal=true;}
+          // 本地服务扩展截断线索：部分本地端点 max_tokens 截断时 finish_reason 仍为 stop，会另带 stop_reason/truncated 等扩展字段
+          if((j.truncated===true)||(j.stop_reason&&j.stop_reason!=='stop')||(choice&&choice.stop_reason&&choice.stop_reason!=='stop'))_serverTruncFlag=true;
           const delta=choice&&choice.delta;
           if(!delta)continue;
           // 1) content delta：照常给对话区流式显示
@@ -425,7 +431,8 @@ const AI=(function(){
       }
     }
     // 流结束：tool_calls 累积槽 → 解析为最终数组（argsStr 容错解析）
-    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc),finishReason:_lastFinishReason||'',gotEndSignal:_gotEndSignal};
+    // truncated：除 finish_reason=length 外，本地服务扩展截断线索也一并透传，供上层在「内容疑似不全」时触发自动续写/UI 提示
+    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc),finishReason:_lastFinishReason||'',gotEndSignal:_gotEndSignal,truncated:_serverTruncFlag||(_lastFinishReason==='length')};
   }
 
   /** 单次对话入口（兼容只读与带工具两种模式）
@@ -593,22 +600,60 @@ const AI=(function(){
       // 有 tool_calls 的轮次不续写（保持 assistant(tool_calls)→tool 协议连续性）；
       // 无任何已生成文本不续写（没有可接续的上文，避免模型从头重写造成重复）。
       let _aiContinueCount=0;
-      const _needContinue=(r)=>!!r&&(!r.toolCalls||!r.toolCalls.length)&&(r.finishReason==='length'||!r.gotEndSignal)&&String(r.content||'').length>0;
+      // 启发式「内容疑似不全」检测（仅本地端点启用，云端保持严格判据防误续）：
+      //   ① 末尾悬空/半句收尾（运算符、等号、冒号、逗号等）——流式输出常在词中被截；
+      //   ② Markdown 未闭合：代码块围栏奇数（```）、行内 ** / ` 未闭合、未成形的表格行、链接 [text] 缺 )。
+      //   用整段内容做计数：围栏需逐段统计，避免把代码块内部 ``` 误判为闭合标记。
+      const _isLocalEndpoint=()=>{
+        const base=(state&&state.baseUrl)||'';
+        return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(base);
+      };
+      const _looksTruncated=function(text){
+        if(!text)return false;
+        const t=String(text).replace(/\s+$/,'');
+        if(!t)return false;
+        // ① 末尾悬空收尾：常见于 max_tokens 在词中断开（覆盖中文/英文/数字/符号混合）。
+        // 刻意排除中英文句号（。.）——句号是句子正常结束符，完整回复常以句号收尾，纳入会造成误续。
+        if(/[=+\-*:;,，、；:＞>→<=]$/.test(t))return true;
+        // ② Markdown 围栏（```）：行首 ``` 计数为奇数 → 代码块未闭合
+        const fences=t.match(/^```[^\n]*$/gm);
+        if(fences&&fences.length%2===1)return true;
+        // ③ 行内强调/行内代码未闭合：字符串内成对出现次数为奇数
+        const oddCount=(re)=>((t.match(re)||[]).length)%2===1;
+        if(oddCount(/(?<!\*)\*\*(?!\*)/g)||oddCount(/`/g))return true;
+        // ④ 表格未成形：末行以 | 开头且行内竖线数未闭合（参考 cutIncompleteTableTail 思路）
+        const lines=t.split('\n');
+        const lastLine=lines[lines.length-1]||'';
+        if(/^\s*\|/.test(lastLine))return true;
+        // ⑤ Markdown 链接 [text] 已开头但未闭合 ]( 或缺 )：末段存在 [ 且其后无匹配 ]
+        if(/\[[^\[\]]*$/.test(t))return true;
+        // ⑥ 末字符为普通半字（无标点自然中断）——过度敏感易误伤，故仅当内容较短(<=40)且末字符为非空白中文句读时命中，需模型确实返回了停止信号
+        return false;
+      };
+      const _needContinue=(r)=>!!r&&(!r.toolCalls||!r.toolCalls.length)&&String(r.content||'').length>0&&(
+        r.finishReason==='length'||!r.gotEndSignal||
+        (!!r.truncated&&_isLocalEndpoint())||                       // 服务端扩展截断线索（仅本地端点信任）
+        (_isLocalEndpoint()&&_looksTruncated(String(r.content||''))) // 本地端点启发式：内容疑似不全
+      );
       while(_aiContinueCount<AI_CONTINUE_MAX&&_needContinue(res)){
         // 已生成部分作为 assistant 上下文回填 → 模型从中断处无缝接续，不会重复开头
         messages.push({role:'assistant',content:res.content||''});
-        messages.push({role:'user',content:'你的上一条回复因输出长度限制被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。'});
+        // 提示词按截断类型区分：length/断流属协议明确截断沿用原提示词；启发式命中（服务端线索/末尾悬空）属「疑似截断」，提示模型从中断处继续
+        const _byLength=(res.finishReason==='length');
+        messages.push({role:'user',content:_byLength?'你的上一条回复因输出长度限制被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。':'你的上一条回复内容疑似被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。'});
         _aiContinueCount++;
         const contRes=await chat(messages,onChunk,{tools:[]});
         const contText=(contRes&&contRes.content)?contRes.content:'';
         if(contText){res.content=(res.content||'')+contText;}   // 拼接到同一消息，UI/落盘均呈连续追加
         res.finishReason=(contRes&&contRes.finishReason)?contRes.finishReason:'';
         res.gotEndSignal=!!(contRes&&contRes.gotEndSignal);
+        // 透传续写轮次截断状态：仅当最后一轮明确「正常完整结束」才清除 truncated（供 UI 对仍残缺的消息显示提示/继续按钮）
+        res.truncated=!(contRes&&contRes.gotEndSignal&&contRes.finishReason==='stop'&&!contRes.truncated);
         if(contRes&&contRes.toolCalls&&contRes.toolCalls.length){res.toolCalls=contRes.toolCalls;break;} // 理论不出现；真出现则交由下方工具分流
       }
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
-        return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};
+        return {content:res.content,truncated:!!res.truncated,lastToolResults,lastBatchIds,lastBatchId};
       }
       // P0 修复：归一化 tool_calls —— 流式累积可能缺失 id，而 OpenAI 协议要求
       // assistant.tool_calls 的 id 与 tool 响应的 tool_call_id 非空且精确匹配，
