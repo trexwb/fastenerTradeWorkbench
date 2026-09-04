@@ -1063,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "fastener_workbench"
-version = "1.0.34"
+version = "1.0.35"
 dependencies = [
  "futures-util",
  "pdf-extract",

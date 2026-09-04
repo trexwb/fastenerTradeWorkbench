@@ -6,6 +6,10 @@
 import './styles/variables.css'
 import './styles/layout.css'
 import './styles/components.css'
+// ===== AI Markdown 渲染依赖（ai-chat.js 的 renderAIMarkdown 经 window.__MD_DEPS 取用） =====
+import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
+import hljs from 'highlight.js'
 
 // ===== Vue 应用：壳组件，onMounted 时按原 <script defer> 顺序动态注入核心 JS =====
 import { createApp } from 'vue'
@@ -20,5 +24,6 @@ import mammoth from 'mammoth'
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
 globalThis.pdfjsWorker = pdfjsWorker
 window.__KB_DEPS = { pdfjs, mammoth }
+window.__MD_DEPS = { markdownit: MarkdownIt, DOMPurify, hljs }
 
 createApp(App).mount('#app')

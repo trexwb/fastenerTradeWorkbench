@@ -125,7 +125,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             toStatus:{type:'string',enum:['待确认','寻货中','报价中','未成交','签约完成','送货中','异常','完成','取消'],description:'目标状态（必填）'}
           },
           required:['orderId','toStatus']
@@ -137,7 +137,7 @@ const AIT=(function(){
       type:'function',
       function:{
         name:'query_units',
-        description:'查询关联单位列表（脱敏：不返回联系人电话/微信/税号/银行账号/地址）。用于查找 unitId、了解供应商/采购商库存。',
+        description:'查询关联单位列表（返回单位与联系人姓名/侧别，脱敏：不返回联系人电话/微信/税号/银行账号/地址）。用于查找 unitId、了解供应商/采购商库存、确认联系人姓名。',
         parameters:{
           type:'object',
           properties:{
@@ -198,7 +198,7 @@ const AIT=(function(){
           type:'object',
           properties:{
             status:{type:'string',enum:['待确认','寻货中','报价中','未成交','签约完成','送货中','异常','完成','取消'],description:'按状态筛选（可选）'},
-            keyword:{type:'string',description:'订单号/采购商/项目关键词（可选）'}
+            keyword:{type:'string',description:'单号/采购商/项目关键词（可选；单号即系统订单编号，如 PO260805-001）'}
           }
         }
       }
@@ -336,7 +336,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             buyerId:{type:'string',description:'新采购商 ID（可选）'},
             project:{type:'string',description:'新项目（可选）'},
             deliveryDate:{type:'string',description:'新交期（可选）'},
@@ -354,7 +354,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             sku:{type:'string',description:'SKU（可选）'},
             name:{type:'string',description:'产品名称（必填）'},
             spec:{type:'string',description:'规格文本（可选）'},
@@ -377,7 +377,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填，从 query_orders 获取）'},
             name:{type:'string',description:'新名称（可选）'},
             spec:{type:'string',description:'新规格（可选）'},
@@ -399,7 +399,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'}
           },
           required:['orderId','itemId']
@@ -414,7 +414,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             priceId:{type:'string',description:'价格库报价 ID（必填，从 query_prices 获取）'},
             allocQty:{type:'number',description:'分配数量（必填，>0）'}
@@ -431,7 +431,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             unitName:{type:'string',description:'供应商名称（必填，已存在则复用）'},
             contact:{type:'string',description:'联系人姓名（可选，电话不通过此工具填写）'},
@@ -451,7 +451,7 @@ const AIT=(function(){
         parameters:{
           type:'object',
           properties:{
-            orderId:{type:'string',description:'目标订单 ID（必填）'},
+            orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'},
             itemId:{type:'string',description:'目标明细 ID（必填）'},
             optionId:{type:'string',description:'分配记录 ID（必填，从 query_orders 的 items[].options 获取）'}
           },
@@ -577,7 +577,7 @@ const AIT=(function(){
         description:'起草软删除采购订单（走回收站，可恢复；含全部产品明细与寻货分配）。'+PROPOSAL_NOTE,
         parameters:{
           type:'object',
-          properties:{orderId:{type:'string',description:'目标订单 ID（必填）'}},
+          properties:{orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'}},
           required:['orderId']
         }
       }
@@ -631,7 +631,7 @@ const AIT=(function(){
           type:'object',
           properties:{
             viewName:{type:'string',enum:['dashboard','units','specs','bom','prices','orders','settlements','invoices','data','settle-receipt','settle-payment','inv-issue','inv-receive'],description:'目标视图名（必填）'},
-            orderId:{type:'string',description:'订单 ID（可选，仅 viewName=orders 时生效，导航到订单详情）'}
+            orderId:{type:'string',description:'订单单号（可选，系统订单编号，如 PO260805-001；仅 viewName=orders 时生效，导航到订单详情）'}
           },
           required:['viewName']
         }
@@ -644,7 +644,7 @@ const AIT=(function(){
         description:'导出采购订单为 Excel 文件（触发浏览器下载，按订单状态自动选择导出模板）。此工具立即执行，不需确认。',
         parameters:{
           type:'object',
-          properties:{orderId:{type:'string',description:'目标订单 ID（必填）'}},
+          properties:{orderId:{type:'string',description:'目标订单单号（必填，系统订单编号，如 PO260805-001）'}},
           required:['orderId']
         }
       }
@@ -769,6 +769,30 @@ const AIT=(function(){
           required:['query']
         }
       }
+    },
+    // 阶段5：工作流计划发起（多步长任务专用；由 aiWriteLoop 拦截并创建 DB.aiWorkflows 草稿，
+    // 不进入 runFlow/executeOps —— 本 schema 仅用于让模型知晓该工具存在）
+    {
+      type:'function',
+      function:{
+        name:'flow_start_workflow',
+        description:'（多步任务专用）将长任务拆分为可确认、可追踪、可暂停续跑的工作流计划。适合需要连续多轮工具调用、单轮上下文无法一次完成的目标（如批量录入多个订单/单位/报价、跨模块的流程性任务、循环处理同类数据）。调用后系统会创建一张「执行计划」卡片并弹出确认，用户确认后才开始逐步执行；每步仍是一次独立对话轮次，写入/删除操作仍需逐条确认，步骤间的中间数据会自动收束成摘要，避免长任务超 token 上限。调用前请在 content 中先用简短文字说明整体计划。',
+        parameters:{
+          type:'object',
+          properties:{
+            goal:{type:'string',description:'工作流总目标：一句话说明要达成的最终状态（应能被外部验证）'},
+            steps:{type:'array',description:'执行步骤列表，2-8 步。每步对应一次独立模型轮次，应满足：① 每步只做一件可验证的小事；② 前序步骤为后续步骤留下可复用的关键 ID/名称/金额等衔接信息；③ 不要在第 1 步就做完整个任务；④ 同类多记录操作拆成多步而非一轮塞入全部写入。',items:{
+              type:'object',
+              properties:{
+                title:{type:'string',description:'步骤标题（<=40 字）'},
+                description:{type:'string',description:'本步要做什么、依据什么、产出什么；写明后续步骤需要引用的关键 ID/名称/金额（<=400 字）'}
+              },
+              required:['title','description']
+            }}
+          },
+          required:['goal','steps']
+        }
+      }
     }
   ];
 
@@ -827,7 +851,9 @@ const AIT=(function(){
     query_knowledge:{label:'检索知识库',tagCls:'info',kind:'query'},
     list_kb_files:{label:'列出KB文件',tagCls:'info',kind:'query'},
     get_kb_file:{label:'查阅KB原文',tagCls:'info',kind:'query'},
-    search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'}
+    search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'},
+    // 工作流计划发起（kind: flow；由 aiWriteLoop 拦截为工作流创建，不真正执行 UI 动作）
+    flow_start_workflow:{label:'发起执行计划',tagCls:'info',kind:'flow'}
   };
 
   /** 阶段4：功能层工具名集合（用于 aiWriteLoop 分流，自动执行不经弹窗） */
@@ -1174,6 +1200,21 @@ const AIT=(function(){
       if(!inv)return {ok:false,error:'发票不存在：'+args.invoiceId};
       return {ok:true,preview:{invoiceId:args.invoiceId,type:inv.type,unitName:inv.unitName||unitNameSafe(inv.unitId),amount:inv.amount}};
     },
+    // 工作流计划发起校验（kind: flow；只校验结构与数量，不真正执行；由 aiWriteLoop 拦截创建草稿）
+    flow_start_workflow(args){
+      if(!String((args&&args.goal)||'').trim())return {ok:false,error:'goal 不能为空'};
+      if(String(args.goal).length>600)return {ok:false,error:'goal 过长（<=600 字）'};
+      const steps=Array.isArray(args.steps)?args.steps:[];
+      if(steps.length<2)return {ok:false,error:'steps 至少 2 步（2-8 步）'};
+      if(steps.length>8)return {ok:false,error:'steps 最多 8 步'};
+      for(let i=0;i<steps.length;i++){
+        const s=steps[i]||{};
+        if(!String(s.title||'').trim())return {ok:false,error:'steps['+i+'].title 不能为空'};
+        if(String(s.title).length>80)return {ok:false,error:'steps['+i+'].title 过长（<=40 字）'};
+        if(s.description!==undefined&&s.description!==null&&String(s.description).length>500)return {ok:false,error:'steps['+i+'].description 过长（<=400 字）'};
+      }
+      return {ok:true,preview:{goal:String(args.goal).trim(),stepCount:steps.length}};
+    },
     // ===== 阶段4：功能层工具校验（轻量校验，仅确认目标存在） =====
     navigate_view(args){
       const VIEWS=['dashboard','units','specs','bom','prices','orders','settlements','invoices','data','settle-receipt','settle-payment','inv-issue','inv-receive'];
@@ -1298,7 +1339,7 @@ const AIT=(function(){
       }));
       // P2/R2 修复：delivery 结构统一（date/time 双写交期、address 由 deliveryAddress 补齐，与视图层口径一致）；
       // createdAt/updatedAt 沿用 now()，与视图层订单创建/更新（orders.js createdAt:now()/updatedAt:now()）口径统一
-      const o={id:uid('O'),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:args.deliveryAddress||''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
+      const o={id:genOrderNo(),buyerId:args.buyerId,buyerContact:args.buyerContact||'',project:args.project||'',delivery:{date:args.deliveryDate||'',time:args.deliveryDate||'',address:args.deliveryAddress||''},items,status:'待确认',statusChangedAt:now(),createdAt:now(),updatedAt:now()};
       DB.orders.push(o);
       saveDB();
       const op=recordAiOp({op:'create',type:'order',targetId:o.id,before:null,after:_snap(o),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1706,8 +1747,8 @@ const AIT=(function(){
         let list=DB.prices.slice();
         if(args.unitId)list=list.filter(p=>p.unitId===args.unitId);
         if(args.spec)list=list.filter(p=>(p.spec||'').includes(args.spec));
-        // 脱敏：不返回 contact（联系人姓名电话）
-        const result=list.slice(0,200).map(p=>({id:p.id,unitId:p.unitId,unitName:unitNameSafe(p.unitId),bomSku:p.bomSku,spec:p.spec,type:p.type,standard:p.standard,diameter:p.diameter,hardness:p.hardness,surface:p.surface,material:p.material,price:p.price,validFrom:p.validFrom}));
+        // contact 字段为纯姓名（无电话等联系方式），允许返回
+        const result=list.slice(0,200).map(p=>({id:p.id,unitId:p.unitId,unitName:unitNameSafe(p.unitId),contact:p.contact||'',bomSku:p.bomSku,spec:p.spec,type:p.type,standard:p.standard,diameter:p.diameter,hardness:p.hardness,surface:p.surface,material:p.material,price:p.price,validFrom:p.validFrom}));
         return JSON.stringify({ok:true,count:result.length,items:result});
       }
       if(name==='query_orders'){
@@ -1719,7 +1760,7 @@ const AIT=(function(){
         list.forEach(o=>{
           if(Array.isArray(o.items))o.items.forEach(it=>{if(!it.id)it.id=uid('OI');});
         });
-        // 脱敏：不返回 delivery.address / buyerContact 电话
+        // 脱敏：不返回 delivery.address；buyerContact 为对接人纯姓名，允许返回
         const result=list.slice(0,50).map(o=>{
           const sales=(o.items||[]).reduce((s,it)=>s+((Number(it.salePrice)||0)*(Number(it.qty)||0)),0);
           const cost=(o.items||[]).reduce((s,it)=>s+((it.options||[]).reduce((ss,opt)=>ss+((Number(opt.price)||0)*(Number(opt.allocQty)||0)),0)),0);

@@ -2,7 +2,46 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.34**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.35**。
+
+---
+
+## v1.0.35 · 📝 待发布
+
+> **状态**: 📝 待发布（v1.0.34 六处版本已统一，本次交互与 AI 稳定性修复；vite build 与 Tauri 打包待 CI 验证）
+> **发布日期**: 2026-09-04
+> **上一版本**: v1.0.34
+> **版本范围**: Dialog 遮罩防误触关闭 + AI 长回答稳定性修复（超时看门狗 / 流式渲染 / 滚动跟随）+ PWA 离线支持
+
+---
+
+## Dialog 遮罩防误触关闭 + AI 长回答稳定性修复
+
+### 一、Dialog 禁止点击遮罩层关闭（src/core/ui.js / src/views/keyboard.js）
+
+- `modal()` / `confirmModal()` 移除遮罩层 `onclick` 点击关闭逻辑，避免误触背景导致表单内容丢失，弹窗仅能通过按钮 / 右上角 X 关闭
+- `showShortcutsModal()`（键盘快捷键弹窗）同步移除遮罩点击关闭，仅保留右上角关闭按钮
+
+### 二、AI 长回答稳定性修复（src/core/ai.js / src/views/ai-chat.js / src-tauri/src/lib.rs）
+
+- **总超时放宽**：Web 端 `REQUEST_TIMEOUT_MS` 120s → 600000ms（10 分钟），桌面端 `REQUEST_TIMEOUT_SECS` 600s，长回答不再被强制掐断在半截
+- **流式空闲超时看门狗**：Web 端新增 `IDLE_TIMEOUT_MS=90000`，读取循环用 `Promise.race` 叠加空闲检测；桌面端新增 `IDLE_TIMEOUT_SECS=90`，流式行读取包 `tokio::time::timeout` 行级检测——网络断流时快速失败，不再干等总超时
+- **超时语义归一**：`chat()` 错误边界将桌面端「空闲超时」字符串错误转为 AbortError + timeout 语义，前端统一文案处理
+- **流式渲染自适应节流**：`renderBubble` 记录 `_lastRenderMs`，节流间隔与累积阈值随单次渲染耗时自适应放大，长回答后期不再打字机掉帧、主线程堆积
+- **滚动智能跟随**：`aiScrollBottom` 增加 `force` 参数并改为近底跟随（距底 <200px 才自动滚动），打开弹窗 / 新消息强制置底，用户中途阅读不被反复拉底
+- 超时提示文案调整为「请求超时（长时间未收到完整响应）」
+
+**版本核验**：`scripts/check-version.mjs` 通过，6 处版本号一致为 v1.0.35（package.json / package-lock.json×2 / tauri.conf.json / Cargo.toml / store.js 回退值 / AGENTS.md）。
+
+### 三、PWA 离线支持（src/public/manifest.json / sw.js / icons，src/index.html，vite.config.js）
+
+- 新增 Web App Manifest（`src/public/manifest.json`）：声明应用名、图标、`start_url`/`scope` 相对路径、`display: standalone`，支撑浏览器「添加到主屏幕 / 安装」
+- 新增 Service Worker（`src/public/sw.js`）：预缓存首屏三资源（`./`、`./index.html`、`./assets/js/index.js`），导航请求网络优先、离线回退缓存首页，静态资源 stale-while-revalidate——首次在线访问后即可断网打开
+- 新增 PWA 图标 `images/icon-192.png` / `icon-512.png`（由 favicon.png 1024×1024 缩放）
+- `src/index.html`：http/https 环境注入 manifest 与 SW 注册（含 Tauri / file:// 环境跳过，双击运行不受影响）；补充 `theme-color` 与 `apple-mobile-web-app-*` 元信息
+- `vite.config.js`：新增 `injectSwVersion` 插件，构建期把 sw.js 的 `CACHE_NAME` 占位符注入为真实版本号（版本更新时缓存自动失效重建）
+
+> 本次为新增功能，按 AGENTS.md §0 未推进版本号（保持 v1.0.35），待用户确认后再决定是否递增。
 
 ---
 

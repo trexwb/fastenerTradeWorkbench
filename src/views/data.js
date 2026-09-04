@@ -641,6 +641,7 @@ function renderOpsFilter(){
     '<label class="ops-filter-item">操作类型<select onchange="_setAiOpsFilter(\'op\',this.value)">'+opOpts+'</select></label>'+
     '<label class="ops-filter-item">操作者<select onchange="_setAiOpsFilter(\'operator\',this.value)">'+opOpts2+'</select></label>'+
     '<label class="ops-filter-item">批次<select onchange="_setAiOpsFilter(\'batchId\',this.value)">'+batchOpts+'</select></label>'+
+    '<span class="spacer"></span>'+
     '<button class="btn sm" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');">重置</button>'+
     '<button class="btn sm" onclick="_aiOpsSelftest()">自检</button>'+
     '</div>';
@@ -703,7 +704,7 @@ function renderOpsHistory(){
   if(f.batchId)ops=ops.filter(o=>o.batchId===f.batchId);
   const filterBar=renderOpsFilter();
   const statsHTML=renderOpsStats();
-  if(!ops.length)return statsHTML+filterBar+'<div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div>';
+  if(!ops.length)return statsHTML+filterBar+'<div class="card data-list-card"><div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div></div>';
   // P2 修复：batchUndoneCount 基于全量 allOps 统计，避免筛选后计数偏小与 undoBatchConfirm 不一致
   const batchUndoneCount={};
   allOps.forEach(function(op){
@@ -729,7 +730,7 @@ function renderOpsHistory(){
       '<td class="td-act">'+undoneTag+undoBtn+batchBtn+'</td></tr>';
   }).join('');
   const summary='<div class="ops-filter-summary">筛选后 '+ops.length+' / 共 '+allOps.length+' 条</div>';
-  return statsHTML+filterBar+summary+'<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>类型</th><th>目标</th><th>操作者</th><th>批次</th><th class="td-act">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  return statsHTML+filterBar+'<div class="card data-list-card">'+summary+'<div class="table-wrap"><table class="ops-history-table"><thead><tr><th>时间</th><th>操作</th><th>类型</th><th>目标</th><th>操作者</th><th>批次</th><th class="td-act">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 /** 确认整批回滚（调用 store.js 的 undoBatch） */
 function undoBatchConfirm(batchId){
@@ -750,7 +751,8 @@ function renderTrash(){
   const groups={};
   trash.forEach(function(t){(groups[t.type]=groups[t.type]||[]).push(t);});
   const TYPE_ORDER=['unit','spec','bom','price','order','order_item','settlement','invoice'];
-  let html='<div class="trash-toolbar"><span class="muted">共 '+trash.length+' 条 · 保留 '+TRASH_RETENTION_DAYS+' 天，超期自动清理</span> <button class="btn sm" onclick="clearTrashConfirm()">全部清空</button></div>';
+  let html='<div class="card data-list-card trash-panel">'+
+    '<div class="trash-toolbar"><span class="muted">共 '+trash.length+' 条 · 保留 '+TRASH_RETENTION_DAYS+' 天，超期自动清理</span><button class="btn sm danger" onclick="clearTrashConfirm()">全部清空</button></div>';
   TYPE_ORDER.forEach(function(type){
     if(!groups[type])return;
     html+='<h4 class="trash-group-title">'+(TRASH_TYPE_LABEL[type]||type)+'（'+groups[type].length+'）</h4>';
@@ -766,7 +768,7 @@ function renderTrash(){
     });
     html+='</tbody></table></div>';
   });
-  return html;
+  return html+'</div>';
 }
 function restoreTrashItem(trashId){
   try{restoreFromTrash(trashId);toast('已恢复','success');render();}

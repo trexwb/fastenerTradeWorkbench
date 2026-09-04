@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.34';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.35';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -66,7 +66,7 @@ const STATUS_FLOW=['待确认','寻货中','报价中','签约完成','送货中
  * 全局数据主存储对象（主力存储：IndexedDB）
  * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, seq: number, orderSeq: number, _savedAt?: number}}
  */
-let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[]};
+let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[],aiWorkflows:[]};
 
 /* 补齐 DB 可能缺失的字段（供 idbLoad 和 loadFromFile 复用） */
 /**
@@ -83,6 +83,7 @@ function ensureDBFields(){
   if(DB.aiChats.length)DB.aiChats.forEach(m=>{if(m&&m.pending)m.pending=false;});
   if(!Array.isArray(DB.trash))DB.trash=[];          // 回收站（软删除隔离区，AI 永不触碰）
   if(!Array.isArray(DB.aiOps))DB.aiOps=[];          // AI/用户操作日志（审计+回滚依据）
+  if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[]; // AI 多步工作流（执行计划草稿/进度持久化）
   if(!DB.seq)DB.seq=100;
   if(!DB._savedAt)DB._savedAt=Date.now();
   if(!DB.orderSeq){
@@ -95,6 +96,19 @@ function ensureDBFields(){
   }
   // v1.2.0→v1.3.0：旧「待签约」状态迁移为「报价中」
   DB.orders.forEach(o=>{if(o.status==='待签约')o.status='报价中';});
+}
+
+/** 生成系统统一采购订单编号：PO+YYMMDD+'-'+3位序号（如 PO260905-001）
+ *  - 唯一编号入口：手动新建/保存（orders.js saveOrder）、复制订单（orders.js copyOrder）、
+ *    AI 创建订单（ai-tools.js create_order）三处统一调用，彻底消除双轨；
+ *  - 使用 DB.orderSeq 独立序号递增，避免删除订单后序号重复；
+ *  - 严禁在 AI 执行器内用 uid('O') 之类自造单号，AI 单与手动单必须同源。
+ */
+function genOrderNo(){
+  DB.orderSeq=(DB.orderSeq||1);
+  const seq=DB.orderSeq;
+  DB.orderSeq=seq+1;
+  return 'PO'+today().slice(2,4)+today().slice(5,7)+today().slice(8,10)+'-'+String(seq).padStart(3,'0');
 }
 
 /* 外部数据（导入/绑定/备份恢复）ID 清洗：丢弃 ID 非法条目。
@@ -747,14 +761,14 @@ async function initApp(){
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
       toast('数据不完整，已清空，请重新录入数据','warning');
-      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
+      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
       if(typeof onAppReady==='function')onAppReady();else render();
     }else{
       // IndexedDB 无数据，首次使用，从空状态开始
-      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
+      DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
@@ -766,7 +780,7 @@ async function initApp(){
     // 使用项目统一的 UI 提示（utils.js 中定义的 toast，按 defer 顺序必然已加载）
     if(typeof toast==='function'){toast('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份','error');}
     else{console.error('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份');}
-    DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1};
+    DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
     // 恢复文件同步（必须在渲染前完成）
     await initFileHandle();
     render();

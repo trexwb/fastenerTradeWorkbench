@@ -2,10 +2,11 @@
 
 面向紧固件贸易场景的离线工作台，覆盖关联单位管理、规格管理、价格管理、采购订单全流程，支持多供应商分配寻源。
 
-> **当前版本：v1.0.34** — 五轴代码审计安全修复（CSP / SSRF / XSS）+ 发布工作流修复
+> **当前版本：v1.0.35** — Dialog 遮罩防误触关闭 + AI 长回答稳定性修复（超时看门狗 / 流式渲染 / 滚动跟随）
 
 ## 更新日志
 
+- **v1.0.35** — Dialog 禁止点击遮罩层关闭（modal / confirmModal / 快捷键弹窗，防误触丢表单）；AI 长回答稳定性修复：总超时放宽至 10 分钟（桌面端 600s），新增流式空闲超时看门狗（Web 90s / 桌面 90s 断流快速失败），流式渲染自适应节流、滚动近底智能跟随
 - **v1.0.34** — 五轴代码审计安全修复：CSP 追加 object-src/base-uri/form-action/frame-src 收紧；lib.rs 新增 valid_upstream_base_url 防 SSRF（仅放行 https 与本地回环）；store.js 新增 sanitizeImportedIds、dashboard/invoices/units onclick id 改 escJsStr 防 XSS；发布工作流签名私钥迁移 variables 并修复变量引用错误
 - **v1.0.33** — 修复 Coach 引导自动渲染空壳（遮罩锁死页面无法关闭）；dashboard / settlements 统计卡补键盘可达（role=button + Enter/空格激活）；P11 核实无手型误导；11 个视图 CDP 实测遮挡全部归零
 - **v1.0.32** — 桌面端 UI/UX 深化（吸顶表头、毛玻璃、拖放导入 JSON）；修复列表页首行被 sticky 表头遮挡（top:54px → top:0）；四技能全量复查样式遮挡与点击无效

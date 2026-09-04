@@ -64,7 +64,7 @@ function showShortcutsModal(){
   const m=document.createElement('div');
   m.className='mask';
   m.id='_mask';
-  m.onclick=function(e){if(e.target===m)closeModal();};
+  // 禁止点击遮罩层关闭 Dialog，仅能通过右上角关闭按钮退出
   m.innerHTML='<div class="modal shortcuts-modal"><div class="mh">'+icon('keyboard','18')+' 键盘快捷键<button class="sc-close-btn" onclick="closeModal()" title="关闭">×</button></div><div class="mb">'+getShortcutsHTML()+'</div></div>';
   document.getElementById('app').appendChild(m);
 }

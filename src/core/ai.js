@@ -4,13 +4,18 @@ const AI=(function(){
   const HISTORY_CONTEXT_LIMIT=20;   // 携带更多历史上下文（超长时自动压缩）
   const HISTORY_CONTEXT_CHARS=20000; // 上下文总字符阈值，超过触发一次压缩
   const HEALTH_INTERVAL_MS=30000;
+  // 工作流（多步长任务分步执行）常量
+  const WF_MAX_STEPS=8;             // 单计划最多步骤
+  const WF_HISTORY_LIMIT=40;        // DB.aiWorkflows 保留条数
   const DEFAULT_MODEL='deepseek-v4-flash';
   // 预置推荐模型（不强制限制，设置中可自定义任意 OpenAI 兼容模型名）
   const PRESET_MODELS=['deepseek-v4-flash','deepseek-v4-pro','gpt-4o-mini','gpt-4o','qwen-plus','glm-4-flash','llama3','qwen2.5'];
   const ALLOWED_MODELS=new Set(PRESET_MODELS);
   const DEFAULT_BASE_URL='https://api.deepseek.com/v1';   // OpenAI 兼容端点，可在设置中修改（如 Ollama http://127.0.0.1:11434/v1）
   const STREAM_EVENT='ai:deepseek:chunk';
-  const REQUEST_TIMEOUT_MS=120000; // 单次请求总超时（含流式全程）；超时后自动 abort，前端给出「重新提交」入口
+  const FIRST_CHUNK_TIMEOUT_MS=120000; // 首块响应超时：仅"请求发出→收到第一个数据块"计时，收包后即失效（不再累计总时长）
+  const IDLE_TIMEOUT_MS=90000;     // 流式空闲超时：距上次收到任何数据块超过该时长视为断流（abortReason='timeout'）
+  const AI_CONTINUE_MAX=3;         // 单条回复因「输出长度截断/未收到流结束指令」自动续写的最大次数（防无限循环）
   const WEB_KEY_STORAGE='wb_fastener_ai_key';   // API_KEY 明文存 localStorage（三端统一，用户决策 v1.0.31+）
   const WEB_API_URL=DEFAULT_BASE_URL+'/chat/completions';   // 默认端点（可配置）
   const WEB_BASE_STORAGE='wb_fastener_ai_base';   // Base URL 存 localStorage
@@ -136,11 +141,14 @@ const AI=(function(){
       '2. 金额、利润、余额、排名一律以本地快照为准，不要自行重算或编造数字。\n'+
       '3. 状态流转必须守 STATUS_FLOW（待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成）；只能前进到下一站，或转入「异常」「取消」分支；「未成交」是从「报价中」分支出的状态，可恢复回「报价中」；「完成」可回退到「送货中」或转「异常」；「异常」「取消」为终态不可再流转。\n'+
       '4. 联系人电话、税号、银行账号、地址等信息：直接取自用户对话内容，用户提供即可填入 create_unit 参数（contactName/phone/taxId/address/bank/accountNo）；未提供的字段省略。\n'+
-      '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。\n'+
+      '5. 仍依据下方脱敏快照理解上下文，数据缺失时明确说明「未在快照中找到」，禁止补造不存在的单位/订单 ID。订单的「单号/订单编号」即系统订单 ID（如 PO260805-001），本系统没有独立「客户单号/客户 PO 号」字段：用户说单号、订单号时一律指向系统订单编号，不要臆造客户侧的另一套单号，也不要暗示存在隐藏单号字段。\n'+
       '6. 一条 tool_call 只起草一次操作；多个独立操作可并行起草（多个 tool_calls），但同一条记录不要在同一轮中既修改又删除。\n'+
       '7. 金额使用 ¥ 与千分位，日期使用 YYYY-MM-DD，分析结论用简洁 Markdown。\n'+
       '8. 功能层工具参数中的 ID 必须来自快照或前序查询结果，禁止凭空编造；调用 navigate_view 时若无 orderId，仅填 viewName 即可。\n'+
-      '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n\n'+
+      '9. 用户询问系统使用/操作问题（"怎么操作/怎么做/如何使用/在哪/能不能"等）时：先调用 query_help 检索完整帮助知识库，再结合上方指引回答；能直接代做的（导航/导出/打开表单/打开抽屉）同时调用对应功能层工具。\n'+
+      '10. 【多步长任务 → flow_start_workflow】当用户目标需要连续多轮工具调用、且无法在单轮对话中可靠完成（例如：批量录入多条记录、需要对多个对象逐个执行同一种写入、跨模块串联多个业务动作、存在先后依赖的流程性任务）时：先在 content 中用简短文字说明整体计划，然后调用 flow_start_workflow(goal, steps) 将其拆分为 2-8 个可验证的小步骤提交给用户确认；步骤之间要让前序为后续留下可复用的 ID/名称/金额。系统会生成执行计划卡片，用户确认后分步执行，每步写入仍需逐条确认。\n'+
+      '   适用示范（每条都可拆成独立步骤）：a) 依次为 3 个新客户建档并各录 1 条签约报价；b) 新建 5 个订单并逐个寻货分配供应商；c) 本月对账结算 + 开票录入。\n'+
+      '   不适用示范：单次查询、单条记录起草、纯文本分析（这类直接走常规对话即可，不要调用 flow_start_workflow）。\n\n'+
       (kbReady?
       '【知识库主动检索工具】（用户已绑定本地知识库目录时可用的工具，未绑定时工具返回 ok:false）\n'+
       '- query_knowledge(query, topN?, fileFilter?)：检索本地知识库（md/txt/pdf/docx），返回命中片段（含文件名/章节/页码/片段/得分）。\n'+
@@ -288,6 +296,8 @@ const AI=(function(){
     const authKey=key||(localBase?'ollama':'');
     state.webBuf='';
     state.webToolAcc=[];  // tool_calls 累积槽：按 index 累积 {index,id,name,argsStr}
+    let _lastFinishReason=''; // 最近一次出现的 finish_reason（''/stop/length/…），供上层识别「输出长度截断」
+    let _gotEndSignal=false;  // 是否收到过明确的流结束指令（finish_reason 或 [DONE]）；未收到即视为异常中断
     const reqBody={
       model:state.model,
       messages:messages.map(function(m){
@@ -306,15 +316,31 @@ const AI=(function(){
       // tool_choice 默认 auto：让模型自主决定是否调用工具，避免强制调用导致纯分析场景失败
     }
     let res;
-    try{
-      res=await fetch(apiChatUrl(),{
-        method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
-      body:JSON.stringify(reqBody),
-        signal:signal
-      });
-    }catch(err){
-      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(err&&err.message?err.message:JSON.stringify(err)));
+    // 本地/远端端点偶发不可达（如本地推理服务加载中、系统网络瞬断）会使 fetch 直接 reject
+    // （TypeError / ERR_INTERNET_DISCONNECTED / Failed to fetch）。对纯网络层失败自动重试：
+    // 共 3 次尝试（0ms/600ms/1600ms 退避），吸收服务瞬时不可达窗口；HTTP 错误码（401/429 等）不重试。
+    const NET_RETRY_MAX=2;
+    let _netErr=null;
+    for(let _try=0;_try<=NET_RETRY_MAX;_try++){
+      if(_try>0){
+        await new Promise(function(_r){setTimeout(_r,_try===1?600:1600);});
+      }
+      try{
+        res=await fetch(apiChatUrl(),{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+authKey,'Accept':'text/event-stream'},
+          body:JSON.stringify(reqBody),
+          signal:signal
+        });
+        break;
+      }catch(err){
+        _netErr=err;
+        if(signal&&signal.aborted)break; // 用户手动停止：不重试，立即上抛
+        if(_try===NET_RETRY_MAX)break;    // 已达重试上限，最后一次失败保留原始错误
+      }
+    }
+    if(!res){
+      throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(_netErr&&_netErr.message?_netErr.message:JSON.stringify(_netErr)));
     }
     if(!res.ok){
       let detail='';
@@ -324,9 +350,42 @@ const AI=(function(){
     }
     if(!res.body||!res.body.getReader)throw new Error('当前浏览器不支持流式响应');
     const reader=res.body.getReader();const decoder=new TextDecoder();let buffer='';
+    // 超时策略：无"全程总计时"——只要有响应持续输出就永不掐断（此前 10 分钟总兜底仍会在超长回答时误杀）。
+    // 仅两类计时：①首块超时 FIRST_CHUNK_TIMEOUT_MS（请求发出后首个数据块迟迟不来）；
+    // ②空闲超时 IDLE_TIMEOUT_MS（收到过数据后中途超过该时长无新数据 = 断流）。收到首个数据块即进入纯空闲看门狗模式。
+    let _idleTimer=null,_gotFirstChunk=false;
+    const _clearIdle=function(){if(_idleTimer){clearTimeout(_idleTimer);_idleTimer=null;}};
     while(true){
-      const {done,value}=await reader.read();
-      if(done)break;
+      let chunk;
+      try{
+        chunk=await Promise.race([
+          reader.read(),
+          new Promise(function(_,reject){
+            _idleTimer=setTimeout(function(){
+              state.abortReason='timeout'; // 复用超时语义：前端显示「请求超时」+ 重新提交入口
+              reject(Object.assign(new Error('AI 响应空闲超时（长时间未收到新内容）'),{name:'AbortError',aiIdleTimeout:true}));
+            },_gotFirstChunk?IDLE_TIMEOUT_MS:FIRST_CHUNK_TIMEOUT_MS);
+          })
+        ]);
+      }finally{_clearIdle();}
+      if(!chunk.done)_gotFirstChunk=true;
+      const done=chunk.done,value=chunk.value;
+      if(done){
+        // EOF 边界：把缓冲区内残留的最后一行也解析一次（SSE 行若恰在流尾未带换行符，
+        // 如 `data: [DONE]`，不能漏判结束信号，否则会被误认为「未收到结束指令」触发续写）
+        const tail=(buffer||'').trim();
+        if(tail){
+          if(tail.startsWith('data:')){
+            const rawTail=tail.slice(5).trim();
+            if(rawTail==='[DONE]'){_gotEndSignal=true;}
+            else if(rawTail){
+              try{const jT=JSON.parse(rawTail);const choiceT=jT.choices&&jT.choices[0];if(choiceT&&choiceT.finish_reason){_lastFinishReason=choiceT.finish_reason;_gotEndSignal=true;}}catch(_){}
+            }
+          }
+          buffer='';
+        }
+        break;
+      }
       buffer+=decoder.decode(value,{stream:true});
       let idx;
       while((idx=buffer.indexOf('\n'))>=0){
@@ -343,10 +402,15 @@ const AI=(function(){
           continue;
         }
         const raw=line.slice(5).trim();
-        if(!raw||raw==='[DONE]')continue;
+        if(!raw)continue;
+        // [DONE] 为 OpenAI 兼容流的标准结束标记：记录已收到结束指令（是否截断由 finish_reason 判定）
+        if(raw==='[DONE]'){_gotEndSignal=true;continue;}
         try{
           const j=JSON.parse(raw);
-          const delta=j.choices&&j.choices[0]&&j.choices[0].delta;
+          const choice=j.choices&&j.choices[0];
+          // 流结束信号：finish_reason（stop=正常完成 / length=达到输出长度上限被截断），可作为结束标记
+          if(choice&&choice.finish_reason){_lastFinishReason=choice.finish_reason;_gotEndSignal=true;}
+          const delta=choice&&choice.delta;
           if(!delta)continue;
           // 1) content delta：照常给对话区流式显示
           if(typeof delta.content==='string'&&delta.content){
@@ -361,7 +425,7 @@ const AI=(function(){
       }
     }
     // 流结束：tool_calls 累积槽 → 解析为最终数组（argsStr 容错解析）
-    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc)};
+    return {content:state.webBuf,toolCalls:_finalizeToolCalls(state.webToolAcc),finishReason:_lastFinishReason||'',gotEndSignal:_gotEndSignal};
   }
 
   /** 单次对话入口（兼容只读与带工具两种模式）
@@ -412,20 +476,27 @@ const AI=(function(){
             state.chunkBuf=full;
           }
           // tauri 模式：由监听累积的 tool_calls delta 解析为最终数组（与浏览器版同构）
-          return {content:state.chunkBuf,toolCalls:_finalizeToolCalls(state.tauriToolAcc)};
+          // 结束信号：Rust 目前只透传文本增量、不透传 finish_reason，命令正常返回即视为收到结束信号（gotEndSignal=true），
+          // 避免桌面版因「未收到结束指令」误触发续写；输出长度截断的自动续写目前仅浏览器直连模式支持（Rust 侧可后续扩展）。
+          return {content:state.chunkBuf,toolCalls:_finalizeToolCalls(state.tauriToolAcc),finishReason:null,gotEndSignal:true};
         }finally{_cleanupStreamListener();}
       }
       // 浏览器形态：前端直连 DeepSeek，AbortController 真正可取消
       const controller=new AbortController();
       state.abortController=controller;
-      // 请求总超时：到时未完成自动 abort（abortReason='timeout'，与手动停止区分）
-      const timeoutTimer=setTimeout(function(){
-        if(state.abortController===controller){state.abortReason='timeout';try{controller.abort();}catch(e){}}
-      },REQUEST_TIMEOUT_MS);
+      // 无"全程总计时"：流式持续有响应即不设上限，不在这里挂整体超时。
+      // 请求发出后等首包 / 流中途断流分别由 webChat 内的 FIRST_CHUNK_TIMEOUT_MS / IDLE_TIMEOUT_MS 看门狗判定；
+      // AbortController 仅保留给用户手动停止（abort()）使用。
       try{return await webChat(messages,onChunk,controller.signal,options);}
-      finally{clearTimeout(timeoutTimer);state.abortController=null;}
+      finally{state.abortController=null;}
     }catch(e){
       // 阶段4：错误处理边界 —— 分类网络错误/流式中断/tauri 命令异常，给出友好提示
+      // 桌面版 Rust 行级空闲超时以 String err 抛回（无法携带 AbortError name），统一转成 AbortError + timeout 语义
+      const _em=e&&e.message?String(e.message):'';
+      if(!(e&&e.name==='AbortError')&&/空闲超时/.test(_em)){
+        state.abortReason='timeout';
+        const _ae=new Error(_em);_ae.name='AbortError';throw _ae;
+      }
       throw _friendlyError(e);
     }finally{state.chatting=false;state.abortController=null;}
   }
@@ -443,7 +514,8 @@ const AI=(function(){
     const msg=String(e.message||e);
     // 网络错误（fetch 抛 TypeError，多半是断网/DNS/CORS）
     if(e.name==='TypeError'||/Failed to fetch|\bNetworkError\b|loadfailed/i.test(msg)){
-      return new Error('网络连接失败，请检查网络后重试');
+      try{console.error('[AI 诊断] 原始错误：',e);}catch(_){}
+      return new Error('网络连接失败，请检查网络后重试（原始错误：'+msg.slice(0,300)+'）');
     }
     // Tauri 命令调用异常
     if(/tauri|invoke|非 Tauri 运行时/i.test(msg)){
@@ -465,7 +537,8 @@ const AI=(function(){
    *  onConfirm(toolCalls) → Promise<{cancelled:boolean, approvedOps:array}>：确认弹窗回调（由 ai-chat.js 实现）
    *  返回值：{content:string, lastToolResults:array}
    */
-  async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId){
+  async function aiWriteLoop(initialMessages,onChunk,onConfirm,aiChatId,opts){
+    // opts：{noWfTools:boolean} —— 工作流步骤执行内部轮次传 true，禁止模型再发起子工作流
     const messages=[...initialMessages];
     let lastToolResults=[];
     let lastBatchIds=[];    // 本轮所有写入批次 ID（供对话内一键撤销整轮，复用持久化 undoBatch）
@@ -489,13 +562,50 @@ const AI=(function(){
         }
       }
       // 工具可用性动态过滤：知识库未绑定/未启用时，不把 KB 工具带给模型（模型无从发起 → 无提案弹窗）
+      // 工作流内部轮次（opts.noWfTools）不透出 flow_start_workflow，禁止步骤内再嵌套发起子工作流
       const kbSet=(typeof AIT!=='undefined'&&AIT.KB_TOOL_NAMES)?AIT.KB_TOOL_NAMES:null;
       const kbAvailable=(typeof KB!=='undefined'&&KB.state.bound&&KB.state.enabled);
+      const noWfTools=!!(opts&&opts.noWfTools);
       const toolsDef=(typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]).filter(function(t){
-        if(!(kbSet&&kbSet.has(t.function&&t.function.name)))return true;
+        const tName=t&&t.function&&t.function.name;
+        if(noWfTools&&tName==='flow_start_workflow')return false;
+        if(!(kbSet&&kbSet.has(tName)))return true;
         return kbAvailable;
       });
-      const res=await chat(messages,onChunk,{tools:toolsDef});
+      // 断流半截保护：chat() 在流式中途抛出的异常（网络瞬断/空闲超时）不直接上抛——
+      // 只要本次已输出过半截内容，就把半截归一为「未收到流结束指令」的结果，走下方统一续写逻辑补齐；
+      // 仅在两种情况下原样上抛：① 用户手动停止（abortReason==='manual'，不应擅自续写）；
+      // ② 全程无任何输出（首包即失败，没有可接续的上文，交由 UI 提示重试）。
+      let res;
+      try{
+        res=await chat(messages,onChunk,{tools:toolsDef});
+      }catch(err){
+        const _partial=String(state.webBuf||state.chunkBuf||'');
+        if(state.abortReason==='manual'||!_partial)throw err;
+        res={content:_partial,toolCalls:[],finishReason:'',gotEndSignal:false};
+      }
+      // —— 输出长度截断 / 断流 自动续写（后台无缝接续，用户无感） ——
+      // 触发判据（与 AI 兼容流协议一致）：
+      //   1) finish_reason==='length'：模型达到输出长度上限被截断（OpenAI 兼容流会在最后一个 chunk 携带）；
+      //   2) 流已自然读到 EOF，但整条流从未收到结束指令（finish_reason/[DONE]）：视为异常中断。
+      // 安全边界：用户手动停止已在上方 catch 原样上抛，不会走到此处 → 不误触发；
+      // 空闲超时/网络错误若带半截内容，已在上方归一为断流结果进入本续写通道；
+      // 有 tool_calls 的轮次不续写（保持 assistant(tool_calls)→tool 协议连续性）；
+      // 无任何已生成文本不续写（没有可接续的上文，避免模型从头重写造成重复）。
+      let _aiContinueCount=0;
+      const _needContinue=(r)=>!!r&&(!r.toolCalls||!r.toolCalls.length)&&(r.finishReason==='length'||!r.gotEndSignal)&&String(r.content||'').length>0;
+      while(_aiContinueCount<AI_CONTINUE_MAX&&_needContinue(res)){
+        // 已生成部分作为 assistant 上下文回填 → 模型从中断处无缝接续，不会重复开头
+        messages.push({role:'assistant',content:res.content||''});
+        messages.push({role:'user',content:'你的上一条回复因输出长度限制被截断，请直接从中断处继续完整输出：只输出接续内容，不要重复已输出的部分，也不要复述本提示。'});
+        _aiContinueCount++;
+        const contRes=await chat(messages,onChunk,{tools:[]});
+        const contText=(contRes&&contRes.content)?contRes.content:'';
+        if(contText){res.content=(res.content||'')+contText;}   // 拼接到同一消息，UI/落盘均呈连续追加
+        res.finishReason=(contRes&&contRes.finishReason)?contRes.finishReason:'';
+        res.gotEndSignal=!!(contRes&&contRes.gotEndSignal);
+        if(contRes&&contRes.toolCalls&&contRes.toolCalls.length){res.toolCalls=contRes.toolCalls;break;} // 理论不出现；真出现则交由下方工具分流
+      }
       if(!res.toolCalls||!res.toolCalls.length){
         // 纯文本总结，结束
         return {content:res.content,lastToolResults,lastBatchIds,lastBatchId};
@@ -506,6 +616,21 @@ const AI=(function(){
       const calls=res.toolCalls.map(function(tc){
         return {id:tc.id||uid('TC'),name:tc.name,args:(tc.args&&typeof tc.args==='object')?tc.args:{}};
       });
+      // 工作流计划发起拦截：flow_start_workflow 不进入 query/flow/write 常规分流。
+      // 校验通过 → 创建 DB.aiWorkflows 草稿并返回 wfId（UI 展示计划卡 + 确认弹窗后再逐步执行）；
+      // 校验失败 → 把错误作为 tool 响应回填，让模型下一轮自纠。
+      const wfStartCalls=(opts&&opts.noWfTools)?[]:calls.filter(tc=>tc.name==='flow_start_workflow');
+      if(wfStartCalls.length){
+        const wfTry=wfCreateDraft(wfStartCalls[0].args,aiChatId);
+        if(wfTry.ok){
+          if(typeof toast==='function')toast('已生成执行计划，请确认后开始','info');
+          return {content:(res.content&&String(res.content).trim())?res.content:'已生成执行计划，等待确认后分步执行。',wfId:wfTry.wfId,lastToolResults:[],lastBatchIds:[],lastBatchId:null};
+        }
+        // 计划参数不合法：回填错误并让模型自纠（同轮其他调用一并忽略，避免部分执行造成计划/操作错位）
+        messages.push({role:'assistant',content:res.content||'',tool_calls:calls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:JSON.stringify(tc.args)}}))});
+        messages.push({role:'tool',tool_call_id:wfStartCalls[0].id,content:JSON.stringify({ok:false,error:wfTry.error})});
+        continue;
+      }
       // 阶段3：分流 —— query/flow 类自动执行（不经弹窗），write/delete 类走确认弹窗
       // 阶段4：flow 类（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer）自动执行
       // P0 修复：flowSet 防护 AIT 未加载或 FLOW_TOOL_NAMES 为 undefined 的场景
@@ -575,8 +700,151 @@ const AI=(function(){
       writeResults.forEach(r=>messages.push({role:'tool',tool_call_id:r.toolCallId,content:r.content}));
       // 继续下一轮，模型可基于工具响应再调工具或给总结
     }
-    return {content:'',lastToolResults,lastBatchIds,lastBatchId};
+    return {content:'',lastToolResults,lastBatchIds,lastBatchId,wfId:undefined,wfStepId:undefined,wfDone:undefined};
   }
+  // ===== 工作流引擎（多步长任务分步执行：持久化草稿 → 确认 → 逐步执行 → 收束/完成） =====
+  /** 取工作流（按 id；同时容忍 chatId 关联记录） */
+  function wfFind(wfId){
+    if(!wfId)return null;
+    return ((typeof DB!=='undefined'&&Array.isArray(DB.aiWorkflows))?DB.aiWorkflows:[]).find(w=>w&&w.id===wfId)||null;
+  }
+  /** 持久化：脏数组保护 + 新单排前 + 保留上限 */
+  function wfPersist(){
+    if(typeof DB==='undefined')return;
+    if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[];
+    DB.aiWorkflows.sort((a,b)=>(b&&b.createdAt||0)-(a&&a.createdAt||0));
+    if(DB.aiWorkflows.length>WF_HISTORY_LIMIT)DB.aiWorkflows.length=WF_HISTORY_LIMIT;
+    if(typeof saveDB==='function')saveDB();
+  }
+  /** 校验并生成执行计划草稿（flow_start_workflow 拦截入口；不入库任何业务操作） */
+  function wfCreateDraft(rawArgs,chatId){
+    const args=(rawArgs&&typeof rawArgs==='object')?rawArgs:{};
+    const goal=String(args.goal||'').trim();
+    if(!goal)return {ok:false,error:'goal 不能为空'};
+    if(goal.length>600)return {ok:false,error:'goal 过长（<=600 字）'};
+    if(!Array.isArray(args.steps)||args.steps.length<2||args.steps.length>WF_MAX_STEPS)return {ok:false,error:'steps 需为 2-'+WF_MAX_STEPS+' 步的数组'};
+    const steps=[];
+    for(let i=0;i<args.steps.length;i++){
+      const s=args.steps[i]||{};
+      const title=String(s.title||'').trim();
+      if(!title)return {ok:false,error:'steps['+i+'].title 不能为空'};
+      if(title.length>80)return {ok:false,error:'steps['+i+'].title 过长（<=40 字）'};
+      const description=(s.description===undefined||s.description===null)?'':String(s.description).trim();
+      if(description.length>500)return {ok:false,error:'steps['+i+'].description 过长（<=400 字）'};
+      steps.push({title,description,status:'pending',summary:''});
+    }
+    const now=Date.now();
+    const wf={id:uid('WF'),chatId:String(chatId||''),status:'draft',goal,steps,current:-1,createdAt:now,updatedAt:now};
+    if(typeof DB==='undefined')DB={aiWorkflows:[]};
+    if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[];
+    DB.aiWorkflows.push(wf);
+    wfPersist();
+    return {ok:true,wfId:wf.id};
+  }
+  /** 用户确认计划 → 转为 active（尚未开始执行任何步骤） */
+  function wfConfirm(wfId,chatId){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在（可能已被清理），请重新发起'};
+    if(wf.status!=='draft')return {ok:false,error:'计划当前状态不可确认：'+wf.status};
+    wf.chatId=String(chatId||wf.chatId||'');
+    wf.status='active';wf.current=-1;wf.startedAt=Date.now();wf.updatedAt=Date.now();
+    wf.steps.forEach(s=>{s.status='pending';s.summary='';});
+    wfPersist();
+    return {ok:true};
+  }
+  /** 推进到下一步（active 且顺序执行；正在执行的步骤未结束时不允许重复推进） */
+  function wfStepStart(wfId){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    if(wf.status!=='active')return {ok:false,error:'计划未处于执行中（当前状态：'+(wf.status||'unknown')+'）'};
+    if(wf.current>=0&&wf.steps[wf.current]&&wf.steps[wf.current].status==='active')return {ok:false,error:'上一步骤尚未结束'};
+    let idx=wf.current+1;
+    while(idx<wf.steps.length&&wf.steps[idx].status==='done')idx++;
+    if(idx>=wf.steps.length){
+      wf.status='done';wf.completedAt=Date.now();wf.updatedAt=Date.now();
+      wfPersist();
+      return {ok:true,finished:true};
+    }
+    wf.steps[idx].status='active';wf.current=idx;wf.updatedAt=Date.now();
+    wfPersist();
+    return {ok:true,stepIdx:idx,step:{title:wf.steps[idx].title,description:wf.steps[idx].description}};
+  }
+  /** 步骤完成：记录收束摘要（含该步产生的 aiOps batchId，供整步一键撤销）；全部完成后计划置 done */
+  function wfStepDone(wfId,summary,batchIds){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    if(wf.status!=='active'||wf.current<0||!wf.steps[wf.current]||wf.steps[wf.current].status!=='active')return {ok:false,error:'没有进行中的步骤可标记完成'};
+    const st=wf.steps[wf.current];
+    st.status='done';
+    st.summary=(summary===undefined||summary===null)?'':String(summary).slice(0,500);
+    if(Array.isArray(batchIds)&&batchIds.length){
+      st.batchIds=(st.batchIds||[]).concat(batchIds.filter(Boolean));
+      if(st.batchIds.length>WF_MAX_STEPS*2)st.batchIds=st.batchIds.slice(-WF_MAX_STEPS*2);
+    }
+    wf.updatedAt=Date.now();
+    if(wf.current>=wf.steps.length-1){wf.status='done';wf.completedAt=Date.now();}
+    wfPersist();
+    return {ok:true,finished:wf.status==='done'};
+  }
+  /** 中止执行（出错/超轮次等）；status 可指定 'aborted' 或 'cancelled' */
+  function wfAbort(wfId,reason,status){
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    wf.status=status||'aborted';
+    wf.endReason=String(reason||'');
+    if(wf.current>=0&&wf.steps[wf.current]&&wf.steps[wf.current].status==='active')wf.steps[wf.current].status='pending';
+    wf.updatedAt=Date.now();
+    wfPersist();
+    return {ok:true};
+  }
+  /** 删除聊天记录时清理其关联工作流（避免孤儿计划占用） */
+  function wfCleanupChat(chatId){
+    if(!chatId||typeof DB==='undefined'||!Array.isArray(DB.aiWorkflows))return;
+    const before=DB.aiWorkflows.length;
+    DB.aiWorkflows=DB.aiWorkflows.filter(w=>w.chatId!==chatId);
+    if(DB.aiWorkflows.length!==before&&typeof saveDB==='function')saveDB();
+  }
+  /** 由 AI 主循环执行一个步骤：组装"前序收束+步骤指令"上下文，调用 writeFn 执行，
+   *  结束后依据 writeFn 返回（lastBatchIds/content）自动将本步标记 done（或中止），
+   *  返回 {ok,stepIdx,result,finished}，供外层决定续跑下一步或收尾。 */
+  async function runWorkflowStep(wfId,writeFn){
+    if(typeof writeFn!=='function')return {ok:false,error:'执行器不可用'};
+    const started=wfStepStart(wfId);
+    if(!started.ok)return started;
+    if(started.finished)return {ok:true,finished:true};
+    const wf=wfFind(wfId);
+    if(!wf)return {ok:false,error:'执行计划不存在'};
+    const doneSteps=wf.steps.filter((s,i)=>i<wf.current&&s.status==='done');
+    const step=wf.steps[wf.current];
+    let stepPrompt='你正在执行一个经过用户确认的多步执行计划（当前第'+(wf.current+1)+'/'+wf.steps.length+'步）。\n\n【计划总目标】'+wf.goal+'\n';
+    if(doneSteps.length){
+      stepPrompt+='\n【已完成步骤收束（供衔接参考，后续步骤可复用其中出现的 ID/名称/金额）】\n'+
+        doneSteps.map((s,i)=>'步骤'+(i+1)+'《'+s.title+'》：'+(s.summary||'（无产出说明）')).join('\n')+'\n';
+    }
+    stepPrompt+='\n【当前步骤 '+(wf.current+1)+'/'+wf.steps.length+'】《'+step.title+'》\n'+(step.description||'');
+    const msgs=[{role:'system',content:stepPrompt}];
+    const result=await writeFn(msgs);
+    if(result&&result.wfRequestAbort){
+      wfAbort(wfId,result.wfRequestAbort,'aborted');
+      return {ok:false,stepIdx:wf.current,result,finished:false,error:'已中止：'+result.wfRequestAbort};
+    }
+    if(result&&result.wfDone){
+      // 模型已在单轮内完成了全部目标：将计划整体置 done（当前步及后续步骤直接标记完成）
+      const wfAll=wfFind(wfId);
+      if(wfAll){
+        wfAll.steps.forEach(s=>{if(s.status==='pending'||s.status==='active')s.status='done';});
+        wfAll.status='done';wfAll.completedAt=Date.now();wfAll.updatedAt=Date.now();
+        wfPersist();
+      }
+      return {ok:true,stepIdx:wf.current,result,finished:true};
+    }
+    const batchIds=(result&&Array.isArray(result.lastBatchIds))?result.lastBatchIds:[];
+    const summary=result&&result.content?String(result.content).slice(0,500):'';
+    const done=wfStepDone(wfId,summary,batchIds);
+    if(!done.ok)return {ok:false,stepIdx:wf.current,result,finished:false,error:done.error};
+    return {ok:true,stepIdx:wf.current,result,finished:done.finished};
+  }
+
   /** 撤销指定批次的 AI 工具改动（复用持久化 undoBatch，按 op 反向精准回滚，不误伤手动操作）
    *  返回已撤销条数（供 UI 提示）；batchId 无效或已撤销返回 0 */
   function undoLastBatch(batchId){
@@ -615,6 +883,7 @@ const AI=(function(){
     state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
     probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
     chat,aiWriteLoop,abort,setModel,setProvider,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft,
-    undoLastBatch
+    undoLastBatch,
+    wfFind,wfCreateDraft,wfConfirm,wfStepStart,wfStepDone,wfAbort,wfCancel:wfAbort,wfCleanupChat,runWorkflowStep
   };
 })();

@@ -44,10 +44,28 @@ function demoteModuleScripts() {
   }
 }
 
+// 构建后把 public/sw.js 的 CACHE_NAME 占位符替换为真实版本
+// （public 目录文件不经过 Vite 编译，只能在写盘后注入）
+function injectSwVersion(outDir) {
+  return {
+    name: 'ftwb-inject-sw-version',
+    writeBundle() {
+      const swPath = resolve(import.meta.dirname, outDir, 'sw.js')
+      try {
+        const raw = readFileSync(swPath, 'utf8')
+        const out = raw.replace(/ftwb-__APP_VERSION__/g, `ftwb-${APP_VERSION}`)
+        if (out !== raw) writeFileSync(swPath, out)
+      } catch {
+        // 忽略：public 未复制时跳过
+      }
+    },
+  }
+}
+
 export default defineConfig({
   root: 'src',
   base: './',
-  plugins: [vue(), demoteModuleScripts()],
+  plugins: [vue(), injectSwVersion('dist'), demoteModuleScripts()],
   build: {
     outDir: '../dist',
     emptyOutDir: true,
