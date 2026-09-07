@@ -576,6 +576,11 @@ input.alloc-input{width:90px;}
 .ai-head-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--radius);padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;transition:.15s;line-height:1;}
 .ai-head-btn:hover{border-color:var(--pri);background:var(--pri-l);color:var(--pri);}
 .ai-head-btn:active{transform:translateY(1px);}
+/* 生成期间防清空保护：灰显但保留可点（点击由 clearAIHistory 拦截并 toast 说明原因） */
+.ai-head-btn.is-disabled{opacity:.45;cursor:not-allowed;}
+.ai-head-btn.is-disabled:hover{border-color:var(--line);background:var(--card);color:var(--ink);}
+.ai-head-btn.is-disabled:active{transform:none;}
+.ai-set-danger .btn.danger.is-disabled{opacity:.5;cursor:not-allowed;}
 .ai-head-btn svg{flex-shrink:0;}
 .ai-status{font-size:12px;margin-top:4px;display:block;}
 .ai-status.online{color:var(--green);}.ai-status.offline{color:var(--gray);}.ai-status.warning{color:var(--amber);}
@@ -595,6 +600,9 @@ input.alloc-input{width:90px;}
 .ai-message-delete{display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--gray);padding:2px;border-radius:var(--radius-sm);cursor:pointer;opacity:0;pointer-events:none;transition:.15s;}
 .ai-message:hover .ai-message-delete,.ai-message-delete:focus-visible{opacity:1;pointer-events:auto;}
 .ai-message-delete:hover{color:var(--red);background:var(--red-l);}
+/* 生成期间防删除保护：按钮灰显但保留可点（点击由 deleteAIMessage 拦截并 toast 说明原因） */
+.ai-message-delete.is-disabled,.ai-message:hover .ai-message-delete.is-disabled{opacity:.4;pointer-events:auto;color:var(--gray);background:transparent;cursor:not-allowed;}
+.ai-message-delete.is-disabled:hover{color:var(--gray);background:transparent;}
 /* 消息操作区「复制/刷新」：与删除按钮同置于 meta 行、同 hover 显隐，位于删除按钮之前 */
 .ai-message-op{display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--gray);padding:2px;border-radius:var(--radius-sm);cursor:pointer;opacity:0;pointer-events:none;transition:.15s;line-height:1;}
 .ai-message:hover .ai-message-op,.ai-message-op:focus-visible{opacity:1;pointer-events:auto;}

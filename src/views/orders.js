@@ -94,7 +94,8 @@ function viewOrderDetail(){
   const showRcv=RECEIVABLE_STATUSES.includes(o.status);
   const locked=['签约完成','送货中'].includes(o.status);
   const editLocked=false;
-  const rcvLocked=false;
+  const allowEdit=o.status==='送货中'; // 白名单：仅「送货中」状态允许编辑送货信息/收货管理，其它状态一律只读
+  const rcvLocked=!allowEdit; // 非「送货中」一律只读锁定
   const flowHTML='<div class="status-flow">'+
     STATUS_FLOW.map((s,i)=>{
       const cls=i<flowIdx?'done':(i===flowIdx?'cur':'');
@@ -146,13 +147,12 @@ function viewOrderDetail(){
   const nextBtnHTML=nextStepButton(o);
   const prevBtnHTML=prevStepButton(o);
   const cancelBtnHTML=['待确认','寻货中','报价中'].includes(o.status)?'<button class="btn danger" title="将订单标记为「取消」状态，不可恢复正常流程" onclick="cancelOrderConfirm(\''+escJsStr(o.id)+'\')">'+icon('x','16')+' 取消订单</button>':'';
-  const markAbnormalBtnHTML=['报价中','签约完成','送货中','完成'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+escJsStr(o.id)+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
+  const markAbnormalBtnHTML=['报价中','签约完成','送货中'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+escJsStr(o.id)+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
     '<button class="btn sm" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
-    (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑订单</button>')+
     (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 订单完成</button>':'')+
     (function(){
       if(o.status!=='签约完成')return'';
@@ -166,7 +166,8 @@ function viewOrderDetail(){
   '</div>'+
   '<div class="card">'+
     '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+
-      '<button class="btn" style="margin-left:auto" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+escJsStr(o.id)+'\')">'+icon('copy','16')+' 复制订单</button>'+
+      (editLocked?'':'<button class="btn" style="margin-left:auto" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑</button>')+
+      '<button class="btn" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+escJsStr(o.id)+'\')">'+icon('copy','16')+' 复制</button>'+
     '</h2>'+
     flowHTML+
     '<div class="grid2" style="margin-bottom:16px">'+
@@ -183,11 +184,13 @@ function viewOrderDetail(){
             '<div><label class="muted" style="font-size:12px">送货地址</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.address||'-')+'</div></div>'+
             '<div><label class="muted" style="font-size:12px">快递单号</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.tracking||'-')+'</div></div>'+
           '</div>'+
-          '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px">'+
-            '<button class="btn" onclick="enterEditDelivery(\''+escJsStr(o.id)+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
-          '</div>'+
+          (allowEdit
+            ? '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px">'+
+              '<button class="btn" onclick="enterEditDelivery(\''+escJsStr(o.id)+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
+            '</div>'
+            : '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px;align-items:center"><span class="tag gray">🔒 已锁定</span><span class="muted" style="font-size:12px">仅「送货中」状态可编辑送货信息，当前状态不可修改</span></div>')+
         '</div>'+
-        '<div id="delivery-edit-'+o.id+'" style="display:none">'+
+        (allowEdit?'<div id="delivery-edit-'+o.id+'" style="display:none">'+
           '<div class="grid2" style="gap:12px">'+
             '<div><label class="f">送货地址</label><input id="del_addr_'+o.id+'" tabindex="20" style="width:100%" value="'+escAttr(o.delivery.address||'')+'"></div>'+
             '<div><label class="f">快递单号</label><input id="del_track_'+o.id+'" tabindex="21" style="width:100%" value="'+escAttr(o.delivery.tracking||'')+'"></div>'+
@@ -197,22 +200,27 @@ function viewOrderDetail(){
             '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+escJsStr(o.id)+'\')">保存</button>'+
             '<button class="btn sm" onclick="cancelEditDelivery(\''+escJsStr(o.id)+'\')">取消</button>'+
           '</div>'+
-        '</div>'+
+        '</div>':'')+
       '</div>':
-      '<div style="margin-bottom:16px;background:var(--pri-l);border:1px solid var(--pri-p);border-radius:8px;padding:16px">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center">'+
-          '<div><b>'+icon('package','16')+' 送货信息</b><span class="muted" style="margin-left:8px;font-size:13px">验货已完成，请填写快递发货信息</span></div>'+
-        '</div>'+
-        '<div class="grid2" style="gap:12px;margin-top:12px">'+
-          '<div><label class="f">送货地址</label><input id="del_addr_'+o.id+'" tabindex="20" style="width:100%" placeholder="收货地址"></div>'+
-          '<div><label class="f">快递单号</label><input id="del_track_'+o.id+'" tabindex="21" style="width:100%" placeholder="快递单号"></div>'+
-        '</div>'+
-        '<div style="margin-top:12px"><label class="f">送货时间</label><input id="del_time_'+o.id+'" type="date" tabindex="22" min="'+today()+'" style="width:220px"></div>'+
-        '<div style="margin-top:12px">'+
-          '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+escJsStr(o.id)+'\')">保存发货信息</button>'+
-        '</div>'+
-      '</div>'
-    ):'')+
+      (allowEdit
+        ? '<div style="margin-bottom:16px;background:var(--pri-l);border:1px solid var(--pri-p);border-radius:8px;padding:16px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+            '<div><b>'+icon('package','16')+' 送货信息</b><span class="muted" style="margin-left:8px;font-size:13px">验货已完成，请填写快递发货信息</span></div>'+
+          '</div>'+
+          '<div class="grid2" style="gap:12px;margin-top:12px">'+
+            '<div><label class="f">送货地址</label><input id="del_addr_'+o.id+'" tabindex="20" style="width:100%" placeholder="收货地址"></div>'+
+            '<div><label class="f">快递单号</label><input id="del_track_'+o.id+'" tabindex="21" style="width:100%" placeholder="快递单号"></div>'+
+          '</div>'+
+          '<div style="margin-top:12px"><label class="f">送货时间</label><input id="del_time_'+o.id+'" type="date" tabindex="22" min="'+today()+'" style="width:220px"></div>'+
+          '<div style="margin-top:12px">'+
+            '<button class="btn sm primary" onclick="saveDeliveryInfo(\''+escJsStr(o.id)+'\')">保存发货信息</button>'+
+          '</div>'+
+        '</div>'
+        : '<div style="margin-bottom:16px;background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:16px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center"><div><b>'+icon('package','16')+' 送货信息</b><span class="tag gray" style="margin-left:8px">🔒 已锁定</span></div></div>'+
+          '<div class="muted" style="font-size:12.5px;margin-top:10px">仅「送货中」状态可录入送货信息，当前状态不可修改。</div>'+
+        '</div>'
+    )):'')+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">'+
       '<h3 style="font-size:15px;font-weight:600;margin:0;display:flex;align-items:center;gap:8px">'+icon('package','16')+'产品明细</h3>'+
       '<div style="display:flex;gap:8px">'+
@@ -351,10 +359,10 @@ function nextStepEnterDelivery(id){
   }
   changeOrderStatus(id,'送货中');
 }
-/** 根据当前状态返回「上一步」按钮 HTML。待确认/完成/异常/取消无上一步 */
+/** 根据当前状态返回「上一步」按钮 HTML。待确认/完成/异常/取消无上一步（完成态如需调整状态须通过「编辑订单」修改） */
 function prevStepButton(o){
   const idx=STATUS_FLOW.indexOf(o.status);
-  if(idx<=0)return '';
+  if(idx<=0||o.status==='完成')return '';
   const prev=STATUS_FLOW[idx-1];
   return '<button class="btn" title="返回上一步：'+escAttr(prev)+'" onclick="prevStepOrder(\''+escJsStr(o.id)+'\',\''+prev+'\')">'+icon('arrowLeft','16')+' 上一步（'+prev+'）</button>';
 }
@@ -370,6 +378,7 @@ function _orderLinkedSettlements(id){
  * @param {string} target - 目标状态（STATUS_FLOW 上一态） */
 function prevStepOrder(id,target){
   const o=DB.orders.find(x=>x.id===id);if(!o)return;
+  if(o.status==='完成'){toast('订单已完成，不允许回退上一步；如需调整状态请通过「编辑订单」修改','warning');return;}
   const FROM_SETTLE=['签约完成','送货中','完成'];
   const TO_NON_SETTLE=['待确认','寻货中','报价中','未成交'];
   if(FROM_SETTLE.includes(o.status)&&TO_NON_SETTLE.includes(target)){
@@ -401,6 +410,8 @@ function cancelOrderConfirm(id){
 /** 「报价中/签约完成/送货中 → 异常」：人工标记异常（终态），确认弹窗后切换。
  * v1.0.27 起：补齐异常状态的人工入口，此前仅 AI flow_order_status 可进入。 */
 function markOrderAbnormal(id){
+  const o=DB.orders.find(x=>x.id===id);
+  if(o&&o.status==='完成'){toast('订单已完成，不允许标记异常；如需调整状态请通过「编辑订单」修改','warning');return;}
   confirmModal(
     '确认将此订单标记为「异常」？<br><span class="muted" style="font-size:12px">异常为终态，标记后不可恢复正常流程。适用于质量问题、客户纠纷等需重点关注的情况；可在订单备注中记录异常原因。</span>',
     function(){changeOrderStatus(id,'异常');},
@@ -412,6 +423,7 @@ function markOrderAbnormal(id){
 function saveDeliveryInfo(id){
   const o=DB.orders.find(x=>x.id===id);
   if(!o)return;
+  if(o.status!=='送货中'){toast('仅「送货中」状态可保存送货信息，当前状态不可修改','warning');return;} // 白名单锁定：深层兜底，防绕过 UI 直接调用
   const address=document.getElementById('del_addr_'+id).value.trim();
   const tracking=document.getElementById('del_track_'+id).value.trim();
   const time=document.getElementById('del_time_'+id).value;
@@ -424,6 +436,9 @@ function saveDeliveryInfo(id){
 }
 /** 切换送货信息为可编辑状态 */
 function enterEditDelivery(id){
+  const o=DB.orders.find(x=>x.id===id);
+  if(!o)return;
+  if(o.status!=='送货中'){toast('仅「送货中」状态可修改送货信息，当前状态不可修改','warning');return;} // 白名单锁定：深层兜底，防绕过 UI 直接调用
   const ro=document.getElementById('delivery-readonly-'+id);
   const ed=document.getElementById('delivery-edit-'+id);
   if(ro)ro.style.display='none';
@@ -1250,8 +1265,11 @@ async function saveOrder(){
           // P3/R3 修复：视图层状态流转特判语义与共享模块 NEXT_STATUS['报价中'] 含 '未成交' 对齐（保持原提示文案）
           toast('未成交仅可从「报价中」订单进入，请先回到详情页标记','warning');return;
         }
+        // 送货信息兜底：编辑表单不包含送货字段，若订单已录入结构化送货对象（送货中/完成），保存时不得用期望交期字符串覆盖/清空送货信息
+        const prevDelivery=o.delivery;
         o.buyerId=buyerId;o.buyerContact=buyerContact;o.project=project;
-        o.delivery=delivery;o.status=status;o.remark=remark;
+        o.delivery=(prevDelivery&&typeof prevDelivery==='object'&&('address'in prevDelivery))?prevDelivery:delivery;
+        o.status=status;o.remark=remark;
         o.items=_fItems.map(it=>({...it,options:(it.options||[]).map(o=>({...o}))}));
         o.updatedAt=now();
         clearDraft(DRAFT_TYPES.order);
@@ -1698,7 +1716,7 @@ function saveGeneratedQuote(){
 /* ---- 采购订单收货管理 ---- */
 /** 进入收货管理阶段（签约完成/送货中/完成）的订单状态集合 */
 const RECEIVABLE_STATUSES=['签约完成','送货中','完成'];
-/** 渲染收货管理栏目：在详情页以可编辑表格逐条维护各供应商寄出/收货信息；locked 为订单完成后只读 */
+/** 渲染收货管理栏目：在详情页以表格逐条维护各供应商寄出/收货信息；locked 为「非送货中」只读（白名单：仅送货中状态可编辑） */
 function receiveManageSection(o,locked){
   const rows=[];
   o.items.forEach(it=>{
@@ -1735,7 +1753,7 @@ function receiveManageSection(o,locked){
   }).join('');
   return '<div style="margin-top:18px"><h3 style="font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('package','16')+'收货管理'+(locked?' <span class="tag gray">🔒 已锁定</span>':'')+'</h3>'+
     '<div class="table-wrap"><table><thead><tr><th>产品</th><th>供应商</th><th>分配(千支)</th><th>是否寄出</th><th>寄出数量</th><th>寄出日期</th><th>是否收到</th><th>收到数量</th><th>收货日期</th></tr></thead><tbody>'+body+'</tbody></table></div>'+
-    '<div class="muted" style="font-size:12px;margin-top:8px">寄出数量可按实际多填（如考虑包装损耗），数量与日期修改后即时保存。</div>'+
+    '<div class="muted" style="font-size:12px;margin-top:8px">'+(locked?'仅「送货中」状态可编辑收货信息，当前状态只读锁定，如需调整请先将订单流转到「送货中」。':'寄出数量可按实际多填（如考虑包装损耗），数量与日期修改后即时保存。')+'</div>'+
   '</div>';
 }
 /** 收货字段高频修改后的整页渲染防抖（150ms） */
@@ -1744,7 +1762,7 @@ const _receiveRenderDebounced=debounce(render,150);
 function updateReceiveField(optId,field,value){
   const o=DB.orders.find(x=>x.id===curOrderView);
   if(!o)return;
-  if(!['签约完成','送货中','完成'].includes(o.status)){toast('仅「签约完成」「送货中」「完成」状态可修改收货信息','warning');return;}
+  if(o.status!=='送货中'){toast('仅「送货中」状态可修改收货信息，当前状态只读','warning');return;} // 白名单锁定：深层兜底，防绕过 UI 直接调用
   let opt=null;
   for(const it of o.items){
     opt=(it.options||[]).find(x=>x.id===optId);
