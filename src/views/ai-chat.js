@@ -3,6 +3,34 @@ let _aiCurrentSnapshot='';
 let _aiSendGateAt=0; // 发送防抖门槛：300ms 窗口内的重复触发直接忽略（Enter 连击/快速双击）
 let _wfRunning=false;   // 执行计划是否正在逐步运行（防止并发启动多个计划）
 let _aiActiveWfId=null; // 正在运行/待确认的执行计划 id（供写入确认弹窗取消时感知并中止计划）
+/* ===== 生成期间防删除/防清空保护 =====
+ * isAIBusy()：全局"生成中"统一判定。覆盖：
+ *  - AI.state.chatting：普通发送/续写/重新生成/重试/执行计划步骤内（引擎 chat 全程置位，finally 复位）；
+ *  - _wfRunning：执行计划整轮运行中（步骤间 chatting 短暂复位时仍视为忙碌）；
+ *  - 任一消息 pending：消息级流式/续写/执行步骤写入中（兜底：即使在状态复位瞬间也拦截）。
+ * syncAIGenerateProtection()：随忙碌状态起止切换，将删除按钮/清空按钮置为灰显禁用态（保留点击以给 toast 说明），结束后恢复。 */
+function isAIBusy(){
+  if(typeof AI!=='undefined'&&AI.state&&AI.state.chatting)return true;
+  if(_wfRunning)return true;
+  if(typeof DB!=='undefined'&&DB&&Array.isArray(DB.aiChats)){
+    for(let i=0;i<DB.aiChats.length;i++){if(DB.aiChats[i]&&DB.aiChats[i].pending)return true;}
+  }
+  return false;
+}
+function syncAIGenerateProtection(){
+  const busy=isAIBusy();
+  const dels=document.querySelectorAll('.ai-message-delete');
+  for(let i=0;i<dels.length;i++){
+    dels[i].classList.toggle('is-disabled',busy);
+    dels[i].setAttribute('title',busy?'AI 回复中，暂不能删除':'删除这条记录');
+  }
+  const clears=document.querySelectorAll('.ai-clear-history');
+  for(let i=0;i<clears.length;i++){
+    clears[i].classList.toggle('is-disabled',busy);
+    const plain=clears[i].getAttribute('data-title')||'清空全部对话记录';
+    clears[i].setAttribute('title',busy?'AI 回复中，暂不能清空':plain);
+  }
+}
 // AI 输入框草稿持久化：关闭抽屉不销毁会话，输入内容实时写 localStorage，重开自动恢复；发送成功/主动清空时同步清除
 const AI_DRAFT_KEY='wb_fastener_ai_draft';
 /* ===== AI 消息 Markdown 渲染：markdown-it + DOMPurify + highlight.js =====
@@ -139,7 +167,8 @@ function aiMessageHTML(message){
   const _mHasText=!!(message.content&&String(message.content).trim());
   const _mContinuable=!isUser&&!message.wfStepOf&&!message.wf&&_mNoLaterUser&&_mHasText;
   const actionButtons=(message.id&&!message.pending)?'<button type="button" class="ai-message-op" title="复制消息内容（Markdown 文本）" aria-label="复制'+roleLabel+'消息" onclick="copyAIMessage(\''+escJsStr(message.id)+'\',this)">'+icon('copy','13')+'</button>'+((!isUser&&!message.wfStepOf&&!message.wf&&_mIsLast)?'<button type="button" class="ai-message-op" title="重新生成该条回复（需确认；仅会话最后一条消息支持）" aria-label="重新生成'+roleLabel+'回复" onclick="regenerateAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+'</button>':'')+((!_mContinuable||message.truncated)?'':'<button type="button" class="ai-message-op" title="从断点继续补齐该回复（仅当其后没有新提问）" aria-label="继续生成'+roleLabel+'回复" onclick="continueAIMessage(\''+escJsStr(message.id)+'\')">'+icon('play','13')+'</button>'):'';
-  const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete" title="删除这条记录" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
+  const _busyNow=isAIBusy();
+  const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete'+(_busyNow?' is-disabled':'')+'" title="'+(_busyNow?'AI 回复中，暂不能删除':'删除这条记录')+'" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   // 2026-09-04：user 消息同样按 Markdown 渲染（renderAIMarkdown 内部先 escHtml 再解析，安全）；assistant 额外渲染「依据」引用
   const content=isUser?renderAIMarkdown(message.content):aiRenderCite(renderAIMarkdown(message.content));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
@@ -235,6 +264,7 @@ function workflowStreamRender(stepId,text){
 /** 逐步执行主循环：每步创建独立消息气泡 → runWorkflowStep（内部 aiWriteLoop，不开启新聊天）→ 收束 → 自动续跑 */
 async function runWorkflowSteps(wfId,chatId){
   _wfRunning=true;_aiActiveWfId=wfId;
+  syncAIGenerateProtection(); // 执行计划运行中同样受生成保护：删除/清空按钮立即禁用
   const box=document.getElementById('aiMessages');
   try{
     let guard=0;
@@ -287,10 +317,11 @@ function openAIAssistant(){
   const hasChat=!!(DB.aiChats&&DB.aiChats.length);
   const quickSection=hasChat?'':'<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section>';
   const body='<section class="ai-chat" aria-label="AI 助手">'+
-    '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
+    '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn ai-clear-history'+(isAIBusy()?' is-disabled':'')+'" data-title="清空全部对话记录" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
     quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
     '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
+  syncAIGenerateProtection(); // 重开抽屉时若正处于生成中，立即将删除/清空按钮置为禁用态
   // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，并实时写 localStorage（关闭/重开均不丢）
   const draftInput=document.getElementById('aiInput');
   if(draftInput){
@@ -506,6 +537,7 @@ function setAISendingUI(on){
     if(button){button.textContent='发送';button.onclick=requestAISend;}
     if(composer)composer.classList.remove('ai-busy');
   }
+  syncAIGenerateProtection(); // 生成开始/结束同步删除/清空按钮禁用态
 }
 /** 点击失败/超时消息下的「重新提交」：用原始问题与快照重新走完整发送流程 */
 async function retryAIMessage(id){
@@ -958,7 +990,7 @@ async function openAISettings(){
       '<div class="ai-set-hd">知识库 <span class="note">提问时自动查阅本地资料</span></div>'+
       '<div class="ai-set-card"><div id="kbZone">'+kbZone+'</div></div>'+
       '<div class="ai-set-hd ai-set-hd-danger">数据</div>'+
-      '<div class="ai-set-danger"><button type="button" class="btn sm danger" onclick="clearAIHistory()">清空对话历史</button><span class="note">删除本机保存的全部 AI 对话记录，不可恢复</span></div>';
+      '<div class="ai-set-danger"><button type="button" class="btn sm danger ai-clear-history'+(isAIBusy()?' is-disabled':'')+'" data-title="清空对话历史" onclick="clearAIHistory()">清空对话历史</button><span class="note">删除本机保存的全部 AI 对话记录，不可恢复</span></div>';
   };
   let body='';
   try{body=await bodyBuilder();}
@@ -987,6 +1019,7 @@ async function openAISettings(){
     closeModal();
   },true);
   aiEndpointHint(); // 初始按已保存端点渲染单行动态提示
+  syncAIGenerateProtection(); // 设置面板打开时若正处于生成中，同步禁用「清空对话历史」按钮
 }
 /** 按 Base URL 推断服务商并更新单行动态提示（替代原来一大段固定说明） */
 function aiEndpointHint(){
@@ -1012,9 +1045,12 @@ function applyProviderPreset(i){
   document.querySelectorAll('.ai-preset-chip').forEach(function(ch){ch.classList.toggle('active',String(ch.getAttribute('data-i'))===String(i));});
   aiEndpointHint();
 }
-function clearAIHistory(){confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];if(typeof AI!=='undefined'&&AI.wfCleanupChat){DB.aiWorkflows=[];saveDB();}else{saveDB();}closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
+function clearAIHistory(){
+  if(isAIBusy()){toast('AI 回复中，暂不能清空','warning');return;} // 生成期间禁止清空，防止对话内容被移除后生成无法继续
+  confirmModal('确认清空本机保存的 AI 对话历史？此操作不可恢复。',()=>{DB.aiChats=[];if(typeof AI!=='undefined'&&AI.wfCleanupChat){DB.aiWorkflows=[];saveDB();}else{saveDB();}closeModal();const qs=document.querySelector('.ai-quick-section');if(qs)qs.style.display='';const box=document.getElementById('aiMessages');if(box)box.innerHTML=aiWelcomeHTML();toast('AI 对话历史已清空','success');},'清空历史');}
 function deleteAIMessage(id){
   const message=(DB.aiChats||[]).find(item=>item.id===id);if(!message)return;
+  if(isAIBusy()){toast('AI 回复中，暂不能删除消息','warning');return;} // 生成期间禁止删除（含删除正在生成/续写中的回复），深层兜底防绕过 UI
   confirmModal('确认删除这条 '+(message.role==='user'?'提问':'回复')+' 记录？此操作不可恢复。',()=>{
     DB.aiChats=DB.aiChats.filter(item=>item.id!==id);
     // 删除用户提问或其携带的执行计划卡时，同步清理关联的 DB.aiWorkflows 计划（避免孤儿占用）

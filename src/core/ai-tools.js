@@ -1347,6 +1347,11 @@ const AIT=(function(){
     },
     update_order_meta(args,ctx){
       const o=DB.orders.find(x=>x.id===args.orderId);
+      if(!o)return {ok:false,error:'订单不存在：'+args.orderId};
+      // 白名单锁定：仅「送货中」状态允许 AI 修改交期/送货地址，其它状态一律只读（与视图层送货信息/收货管理白名单口径一致）
+      if(o.status!=='送货中'&&(args.deliveryDate!==undefined||args.deliveryAddress!==undefined)){
+        return {ok:false,error:'仅「送货中」状态订单可修改交期/送货地址，当前状态（'+o.status+'）只读锁定'};
+      }
       const before=_snap({buyerId:o.buyerId,project:o.project,deliveryDate:(o.delivery&&(o.delivery.date||o.delivery.time))||'',buyerContact:o.buyerContact});
       if(args.buyerId!==undefined)o.buyerId=args.buyerId;
       if(args.project!==undefined)o.project=args.project;
