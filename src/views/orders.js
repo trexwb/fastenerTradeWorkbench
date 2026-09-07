@@ -94,8 +94,9 @@ function viewOrderDetail(){
   const showRcv=RECEIVABLE_STATUSES.includes(o.status);
   const locked=['签约完成','送货中'].includes(o.status);
   const editLocked=false;
-  const allowEdit=o.status==='送货中'; // 白名单：仅「送货中」状态允许编辑送货信息/收货管理，其它状态一律只读
-  const rcvLocked=!allowEdit; // 非「送货中」一律只读锁定
+  const deliveryAllowEdit=o.status==='送货中'; // 送货信息白名单：仅「送货中」可编辑，其它状态一律只读（维持原权限，不随收货管理放开）
+  const receiveAllowEdit=(o.status==='签约完成'||o.status==='送货中'); // 收货管理白名单：签约完成/送货中可编辑，其它状态一律只读
+  const rcvLocked=!receiveAllowEdit; // 非「签约完成/送货中」收货管理一律只读锁定
   const flowHTML='<div class="status-flow">'+
     STATUS_FLOW.map((s,i)=>{
       const cls=i<flowIdx?'done':(i===flowIdx?'cur':'');
@@ -122,7 +123,7 @@ function viewOrderDetail(){
       '</div>';
     }).join(''):'<span class="tag warn">未寻货</span>')+
     (o.status==='寻货中'&&allocSum<it.qty?' <button class="btn sm primary" style="margin-top:4px" onclick="sourceItemFromDetail('+i+')">'+icon('search')+'寻货</button>':'')+
-    (allocSum>0&&allocSum>=it.qty&&!locked?' <button class="btn sm" style="margin-top:4px" onclick="sourceItemFromDetail('+i+')">'+icon('building')+'管理供应商</button>':'');
+    (o.status==='寻货中'&&allocSum>0&&allocSum>=it.qty?' <button class="btn sm" style="margin-top:4px" onclick="sourceItemFromDetail('+i+')">'+icon('building')+'管理供应商</button>':'');
     return '<tr id="detail-row-'+i+'">'+
       '<td style="font-weight:600">'+escHtml(it.sku||it.name||'')+'</td>'+
       '<td style="color:var(--accent);font-weight:600">'+escHtml(it.spec||'')+'</td>'+
@@ -184,13 +185,13 @@ function viewOrderDetail(){
             '<div><label class="muted" style="font-size:12px">送货地址</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.address||'-')+'</div></div>'+
             '<div><label class="muted" style="font-size:12px">快递单号</label><div style="font-weight:500;margin-top:2px">'+escHtml(o.delivery.tracking||'-')+'</div></div>'+
           '</div>'+
-          (allowEdit
+          (deliveryAllowEdit
             ? '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px">'+
               '<button class="btn" onclick="enterEditDelivery(\''+escJsStr(o.id)+'\')">'+icon('edit','14')+' 修改送货信息</button>'+
             '</div>'
             : '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-line);display:flex;gap:8px;align-items:center"><span class="tag gray">🔒 已锁定</span><span class="muted" style="font-size:12px">仅「送货中」状态可编辑送货信息，当前状态不可修改</span></div>')+
         '</div>'+
-        (allowEdit?'<div id="delivery-edit-'+o.id+'" style="display:none">'+
+        (deliveryAllowEdit?'<div id="delivery-edit-'+o.id+'" style="display:none">'+
           '<div class="grid2" style="gap:12px">'+
             '<div><label class="f">送货地址</label><input id="del_addr_'+o.id+'" tabindex="20" style="width:100%" value="'+escAttr(o.delivery.address||'')+'"></div>'+
             '<div><label class="f">快递单号</label><input id="del_track_'+o.id+'" tabindex="21" style="width:100%" value="'+escAttr(o.delivery.tracking||'')+'"></div>'+
@@ -202,7 +203,7 @@ function viewOrderDetail(){
           '</div>'+
         '</div>':'')+
       '</div>':
-      (allowEdit
+      (deliveryAllowEdit
         ? '<div style="margin-bottom:16px;background:var(--pri-l);border:1px solid var(--pri-p);border-radius:8px;padding:16px">'+
           '<div style="display:flex;justify-content:space-between;align-items:center">'+
             '<div><b>'+icon('package','16')+' 送货信息</b><span class="muted" style="margin-left:8px;font-size:13px">验货已完成，请填写快递发货信息</span></div>'+
@@ -225,7 +226,7 @@ function viewOrderDetail(){
       '<h3 style="font-size:15px;font-weight:600;margin:0;display:flex;align-items:center;gap:8px">'+icon('package','16')+'产品明细</h3>'+
       '<div style="display:flex;gap:8px">'+
         (o.status==='寻货中'?'<button class="btn sm primary" onclick="openSupplierQuoteImport()">'+icon('upload')+'批量导入供应商报价</button>':'')+
-        (locked?'':'<button class="btn sm" onclick="openGenerateQuote()">'+icon('tag','14')+'生成报价</button>')+
+        (o.status==='报价中'?'<button class="btn sm" onclick="openGenerateQuote()">'+icon('tag','14')+'生成报价</button>':'')+
       '</div>'+
     '</div>'+
     '<div class="table-wrap"><table><thead><tr><th>SKU</th><th>规格</th><th>属性</th><th>数量(千支)</th><th>意向价</th><th>报价</th><th>供应商（多供应商分配）</th><th>寻源状态</th><th>行利润</th><th>用途</th></tr></thead><tbody>'+
@@ -1058,7 +1059,7 @@ function updateDetailRow(idx){
     '</div>';
   }).join(''):'<span class="tag warn">未寻货</span>')+
   (o.status==='寻货中'&&allocSum<it.qty?' <button class="btn sm primary" style="margin-top:4px" onclick="sourceItemFromDetail('+idx+')">'+icon('search')+'寻货</button>':'')+
-  (allocSum>0&&allocSum>=it.qty&&o.status!=='完成'?' <button class="btn sm" style="margin-top:4px" onclick="sourceItemFromDetail('+idx+')">'+icon('building')+'管理供应商</button>':'');
+  (o.status==='寻货中'&&allocSum>0&&allocSum>=it.qty?' <button class="btn sm" style="margin-top:4px" onclick="sourceItemFromDetail('+idx+')">'+icon('building')+'管理供应商</button>':'');
   cells[6].innerHTML=supplierHTML;
   cells[7].innerHTML=opts.length?'<span class="tag '+srcCls+'">'+srcTxt+' '+fmtN(allocSum)+'/'+fmtN(it.qty)+'</span>':'<span class="tag gray">待寻源</span>';
   cells[8].innerHTML=opts.length?'<span class="'+(profit>=0?'profit-pos':'profit-neg')+'">'+fmt(profit)+'</span>':'-';
@@ -1716,7 +1717,7 @@ function saveGeneratedQuote(){
 /* ---- 采购订单收货管理 ---- */
 /** 进入收货管理阶段（签约完成/送货中/完成）的订单状态集合 */
 const RECEIVABLE_STATUSES=['签约完成','送货中','完成'];
-/** 渲染收货管理栏目：在详情页以表格逐条维护各供应商寄出/收货信息；locked 为「非送货中」只读（白名单：仅送货中状态可编辑） */
+/** 渲染收货管理栏目：在详情页以表格逐条维护各供应商寄出/收货信息；locked 为「非签约完成/送货中」只读（白名单：签约完成或送货中状态可编辑） */
 function receiveManageSection(o,locked){
   const rows=[];
   o.items.forEach(it=>{
@@ -1753,7 +1754,7 @@ function receiveManageSection(o,locked){
   }).join('');
   return '<div style="margin-top:18px"><h3 style="font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+icon('package','16')+'收货管理'+(locked?' <span class="tag gray">🔒 已锁定</span>':'')+'</h3>'+
     '<div class="table-wrap"><table><thead><tr><th>产品</th><th>供应商</th><th>分配(千支)</th><th>是否寄出</th><th>寄出数量</th><th>寄出日期</th><th>是否收到</th><th>收到数量</th><th>收货日期</th></tr></thead><tbody>'+body+'</tbody></table></div>'+
-    '<div class="muted" style="font-size:12px;margin-top:8px">'+(locked?'仅「送货中」状态可编辑收货信息，当前状态只读锁定，如需调整请先将订单流转到「送货中」。':'寄出数量可按实际多填（如考虑包装损耗），数量与日期修改后即时保存。')+'</div>'+
+    '<div class="muted" style="font-size:12px;margin-top:8px">'+(locked?'仅「签约完成」「送货中」状态可编辑收货信息，当前状态只读锁定。':'寄出数量可按实际多填（如考虑包装损耗），数量与日期修改后即时保存。')+'</div>'+
   '</div>';
 }
 /** 收货字段高频修改后的整页渲染防抖（150ms） */
@@ -1762,7 +1763,7 @@ const _receiveRenderDebounced=debounce(render,150);
 function updateReceiveField(optId,field,value){
   const o=DB.orders.find(x=>x.id===curOrderView);
   if(!o)return;
-  if(o.status!=='送货中'){toast('仅「送货中」状态可修改收货信息，当前状态只读','warning');return;} // 白名单锁定：深层兜底，防绕过 UI 直接调用
+  if(o.status!=='签约完成'&&o.status!=='送货中'){toast('仅「签约完成」「送货中」状态可修改收货信息，当前状态只读','warning');return;} // 白名单锁定：深层兜底，防绕过 UI 直接调用
   let opt=null;
   for(const it of o.items){
     opt=(it.options||[]).find(x=>x.id===optId);
