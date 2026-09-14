@@ -22,6 +22,16 @@
 
 > 历史单文件版可在 `紧固件贸易工作台.html` 找回，无需安装任何环境。
 
+## macOS 桌面版：首次打开提示「已损坏」的解决办法
+
+macOS 桌面版为 ad-hoc 签名（未公证），从网络下载的 `.app` 会被系统叠加隔离标记，首次打开被拦截并提示「FastenerTradeWorkbench 已损坏，无法打开」——这是系统安全拦截提示，并非文件损坏。打开「启动台 → 其他 → 终端」执行下面一行命令，然后重新打开应用即可：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/FastenerTradeWorkbench.app"
+```
+
+> 提示 `Operation not permitted` 时，在命令前加 `sudo `（回车后输入开机密码，输入时不显示）；应用不在「应用程序」目录时，将路径替换为实际路径；通过浏览器/聊天工具重新下载安装包后需重新执行一次。
+
 ## 功能模块
 
 ### 1. 概览
