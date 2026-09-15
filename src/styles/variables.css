@@ -72,7 +72,7 @@
   --tooltip-bg:#334155;
   /* ===== AI 助手专属令牌（奶油白：薄荷绿品牌泡 + 浅蓝身份色） ===== */
   --ai-accent:#6a9dd4;--ai-accent-d:#4d82b8;
-  --ai-soft:#f1f6fc;--ai-line:#e4ecf6;--ai-input-line:#d9e4f0;--ai-glow:rgba(106,157,212,.14);
+  --ai-soft:#f1f6fc;--ai-line:#e4ecf6;--ai-glow:rgba(106,157,212,.14);
   --ai-surface:#fffefc;
   --ai-user-bg:#7ec8a0;--ai-user-bg-2:#5da880;
   --ai-user-ink:#0f3d29;

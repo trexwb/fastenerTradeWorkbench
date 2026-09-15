@@ -596,13 +596,15 @@ function daysUntil(date){const d=toDate(date);const t=toDate(today());return Mat
  * @param {string} [type='info'] - 提示类型（success/error/warning/info）
  * @returns {void} 无返回值
  */
-/** 同一会话内 toast 去重：相同 (text,type) 组合只弹一次，刷新页面后重置 */
-const _TOAST_SHOWN = new Set();
+/** 同屏 toast 去重（v1.0.52）：相同 (text,type) 组合在「还在显示中」时不重复弹；
+ *  提示条淡出移除时自动解除去重键，之后同一提示可再次正常触发。
+ *  （v1.0.29 引入的原会话级 Set 永久去重会导致相同提示隐藏后无法再次唤起，
+ *   本改动保留其防刷屏能力——数据异步恢复/多 render 并发时的同屏连闪仍被抑制） */
+const _TOAST_SHOWN = new Map(); // key -> 显示中的提示元素
 function toast(text,type){
   type=type||'info';
   const _k = type+'|'+text;
   if(_TOAST_SHOWN.has(_k)) return;
-  _TOAST_SHOWN.add(_k);
   let w=document.querySelector('.msg-wrap');
   if(!w){w=document.createElement('div');w.className='msg-wrap';document.body.appendChild(w);}
   const icons={success:'✓',error:'✕',warning:'!',info:'i'};
@@ -610,7 +612,8 @@ function toast(text,type){
   d.className='msg '+type;
   d.innerHTML='<i class="mi">'+icons[type]+'</i><span>'+escHtml(text)+'</span>';
   w.appendChild(d);
-  setTimeout(()=>{d.style.transition='opacity .3s';d.style.opacity='0';setTimeout(()=>d.remove(),TOAST_FADE);},TOAST_DURATION);
+  _TOAST_SHOWN.set(_k,d);
+  setTimeout(()=>{d.style.transition='opacity .3s';d.style.opacity='0';setTimeout(()=>{d.remove();_TOAST_SHOWN.delete(_k);},TOAST_FADE);},TOAST_DURATION);
 }
 
 
