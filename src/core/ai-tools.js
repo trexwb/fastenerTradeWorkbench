@@ -962,6 +962,11 @@ const AIT=(function(){
       // P3/R3 修复：状态流转合法性复用共享校验模块（消息与原来完全一致）
       const flow=FTValidators.canFlowOrderStatus(o.status,args.toStatus);
       if(!flow.ok)return {ok:false,error:flow.error};
+      // v1.0.47：待确认→寻货中 开始寻货前置业务校验（产品行+SKU/名称+规格），与视图层 nextStepStartSourcing 双入口一致；意向价 0/空不拦截
+      if(o.status==='待确认'&&args.toStatus==='寻货中'){
+        const sv=FTValidators.validateStartSourcing(o);
+        if(!sv.ok)return {ok:false,error:'开始寻货前需补齐：'+sv.missing.join('；')};
+      }
       return {ok:true,preview:{orderId:o.id,buyer:unitNameSafe(o.buyerId),before:o.status,after:args.toStatus}};
     },
     // ===== 阶段3：查询类校验（轻量，主要在 runQuery 里执行） =====
@@ -1294,6 +1299,12 @@ const AIT=(function(){
     },
     flow_order_status(args,ctx){
       const o=DB.orders.find(x=>x.id===args.orderId);
+      if(!o)return {ok:false,error:'订单不存在：'+args.orderId};
+      // v1.0.47：执行前同样拦截——待确认→寻货中 若明细不全，禁止流转（与 preview 校验一致；意向价 0/空允许）
+      if(o.status==='待确认'&&args.toStatus==='寻货中'){
+        const sv=FTValidators.validateStartSourcing(o);
+        if(!sv.ok)return {ok:false,error:'开始寻货前需补齐：'+sv.missing.join('；')};
+      }
       const before={status:o.status};
       o.status=args.toStatus;
       o.statusChangedAt=now();

@@ -155,11 +155,14 @@ function downloadWorkbook(wb, fname) {
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
+    // v1.0.42 修复（与 data.js exportJSON 同款竞态）：WebView2 下载子系统对 blob URL 的
+    // 内容读取是异步的，click 后立即 revokeObjectURL 会让 Windows 拿到已失效的 URL，
+    // 导出 0 字节/空文件。延迟 3000ms 等读取完成后再释放（与 exportJSON 对齐）。
     setTimeout(function () {
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      try{URL.revokeObjectURL(url);}catch(e){}
       resolve();
-    }, 300);
+    }, 3000);
   });
 }
 

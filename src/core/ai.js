@@ -160,7 +160,34 @@ const AI=(function(){
 :'')+
       snapshot;
   }
-  function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content}));}
+  /** v1.0.40 附件注入：把消息记录里的 attachments（解析全文）拼成上下文块。
+   *  perFileCap/totalCap 控制单附件与总量字符预算：当轮消息用大预算（30000/60000），
+   *  历史轮次用小预算（2000/8000）避免 token 膨胀；块内带起止标记，供压缩触发口径剔除。 */
+  function attachBlock(item,perFileCap,totalCap){
+    try{
+      const atts=(item&&Array.isArray(item.attachments))?item.attachments:[];
+      if(!atts.length)return '';
+      const parts=[];
+      atts.forEach(function(att,i){
+        const t=String((att&&att.text)||'');
+        if(!t.trim())return;
+        const extLabel=(String((att&&att.ext)||'').replace('.','').toUpperCase())||'文件';
+        const label='【附件'+(i+1)+'：'+String((att&&att.name)||('未命名'+(i+1)))+'（'+extLabel+' · '+((att&&att.chars)||t.length)+' 字'+((att&&att.truncated)?' · 原文超长已截断':'')+'）】';
+        const cap=Math.max(200,Number(perFileCap)||30000);
+        let body=t.slice(0,cap);
+        if(t.length>cap)body+='\n…（本附件超出单附件预算已截断，原文共 '+t.length+' 字）';
+        parts.push(label+'\n'+body);
+      });
+      if(!parts.length)return '';
+      let joined=parts.join('\n\n');
+      const tc=Math.max(500,Number(totalCap)||60000);
+      if(joined.length>tc)joined=joined.slice(0,tc)+'\n…（附件总内容超出本轮预算已截断）';
+      return '\n\n——用户随本条消息上传的附件内容（供回答时引用）——\n'+joined+'\n——附件内容结束——';
+    }catch(e){return '';}
+  }
+  /** v1.0.40：剔除消息文本中的附件注入块（上下文压缩的触发口径与摘要输入用） */
+  function _stripAttBlocks(s){return String(s||'').replace(/——用户随本条消息上传的附件内容[\s\S]*?——附件内容结束——/g,'');}
+  function getHistory(){return (DB.aiChats||[]).slice(-HISTORY_CONTEXT_LIMIT).map(item=>({role:item.role,content:item.content+attachBlock(item,2000,8000)}));}
 
   /** 上下文压缩：把历史对话交给模型生成结构化摘要（无工具、纯文本请求）
    *  - 触发：aiWriteLoop 首轮前，messages 总字符超 HISTORY_CONTEXT_CHARS
@@ -170,7 +197,7 @@ const AI=(function(){
   async function compressContext(messages){
     try{
       const text=messages.filter(m=>m.role!=='system').map(function(m){
-        return (m.role==='user'?'用户：':'AI：')+String(m.content||'');
+        return (m.role==='user'?'用户：':'AI：')+_stripAttBlocks(m.content);
       }).join('\n\n').slice(-30000);
       if(!text.trim())return null;
       const res=await chat([
@@ -555,7 +582,8 @@ const AI=(function(){
       // 上下文压缩：首轮前检查总长度，超阈值时先让模型压缩历史为摘要
       // （工具多轮进行中不压缩，避免破坏 assistant(tool_calls)→tool 的协议连续性）
       if(round===0){
-        const totalChars=messages.reduce(function(sum,m){return sum+String(m.content||'').length;},0);
+        // v1.0.40：触发口径剔除附件全文——附件注入量由 attachBlock 预算独立控制，避免大附件必然触发历史压缩
+        const totalChars=messages.reduce(function(sum,m){return sum+_stripAttBlocks(m.content).length;},0);
         if(totalChars>HISTORY_CONTEXT_CHARS){
           const summary=await compressContext(messages);
           if(summary){
@@ -926,7 +954,7 @@ const AI=(function(){
 
   return {
     state,runtimeLabel,providerLabel,QUICK_ACTIONS,ALLOWED_MODELS,PRESET_MODELS,DEFAULT_MODEL,DEFAULT_BASE_URL,
-    probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,persistMessage,
+    probeProxy,startHealthCheck,buildPreview,buildSystemPrompt,getHistory,attachBlock,persistMessage,
     chat,aiWriteLoop,abort,setModel,setProvider,setDeepseekToken,getDeepseekToken,getDeepseekTokenDraft,
     undoLastBatch,
     wfFind,wfCreateDraft,wfConfirm,wfStepStart,wfStepDone,wfAbort,wfCancel:wfAbort,wfCleanupChat,runWorkflowStep

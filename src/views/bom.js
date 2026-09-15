@@ -593,7 +593,7 @@ function submitBOMBatch(){
     if(!r.sku)continue;
     if(existSKUs[r.sku]||batchSKUs[r.sku]){skipped++;dupList.push(r.sku);continue;}
     batchSKUs[r.sku]=true;
-    DB.bom.push({sku:r.sku,name:r.name||r.sku,spec:r.spec||'',type:'',standard:r.standard||'',diameter:r.diameter||'',hardness:r.hardness||'',surface:r.surface||'',material:r.material||''});
+    DB.bom.push({id:uid('B'),sku:r.sku,name:r.name||r.sku,spec:r.spec||'',type:'',standard:r.standard||'',diameter:r.diameter||'',hardness:r.hardness||'',surface:r.surface||'',material:r.material||''});
     succ++;
   }
   saveDB();closeDrawer();render();
@@ -684,35 +684,20 @@ function batchDeleteBOM(){
  * @param {string} bomPrefix - 表单前缀（如'price'/'orderItem'）
  * @returns {void}
  */
+/* ---- BOM关联（供报价/订单页面调用） ---- */
+/** BOM 关联仅按 SKU（v1.0.45）：选中 BOM 时只把 BOM 的 SKU 回填到 SKU 输入框
+ *  （订单产品明细有该输入框；报价表单无此框则无操作）。规格与六属性为独立填写字段：
+ *  不再从 BOM 复制、不再锁定，取消选择（__manual__/清空）时也不再清空任何字段。
+ * @param {string} bomPrefix - 表单前缀（'m'=订单产品明细 / 'ps'=签约报价）
+ * @returns {void}
+ */
 function fillSpecFromBOM(bomPrefix){
   const sel=document.getElementById(bomPrefix+'_bom_ref');
   if(!sel)return;
   const bomId=sel.dataset.val;
-  if(!bomId||bomId==='__manual__'){
-    SPEC_FIELDS.forEach(k=>{
-      const el=document.getElementById(bomPrefix+'_'+k);
-      if(el){el.style.pointerEvents='';el.style.opacity='';el.dataset.val='';const inp=el.querySelector('input');if(inp)inp.value='';}
-    });
-    const specEl=document.getElementById(bomPrefix+'_spec');
-    if(specEl){specEl.value='';specEl.readOnly=false;specEl.style.opacity='';}
-    // 恢复SKU输入框可编辑
-    const skuEl=document.getElementById(bomPrefix+'_sku');
-    if(skuEl){skuEl.readOnly=false;skuEl.style.opacity='';}
-    return;
-  }
+  if(!bomId||bomId==='__manual__')return;
   const bomItem=(DB.bom||[]).find(b=>b.sku===bomId);
   if(!bomItem)return;
-  SPEC_FIELDS.forEach(k=>{
-    const el=document.getElementById(bomPrefix+'_'+k);
-    if(el){
-      const val=bomItem[k]||'';
-      if(val){el.dataset.val=val;el.querySelector('input').value=val;el.style.pointerEvents='none';el.style.opacity='0.6';}
-      else{el.dataset.val='';const inp=el.querySelector('input');if(inp)inp.value='';el.style.pointerEvents='';el.style.opacity='';}
-    }
-  });
-  const specEl=document.getElementById(bomPrefix+'_spec');
-  if(specEl){specEl.value=bomItem.spec||'';specEl.readOnly=true;specEl.style.opacity='0.6';}
-  // SKU自动填入BOM的SKU并锁死
   const skuEl=document.getElementById(bomPrefix+'_sku');
-  if(skuEl){skuEl.value=bomItem.sku||'';skuEl.readOnly=true;skuEl.style.opacity='0.6';}
+  if(skuEl){skuEl.value=bomItem.sku||'';skuEl.readOnly=false;skuEl.style.opacity='';}
 }

@@ -2,7 +2,310 @@
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.38**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.47**。
+
+---
+
+## v1.0.47 · ✅ 已发布
+
+> **状态**: ✅ 已发布（采购订单「开始寻货」允许意向价为 0 或空；版本号 6 处统一 1.0.47，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.46
+> **版本范围**: 「待确认 → 寻货中」前置校验放开意向价限制（SKU/规格校验保留）
+
+---
+
+## 开始寻货允许意向价 0/空
+
+### 一、变更
+
+- 共享校验 `FTValidators.validateStartSourcing`（src/core/validators.js）移除「每行意向价 > 0」要求：意向价为 0、空字符串或未填均不再拦截「开始寻货」；产品行非空、SKU/名称、规格三项校验保留
+- 三处调用方自动生效：视图层 `nextStepStartSourcing`（详情页「开始寻货」按钮）、AI 工具 `flow_order_status` 的 preview 与执行前双拦截（src/core/ai-tools.js）
+- 注释同步：orders.js / ai-tools.js / validators.js 三处 v1.0.46 的「意向价>0」描述更新
+- 下游安全性：结算报价默认值逻辑本就兼容无意向价（「默认取意向价、无意向价时取采购成本」）；行利润展示有 quotePrice>0 守卫；订单明细表单意向价本就可留空（占位符「初期采购意向，可留空」）——无连带破坏
+
+### 二、验证
+
+- 校验器单测 7/7（Node 加载共享模块）：意向价 0/空/未填均放行、正常意向价通过、规格缺失/空产品行/SKU 缺失仍拦截
+- `node --check`（validators.js / ai-tools.js / orders.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.47；dist/sw.js 缓存名随构建换新
+
+---
+
+## v1.0.46 · ✅ 已发布
+
+> **状态**: ✅ 已发布（AI 助手输入区气泡化改版：气泡作板块、输入域无边框融入、操作行重排对齐参考图；版本号 6 处统一 1.0.46，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.45
+> **版本范围**: AI 助手输入区视觉改版（用户参考图驱动），功能与交互逻辑不变
+
+---
+
+## AI 助手输入区气泡化改版
+
+### 一、目标（用户参考图 + 明确指令）
+
+- 输入区使用**气泡作为板块区**：composer 整体成为一块圆角气泡（`--ai-soft` 底、20px 圆角、无边框）
+- **输入框无边框**：`.ai-input-box` 去掉独立药丸底色与圆角，直接融入气泡，看起来是一个整体
+- 聚焦时整块气泡浮现身份色光环（`--ai-glow` inset 1.5px），保持「一个整体」的板块感
+
+### 二、布局重排（对齐参考图：输入域在上，操作行在下）
+
+- 操作行 `.ai-actions-row`：左「**+ 附件**」胶囊按钮（白底 `--card`、`--ai-line` 描边、全圆角、带文字）；右为「当前上下文」灰字信息（移出原顶部位置）+ 圆形发送钮（项目强调色，`--ai-accent`，生成中转中性灰的既有语义保留）
+- 附件芯片条（v1.0.40 功能）保持在气泡内输入域上方；两级提示行保持在气泡内底部
+- 移除旧顶部上下文 chip 与方形附件图标按钮样式；窄屏（≤600px）隐藏「发送前可审阅」附注避免挤压
+
+### 三、保留边界（Redesign 约束）
+
+- 功能零改动：发送/停止切换（setAISendingUI 图标机制）、附件解析管线、草稿持久化、快捷键、busy 提示全部保留
+- 全部颜色走既有主题变量（--ai-soft/--ai-line/--ai-accent/--ai-glow/--card），亮/暗主题自动适配
+- AI 主题视觉体系（--ai-* 变量族）与消息气泡样式不受影响
+
+### 四、涉及文件
+
+- src/views/ai-chat.js：composer 结构重排（附件条/输入域/操作行/提示四层）
+- src/styles/components.css：气泡容器、输入域融入、操作行、附件胶囊样式；移除方形附件按钮旧样式
+
+### 五、验证
+
+- `node --check`（ai-chat.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.46；dist/sw.js 缓存名随构建换新；dist 产物含新结构标记
+- UI 完成度自检（UI-check）：图标一致性（plus/link/send 族同一线条风格）、aria-label 与 focus-visible 保留、亮暗主题全变量适配、窄屏（≤600px）附注隐藏、textarea 可拖拽调高与 busy 态保留
+- 手测建议：打开 AI 助手 → 输入区应为一整块浅色气泡；点击输入 → 气泡浮现光环；选择附件 → 芯片出现在气泡内；生成中 → 发送钮变停止
+
+---
+
+## v1.0.45 · ✅ 已发布
+
+> **状态**: ✅ 已发布（签约报价/采购订单关联 BOM 改为仅按 SKU 关联，规格/属性与 BOM 解耦；版本号 6 处统一 1.0.45，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.44
+> **版本范围**: BOM 引用不再联动/锁定规格与六属性，移除按规格反查自动关联
+
+---
+
+## BOM 关联仅按 SKU
+
+### 一、旧行为的问题
+
+- 选中 BOM 引用后，`fillSpecFromBOM`（src/views/bom.js）会把 BOM 的规格与六属性**复制进表单并锁定**，保存到报价/订单明细中；打开编辑表单时还会用 BOM 当前值**重新覆盖**已存字段
+- 订单产品明细存在「按规格反查 BOM 自动补关联」的旧逻辑（无 bomSku 时按 `b.spec===it.spec` 匹配）——属规格等其他信息关联
+- 关联键之外的信息被绑定：BOM 更新后旧单据字段被静默覆盖，且无法录入与 BOM 不同的规格
+
+### 二、新行为（仅 SKU 关联）
+
+- **关联键唯一**：`bomSku` 字段只存 BOM 的 SKU（两个视图的 BOM 下拉 `opt.id` 本就是 `b.sku`，无存量数据迁移需求）
+- **选中 BOM 仅回填 SKU 输入框**（订单明细；报价表单无 SKU 框则无操作），不再复制/锁定规格与六属性
+- **取消选择不清空**任何已填字段；**打开表单不再执行联动重填**，规格/属性/SKU 以已存值为准
+- 移除按规格反查自动关联；表单文案同步（「仅按 SKU 关联，规格/属性独立填写」）
+- 批量粘贴导入的「SKU 匹配 + 补空缺字段」为数据录入辅助（关联键已是 SKU），保留不变
+
+### 三、涉及文件
+
+- src/views/bom.js：`fillSpecFromBOM` 重写为仅回填 SKU（去掉复制/锁定/清空逻辑）
+- src/views/orders.js：移除按规格反查补关联；去掉表单打开联动重填；文案更新
+- src/views/prices.js：去掉表单打开联动重填；文案更新
+- docs/操作手册.md：BOM 引用说明同步；AGENTS.md 交互约定补充该约定
+
+### 四、验证
+
+- `node --check`（bom.js / orders.js / prices.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.45；dist/sw.js 缓存名随构建换新
+- 手测建议：报价/订单选中 BOM → 仅 SKU 回填、属性可编辑；编辑既有单据 → 字段不被 BOM 当前值覆盖；清空 BOM 引用 → 已填字段保留
+
+---
+
+## v1.0.44 · ✅ 已发布
+
+> **状态**: ✅ 已发布（导入/恢复字段补全审计收口：修复导入后 trash/aiOps/aiChats/aiWorkflows 缺失引发的同族隐患；版本号 6 处统一 1.0.44，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.43
+> **版本范围**: 数据管理全链路字段级审计（导出 JSON / 备份 / 导入 / 绑定合并 × DB 全部 14 个字段）及缺口修复
+
+---
+
+## 审计：备份/导出/导入数据齐全性（字段级）
+
+### 一、审计范围与结论
+
+- DB 字段全集 14 个：orders / units / prices / settlements / bom / specs / invoices（业务 8）+ aiChats / aiWorkflows / aiOps / trash（AI 与审计）+ seq / orderSeq / _savedAt（元数据）
+- **导出 JSON 备份**（exportJSON）：`{...DB}` 减 trash/aiOps——14 项中 12 项齐全（trash/aiOps 按用户既定约束排除），无缺失
+- **桌面版备份**（backup_create ← data.json）：`JSON.stringify(DB)` 整库 14/14 齐全
+- **网页版备份**（_backupSnapshot）：与导出同构 12/14（同上约束）
+- **文件同步**（saveToFile）：`{...DB}` 减 trash/aiOps，12/14；绑定合并（mergeFileData）六表+specs+seq/orderSeq 增量合并，aiChats/aiWorkflows/trash/aiOps 保持本地现状（合并语义，非缺失）
+- **导入/恢复**（importParsedData，含备份恢复 restoreBackup）：发现缺口——自建字段补全清单只有 specs/bom/settlements/invoices/seq/orderSeq 六项，**trash/aiOps/aiChats/aiWorkflows 未补全**
+
+### 二、缺口影响（v1.0.43 及之前）
+
+- 导入文件按约束不含 trash/aiOps → 导入覆盖后 `DB.trash`/`DB.aiOps` 为 undefined → **首次删除任意记录时 softDelete/recordAiOp 访问 DB.trash/aiOps 直接 TypeError 崩溃**
+- 文件缺 aiChats/aiWorkflows 时（旧版本产物/手工精简文件）：删除 AI 消息、工作流清理等边界路径存在同类崩溃隐患
+
+### 三、修复
+
+- importParsedData 弃用自建不完整补全清单，统一收口到 `ensureDBFields()`（与文件同步链路 loadFromFile 的既有模式对齐）：一次补齐 14 个字段，内含 v1.0.43 的 BOM id 兜底、orderSeq 重算、旧状态迁移、AI 会话 pending 清理，全部幂等
+- 无 Rust 端改动；导出/备份内容与约束不变
+
+### 四、验证
+
+- 全链路字段级单测 **47/47 通过**（Node 抽取 store.js 真实源码独立运行）：导入覆盖后 14 字段全部就位、trash/aiOps 空数组语义、BOM 无 id 补发、orderSeq 从单号重算、导出 12 项含/2 项约束排除、导出文件二次导入 round-trip 稳定、桌面 data.json 14/14
+- `node --check`（store.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.44；dist/sw.js 缓存名随构建换新
+
+---
+
+## v1.0.43 · ✅ 已发布
+
+> **状态**: ✅ 已发布（修复导出/备份数据不全——BOM 在导入/恢复/绑定合并时被 ID 清洗整批丢弃；版本号 6 处统一 1.0.43，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.42
+> **版本范围**: BOM 数据在导入/恢复/绑定合并后被清空，导致其后所有导出 JSON 与备份都缺 BOM
+
+---
+
+## 修复：导出与备份数据不全（BOM 丢失）
+
+### 一、根因链
+
+- 批量粘贴导入的 BOM 条目历史上**没有 id 字段**（src/views/bom.js 批量导入 push 处只写 sku/名称/规格等业务字段）
+- 导入/恢复/绑定合并的统一入口 `sanitizeImportedIds`（src/core/store.js）要求所有实体条目必须有合法 id（R-C1 安全修复引入），**无 id 的 BOM 条目被整批丢弃**
+- 于是：导出文件里有 BOM → 恢复/导入/绑定任一环节走一遍后 BOM 消失 → 其后所有导出与备份自然都缺 BOM；`mergeFileData` 的既有数据 id 清理同样会误删无 id 的存量 BOM
+- 用户侧表现即「导出和备份的数据不全，少了 BOM」；数据本身在更早的备份文件中仍存在
+
+### 二、修复（四处，围绕「补发安全 id」而非放松安全约束）
+
+- `sanitizeImportedIds`：仅对 **bom** 条目——id 缺失或非法时补发 `uid('B')`（形如 B1235，符合 SAFE_ID_RE），数据保留；其余实体（units/prices/orders/settlements/invoices）仍按原规则丢弃，R-C1 安全语义不变
+- `ensureDBFields` / `importParsedData`：加载与导入覆盖后对 DB.bom 统一兜底补发缺失 id（存量数据自愈）
+- `mergeFileData`：绑定合并前先补发既有 DB.bom 缺失 id，防既有数据被 id 清理误删
+- `bom.js` 批量导入：源头为每条新 BOM 写入 `id:uid('B')`，不再产生无 id 条目
+
+安全性：补发 id 为应用统一 id 生成器产物（字母开头+纯数字），无注入风险；BOM 与订单/价格按 SKU 关联、AI 工具按 id 查找——补发 id 不会破坏既有引用，反而修复了无 id 条目无法被 AI 工具定位的问题。
+
+### 三、验证
+
+- 修复单测 7/7（Node 独立运行清洗函数）：无 id BOM 保留并补发、补发 id 合法且互异、非法 id 安全化、合法 id 不动、units 无 id 仍丢弃
+- `node --check`（store.js / bom.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.43；dist/sw.js 缓存名随构建换新
+- 恢复指引：若当前库中 BOM 已被此前恢复/导入清空，请用**本版本**恢复一份仍含 BOM 的旧备份——本版本会保留并补全其 id，之后导出/备份不再丢失
+
+---
+
+## v1.0.42 · ✅ 已发布
+
+> **状态**: ✅ 已发布（修复 Windows「导出 JSON 备份」产物空文件；版本号 6 处统一 1.0.42，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.41
+> **版本范围**: 数据管理「导出 JSON 备份」在 Windows 下导出 0 字节/空文件的下载竞态修复（附带修复属性导出同款问题）
+
+---
+
+## 修复：Windows 导出 JSON 备份空文件
+
+### 一、根因
+
+- `exportJSON()`（src/views/data.js）在 `a.click()` 触发下载后**同步调用** `URL.revokeObjectURL(url)`
+- 下载子系统对 blob URL 内容的读取是异步的：Windows（尤其 Tauri WebView2 下载管线）在吊销发生后才开始读取 → 拿到已失效 URL → 写出 0 字节/空文件
+- macOS Chrome 时序上内容读取先行，多数情况侥幸可用——故该问题在 Windows 稳定复现、macOS 难以察觉
+
+### 二、修复
+
+- src/views/data.js（exportJSON）与 src/views/specs.js（属性选项导出，同款写法一并修复）：`revokeObjectURL` 与锚点清理移入 `setTimeout(…,3000)`，待下载读取完成后再释放 blob URL
+- 全项目排查 3 处 blob 下载：exporter.js downloadWorkbook 兜底路径本就带 300ms 延迟释放（无恙，未改动）；本次修复其中 2 处同步吊销点
+- 不涉及 Rust 端与数据逻辑改动；导出内容（不含回收站/操作历史）与文件名规则不变
+
+### 三、验证
+
+- `node --check`（data.js / specs.js）通过；`npm run vite:build` 通过；`npm run version:check` 6 处 1.0.42；dist/sw.js 缓存名随构建换新
+- Windows 端待实测确认：数据管理 → 导出 JSON 备份 → 打开产物应含订单/价格/单位等全部数据（此前的空文件为下载竞态产物，重新导出即可）
+
+---
+
+## v1.0.41 · ✅ 已发布
+
+> **状态**: ✅ 已发布（AI 助手附件能力扩展：桌面版支持在对话正文直接写本地文件路径直读；浏览器版沙箱受限时给出引导提示；版本号 6 处统一 1.0.41，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.40
+> **版本范围**: 用户在消息正文中写明本地文件路径（/绝对路径、C:\ 盘符、~/ 家目录），发送时自动识别并读取文件内容注入上下文——上传与路径两种方式并存
+
+---
+
+## AI 对话附件 · 正文路径直读
+
+### 一、路径识别（src/core/ai-files.js，AF.extractPaths）
+
+- 纯函数从消息文本提取路径候选：Unix 绝对路径（/…）、Windows 盘符（C:\… / C:/…）、家目录（~/…），以空白与全角标点为界（全角括号「（」等已正确断界）
+- 仅保留 AF 白名单扩展名（txt/md/markdown/log/csv/xls/xlsx/docx/pdf）——天然排除 URL（https://…）、比例（3:2）、接口路径（/v1/chat）等假阳性
+- 含空格的路径不支持正则断界，请改用附件按钮/拖拽（提示文案已注明）
+
+### 二、读取与注入（src/views/ai-chat.js）
+
+- 发送流程（requestAISend 异步化）：检测到路径候选 → 挂附件芯片 → **阻塞等待解析完成** → 就绪附件随消息注入（复用 v1.0.40 全套附件链路：attachBlock 预算、IndexedDB 落盘、重试/重生成/续写）
+- 家目录展开：~/ 路径经 Tauri path API homeDir() 展开为绝对路径（core:default 权限已含；API 不可用时按原样交给后端并给出明确错误）
+- 读取复用既有 Rust 命令 kb_read_b64 / kb_read_pdf_text（与知识库同源，无 Rust 端改动）；路径读取失败仅 toast 警告、不阻断发送（错误芯片保留）
+- 去重：同一路径不会重复挂芯片；已在附件条中的路径自动跳过
+- **浏览器版边界**：安全沙箱不允许按路径读取本地文件（file:// 双击版同样受限，属浏览器硬约束非实现缺陷）——检测到路径候选时 toast 引导使用附件按钮上传
+
+### 三、验证
+
+- `node --check`：ai-files.js / ai-chat.js 通过
+- AF.extractPaths 单测 12/12（绝对路径/盘符正反斜杠/家目录/多路径/全角标点断界/URL 与比例假阳性排除/非白名单扩展名排除）；v1.0.40 解析器冒烟回归 7/7 通过
+- `npm run vite:build` 通过；`npm run version:check` 6 处 v1.0.41；dist/sw.js 缓存名随构建换新
+- 桌面端端到端（真实 Tauri 运行时读盘）需 `npm run tauri:dev` 手测确认
+
+### 四、变更文件
+
+- 修改：src/core/ai-files.js（extractPaths + 导出）、src/views/ai-chat.js（requestAISend 异步化 + 路径检测 + aiAttachPathsParse + 提示行）
+- 版本 6 处：package.json / package-lock.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml / src/core/store.js / AGENTS.md
+
+---
+
+## v1.0.40 · ✅ 已发布
+
+> **状态**: ✅ 已发布（AI 助手新增对话附件能力：本地文件直读解析注入上下文，不上传不落临时文件；版本号 6 处统一 1.0.40，构建已通过）
+> **发布日期**: 2026-09-15
+> **上一版本**: v1.0.39
+> **版本范围**: AI 助手支持上传/拖拽本地文件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf），解析为纯文本注入对话上下文
+
+---
+
+## AI 对话附件：上传 → 解析 → 注入上下文
+
+### 一、附件解析器（新增 src/core/ai-files.js，挂载 window.AF）
+
+- 支持格式：文本（.txt/.md/.markdown/.log/.csv）+ Excel（.xls/.xlsx）+ Word（.docx）+ PDF（.pdf）；单文件 20MB 上限（与知识库对齐）
+- **直读约定（零临时文件）**：浏览器（含 file:// 双击）走 `<input type=file>`/拖拽 File 对象 `arrayBuffer()` 直读；Tauri 桌面版走文件选择器/拖拽路径 `kb_read_b64`/`kb_read_pdf_text` 直读——两条通道均无需落盘中转，全程不产生临时文件、无清理动作；需求中「不能直接读取才存临时文件、用完删除」的条件分支在当前实现下无触发场景（如未来出现无法直读的来源，由调用方补「临时文件 → 用完删除」兜底，解析器本身不落盘）
+- 文本解码：UTF-8 优先，乱码字符（U+FFFD）比例超 0.3% 自动 GBK 兜底再解码（国内 Excel/记事本 GBK 导出常见）；UTF-8 BOM 自动剥除
+- Excel：复用 exporter.js 顶层 `loadXLSX()`（vendor/xlsx.min.js 本地优先 + CDN 兜底，不新增依赖），逐工作表转 Tab 分隔 CSV（单表 60000 字符 / 最多 20 个工作表）
+- Word：复用 main.js 打包的 mammoth（`window.__KB_DEPS.mammoth`）提取正文
+- PDF：Tauri 走 Rust `kb_read_pdf_text`；浏览器走 pdfjs-dist 逐页提取文字层（最多 200 页），扫描/图片型无文字层时明确报错
+- 解析上限：单附件入库 200000 字符，超长截断并标记 truncated
+
+### 二、AI 助手交互（src/views/ai-chat.js）
+
+- 输入区新增附件按钮 + 隐藏 `<input type=file multiple>` + 附件芯片条：解析中（虚线）/ 就绪（字符数）/ 失败（红底 + 错误原因）三态，可逐个移除
+- 双通道添加：浏览器点击选择 + 拖拽文件到抽屉窗口；Tauri 点击走 `kb_pick_files` 通用对话框 + `tauri://drag-drop` 全局拖拽事件（抽屉未打开时忽略）
+- 单条消息最多 6 个附件；解析未完成时发送被拦截（toast，符合防重复提交约定）；不支持类型在选择时即被白名单拦截
+- 纯附件（无输入文字）发送时自动使用默认提问「请分析我上传的附件内容。」
+- 发送收口 `aiSendWithAttachments`：就绪附件随消息发出并从附件条移除（失败项保留供移除/重试）
+
+### 三、上下文注入与生命周期（src/core/ai.js + src/views/ai-chat.js）
+
+- 解析全文随用户消息落 IndexedDB（`message.attachments[]`：name/ext/chars/truncated/text），历史可追溯
+- 请求注入（ai.js 新增 `attachBlock` 并导出）：**当轮消息**单附件 30000 字 / 总量 60000 字预算；**历史轮次**单附件 2000 字 / 总量 8000 字小预算回注（后续追问仍可引用附件概要）；超预算自动截断并标注原文长度
+- 上下文压缩口径修正：`aiWriteLoop` 压缩触发与 `compressContext` 摘要输入均剔除附件块（`_stripAttBlocks`）——附件量由注入预算独立控制，避免大附件必然触发历史压缩
+- 失败重试（retry）与重新生成（replaceId）路径均携带原始附件重发；断点续写（continue）历史上下文按 1500/6000 预算回注附件
+- 用户气泡渲染附件芯片（名称 + 类型 + 字符数），气泡正文不膨胀
+
+### 四、样式（src/styles/components.css）
+
+- 新增 `.ai-attach-bar` / `.ai-attach-chip`（parsing/ready/error 三态）/ `.ai-attach-btn` / `.ai-att-list` 与抽屉拖拽高亮 `.drawer-wrap.ai-dragover`，全部使用既有 CSS 变量（--line/--pri/--red/--warn 等）
+
+### 五、验证
+
+- `node --check`：ai-files.js / ai.js / ai-chat.js 全部通过
+- `npm run vite:build` 通过，iife 单 chunk 结构不变；dist 产物含附件 UI/格式白名单/注入标记
+- 解析器冒烟（Node + 真实依赖，7/7 通过）：UTF-8 文本、GBK 中文文本（自动兜底）、md、csv、xlsx（中文表名/数值）、docx（手工构造 OOXML）、手工构造 PDF 全部提取出预期关键词
+- 零依赖运行原则未破坏：无新增 npm 依赖、无新增 CDN；file:// 双击 dist/index.html 可用
+
+### 六、变更文件
+
+- 新增：src/core/ai-files.js
+- 修改：src/App.vue（eval 顺序 +1）、src/core/ai.js（attachBlock/_stripAttBlocks/getHistory/导出）、src/views/ai-chat.js（上传交互/发送链路/气泡渲染/重试重生成续写）、src/styles/components.css（附件样式）
+- 版本 6 处：package.json / package-lock.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml / src/core/store.js / AGENTS.md
 
 ---
 

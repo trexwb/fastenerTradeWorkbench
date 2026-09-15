@@ -370,14 +370,16 @@ const TOAST_DURATION=2600;
 const TOAST_FADE=300;
 /**
  * 获取当前日期字符串（YYYY-MM-DD，本地时区）。
+ * 注意：不能用 toISOString()（UTC），否则凌晨 0-8 点（UTC+8）日期会错位为前一天。
  * @returns {string} 今日日期字符串
  */
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
 /**
  * 获取当前日期时间字符串（YYYY-MM-DD HH:mm，本地时区）。
+ * 注意：不能用 toISOString()（UTC），原因同 today()。
  * @returns {string} 当前日期时间字符串
  */
-const now=()=>new Date().toISOString().slice(0,16).replace('T',' ');
+const now=()=>{const d=new Date();const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());};
 /**
  * 金额格式化：添加 ¥ 前缀并固定两位小数（千分位分隔）。
  * @param {number} n - 待格式化数字

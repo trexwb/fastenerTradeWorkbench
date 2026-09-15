@@ -346,7 +346,11 @@ function exportAllSpecs(){
   let a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='属性选项_'+today()+'.csv';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
+  document.body.appendChild(a);a.click();
+  // v1.0.42 修复（与 data.js exportJSON 同款竞态）：延迟释放 blob URL，避免 Windows 下载空文件
+  setTimeout(function(){
+    document.body.removeChild(a);
+    try{URL.revokeObjectURL(a.href);}catch(e){}
+  },3000);
   toast('已导出全部属性选项','success');
 }

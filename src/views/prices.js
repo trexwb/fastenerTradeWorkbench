@@ -248,8 +248,8 @@ function delPrice(id){
 /** 构建报价新建/编辑表单HTML（BOM引用、供应商、属性、单价） */
 function priceFormHTML(p){
   const specEls=SPEC_FIELDS.map(k=>'<div class="field"><label class="f">'+SPEC_LABELS[k]+'</label><div id="ps_'+k+'" class="combo" data-placeholder="选择或输入'+SPEC_LABELS[k]+'..." data-val="'+escAttr(p?p[k]:'')+'"></div></div>').join('');
-  return '<div class="field" style="margin-bottom:12px"><label class="f">BOM引用 <span style="color:var(--accent);font-size:11px">（选择后自动填入下方属性）</span></label><div id="ps_bom_ref" class="combo" data-placeholder="搜索BOM..." data-val="'+escAttr(p?p.bomSku||'':'')+'"></div></div>'+
-  '<div class="field" style="margin-bottom:12px"><label class="f">规格</label><input id="ps_spec" tabindex="10" value="'+escAttr(p?p.spec:'')+'" placeholder="选择BOM后自动填入"></div>'+
+  return '<div class="field" style="margin-bottom:12px"><label class="f">BOM引用 <span style="color:var(--accent);font-size:11px">（仅按 SKU 关联，规格/属性独立填写）</span></label><div id="ps_bom_ref" class="combo" data-placeholder="搜索BOM..." data-val="'+escAttr(p?p.bomSku||'':'')+'"></div></div>'+
+  '<div class="field" style="margin-bottom:12px"><label class="f">规格</label><input id="ps_spec" tabindex="10" value="'+escAttr(p?p.spec:'')+'" placeholder="如：M8×20 DIN933"></div>'+
   '<div class="grid2" style="margin-bottom:16px">'+
     '<div class="field"><label class="f">供应商 <span style="color:var(--red)">*</span></label><div id="ps_unit" class="combo" data-role="supplier" data-placeholder="搜索供应商..." data-val="'+escAttr(p?p.unitId:'')+'"></div></div>'+
     '<div class="field"><label class="f">联系人</label><select id="ps_contact" tabindex="11"><option value="">（请先选择供应商）</option></select></div>'+
@@ -276,7 +276,7 @@ function bindPriceFormCombos(p){
     if(!el)return;
     combo(el,(DB.specs[k]||[]).map(v=>({id:v,label:v})),opt=>{el.dataset.val=opt.id;},SPEC_LABELS[k]+'(可直接输入)...',true);
   });
-  if(bomRef&&bomRef.dataset.val)fillSpecFromBOM('ps');
+  // v1.0.45：表单打开不再执行 BOM 联动重填（规格/属性以已存值为准）
   const partyEl=document.getElementById('ps_unit');
   if(partyEl){
     combo(partyEl,DB.units.filter(u=>u.roles.includes('供应商')).map(u=>({id:u.id,label:u.name,tag:{text:u.rating,cls:u.rating==='主力'?'ok':(u.rating==='新客'?'warn':'gray')}})),

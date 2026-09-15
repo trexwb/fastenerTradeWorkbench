@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.39';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.47';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -76,6 +76,8 @@ let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats
 function ensureDBFields(){
   if(!DB.specs||Object.keys(DB.specs).length===0)DB.specs=JSON.parse(JSON.stringify(DEFAULT_SPECS));
   if(!DB.bom)DB.bom=[];
+  // v1.0.43（BOM id 兜底）：批量导入的 BOM 历史上无 id，加载时补发，避免导出后再导入/恢复被 id 清洗丢弃
+  if(Array.isArray(DB.bom))DB.bom.forEach(function(b){if(b&&typeof b==='object'&&!b.id)b.id=uid('B');});
   if(!DB.settlements)DB.settlements=[];
   if(!DB.invoices)DB.invoices=[];
   if(!Array.isArray(DB.aiChats))DB.aiChats=[];
@@ -122,6 +124,11 @@ function sanitizeImportedIds(data){
     const kept=[];
     data[key].forEach(function(x){
       if(x&&typeof x==='object'&&typeof x.id==='string'&&SAFE_ID_RE.test(x.id)){kept.push(x);}
+      // v1.0.43 修复（BOM 丢失）：批量粘贴导入的 BOM 条目历史上没有 id 字段，按 id 清洗会把它们整批丢弃，
+      // 导致导入/恢复/绑定合并后 BOM 数据消失、之后所有导出与备份都缺 BOM。
+      // BOM 与订单/价格按 SKU 关联、AI 工具按 id 查找，补发安全新 id 不破坏任何引用——
+      // 故仅对 bom 条目：id 缺失或非法时补发 uid('B')，数据保留；其余实体仍按原规则丢弃。
+      else if(key==='bom'&&x&&typeof x==='object'){x.id=uid('B');kept.push(x);}
       else{dropped[key]=(dropped[key]||0)+1;}
     });
     data[key]=kept;
@@ -480,6 +487,8 @@ function mergeFileData(fileData){
     console.warn('[store] 已忽略'+sanitized.total+'条ID非法的外部记录：'+detail);
     if(typeof toast==='function')toast('已忽略 '+sanitized.total+' 条 ID 非法的记录（'+detail+'），它们无法正常展示已自动剔除','warn');
   }
+  // v1.0.43（BOM id 兜底）：批量导入的 BOM 历史上无 id，合并前先补发，避免下方 id 清理把既有 BOM 误删
+  if(Array.isArray(DB.bom))DB.bom.forEach(function(b){if(b&&typeof b==='object'&&!b.id)b.id=uid('B');});
   // 按 id 去重合并的辅助函数：IndexedDB 现有数据优先，文件中独有的条目追加
   const mergeById=(curArr,fileArr)=>{
     if(!Array.isArray(curArr)||!Array.isArray(fileArr))return;
@@ -1409,18 +1418,10 @@ async function importParsedData(data){
   if(!ok){const e=new Error('已取消');e.code='IMPORT_CANCELLED';throw e;}
   // 覆盖 + 默认字段补齐
   DB=data;
-  if(!DB.specs)DB.specs=JSON.parse(JSON.stringify(DEFAULT_SPECS));
-  if(!DB.bom)DB.bom=[];
-  if(!DB.settlements)DB.settlements=[];
-  if(!DB.invoices)DB.invoices=[];
-  if(!DB.seq)DB.seq=100;
-  if(!DB.orderSeq){
-    const maxSeq=DB.orders.reduce(function(m,o){
-      const mt=o.id.match(/PO\d{8}-(\d+)/);
-      return mt?Math.max(m,parseInt(mt[1],10)):m;
-    },1);
-    DB.orderSeq=maxSeq+1;
-  }
+  // v1.0.44：字段补全统一收口到 ensureDBFields——修复导入覆盖后 trash/aiOps/aiChats/aiWorkflows 缺失，
+  // 导致「导入后首次删除记录（softDelete/recordAiOp 访问 DB.trash/aiOps）TypeError」及 AI 会话/工作流边界崩溃的同族缺口
+  // （v1.0.43 的 BOM id 兜底已内含于 ensureDBFields，此处不再重复；orderSeq 重算/旧状态迁移逻辑一致）
+  ensureDBFields();
   migrateItems();
   await saveDB();
   closeModal();
