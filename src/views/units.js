@@ -100,7 +100,14 @@ function viewUnits(){
     '<div class="spacer"></div>'+
     countTag+
     '<button id="unitBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteUnits()">'+icon('trash')+'批量删除(<span id="unitBatchCount">0</span>)</button>'+
-    '<button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button>'+
+    '<div class="btn-group">'+
+      '<button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleUnitDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<div class="dropdown-menu" id="unitDropdown" style="display:none">'+
+        '<button class="dropdown-item" onclick="closeUnitDropdown();newUnit()">'+icon('plus')+'新建关联单位</button>'+
+        '<button class="dropdown-item" onclick="closeUnitDropdown();openUnitBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
+      '</div>'+
+    '</div>'+
   '</div>'+
   roleTabs+
   statsRow+
@@ -512,4 +519,182 @@ function batchDeleteUnits(){
     const bid=uid('AOB');ids.forEach(function(id){try{softDelete('unit',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+ids.length+' 个','info');
   },'确认删除',null,null,true);
+}
+
+
+/* ---- 批量导入（v1.0.48，参照 BOM 管理粘贴导入模式） ---- */
+let _unitBatchSaving=false;
+
+/** 解析粘贴的单位表格数据（纯函数，可独立测试）
+ *  列序：单位名称(必填) | 角色(采购商/供应商，可写“供应商+采购商”，留空默认供应商) | 联系人 | 联系人电话 | 评级(主力/备选/新客) | 账期
+ *  表头行自动跳过（首行含列名关键词）；行首纯数字序号列自动忽略。
+ * @param {string} raw 粘贴的原始文本
+ * @returns {{rows:Array, errCount:number}} rows：{name,roles,defaultRole,contact,phone,rating,term}
+ */
+function parseUnitBatchRows(raw){
+  const lines=String(raw||'').split(/\r?\n/).filter(function(l){return l.trim();});
+  if(!lines.length)return {rows:[],errCount:0};
+  const headerKeywords=['序号','单位名称','名称','角色','联系人','电话','评级','账期','备注'];
+  const firstCols=lines[0].split('\t');
+  // v1.0.50 补充：表头识别要求「≥2 个关键词命中」（与订单批量导入同款），
+  // 避免单位名称/备注等数据文本偶然命中单个关键词时首行被误判为表头而丢失
+  let isHeader=false;
+  {
+    let hits=0;
+    for(let j=0;j<firstCols.length;j++){
+      const c=(firstCols[j]||'').trim().toLowerCase();
+      for(let k=0;k<headerKeywords.length;k++){
+        if(c.indexOf(headerKeywords[k])!==-1){hits++;break;}
+      }
+    }
+    isHeader=hits>=2;
+  }
+  const dataLines=isHeader?lines.slice(1):lines;
+  const TERM_OPTS=['货到付款','月结15天','月结30天','月结45天','月结60天','季结','面议','其他'];
+  const rows=[];let errCount=0;
+  for(let li=0;li<dataLines.length;li++){
+    const cols=dataLines[li].split('\t');
+    const firstIsNum=/^\d+$/.test((cols[0]||'').trim());
+    const valid=cols.slice(firstIsNum?1:0).map(function(c){return (c||'').trim();});
+    while(valid.length&&valid[valid.length-1]==='')valid.pop();
+    if(!valid.length)continue;
+    const name=valid[0]||'';
+    if(!name){errCount++;continue;}
+    const roleTxt=valid[1]||'';
+    const roles=[];
+    if(roleTxt.indexOf('供')>=0)roles.push('供应商');
+    if(roleTxt.indexOf('采')>=0)roles.push('采购商');
+    let defaultRole=false;
+    if(!roles.length){roles.push('供应商');defaultRole=true;}
+    const contact=valid[2]||'';
+    const phone=valid[3]||'';
+    const ratingTxt=valid[4]||'';
+    const rating=['主力','备选','新客'].find(function(x){return ratingTxt.indexOf(x)>=0;})||'';
+    const termTxt=valid[5]||'';
+    const term=termTxt?(TERM_OPTS.find(function(x){return termTxt.indexOf(x)>=0||x.indexOf(termTxt)>=0;})||''):'';
+    rows.push({name:name,roles:roles,defaultRole:defaultRole,contact:contact,phone:phone,rating:rating,term:term});
+  }
+  return {rows:rows,errCount:errCount};
+}
+
+/** 行状态：与既有单位重名 / 批内重复 → 提交时跳过（seen 会原地登记新增名）
+ * @returns {{skip:boolean,label:string}}
+ */
+function _unitBatchRowStatus(r,existNames,seen){
+  if(existNames.has(r.name))return {skip:true,label:'已存在同名 · 跳过'};
+  if(seen.has(r.name))return {skip:true,label:'批内重复 · 跳过'};
+  seen.add(r.name);
+  return {skip:false,label:'新增'};
+}
+
+/** 打开批量导入关联单位抽屉（粘贴解析流程说明+文本框） */
+function openUnitBatchAdd(){
+  const body='<div class="batch-intro">'+
+    '<div class="batch-steps">'+
+      '<div class="bs-step"><span class="bs-n">①</span><span>从 Excel 复制单位数据</span></div>'+
+      '<div class="bs-step"><span class="bs-n">②</span><span>粘贴到下方文本框</span></div>'+
+      '<div class="bs-step"><span class="bs-n">③</span><span>点击「解析」预览，确认后批量提交</span></div>'+
+    '</div></div>'+
+    '<div class="field"><label class="f">粘贴数据</label>'+
+      '<textarea id="unitBatchPaste" class="paste-area" tabindex="13" placeholder="粘贴 Excel 表格内容到此（Ctrl+V）\n支持列（按顺序）：单位名称(必填) | 角色(采购商/供应商，可写“供应商+采购商”，留空默认供应商) | 联系人 | 联系人电话 | 评级(主力/备选/新客) | 账期(货到付款/月结15天/月结30天/月结45天/月结60天/季结/面议/其他)\n表头行会自动跳过，序号列会自动忽略；与已有单位重名的行提交时自动跳过"></textarea>'+
+    '</div>'+
+    '<div id="unitBatchParseBtn" style="margin-bottom:10px">'+
+      '<button class="btn primary" onclick="parseUnitBatch()">'+icon('search','14')+' 解析数据</button>'+
+    '</div>'+
+    '<div id="unitBatchPreview" class="batch-preview" style="display:none"></div>';
+  openDrawer('批量导入关联单位',body,null,true,true);
+}
+
+/** 解析粘贴的单位数据并渲染预览（重名行在预览中直接标注状态） */
+function parseUnitBatch(){
+  const raw=document.getElementById('unitBatchPaste').value;
+  if(!raw.trim()){toast('请先粘贴数据','warning');return;}
+  const res=parseUnitBatchRows(raw);
+  if(!res.rows.length){toast('解析失败，未识别到有效数据行','error');return;}
+  window._batchUnitData=res.rows;
+  renderUnitBatchPreview(res.rows);
+  document.getElementById('unitBatchParseBtn').style.display='none';
+  if(res.errCount>0)toast('共 '+res.errCount+' 行解析失败已跳过（缺少单位名称）','warning');
+  else toast('解析完成，共 '+res.rows.length+' 条，确认无误后提交','success');
+}
+
+/** 渲染批量导入预览区（含重名/批内重复状态标注与删行） */
+function renderUnitBatchPreview(rows){
+  const preview=document.getElementById('unitBatchPreview');
+  if(!preview)return;
+  const existNames=new Set((DB.units||[]).map(function(u){return u.name;}));
+  const seen=new Set();
+  const statuses=rows.map(function(r){return _unitBatchRowStatus(r,existNames,seen);});
+  const addCount=statuses.filter(function(st){return !st.skip;}).length;
+  const rowsHtml=rows.map(function(r,i){
+    const st=statuses[i];
+    const tds=[r.name,r.roles.join('+')+(r.defaultRole?'（默认）':''),r.contact||'-',r.phone||'-',r.rating||'-',r.term||'-'].map(function(v){
+      return '<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(v)+'</td>';
+    }).join('');
+    return '<tr><td>'+(i+1)+'</td>'+tds+'<td><span class="tag '+(st.skip?'warn':'ok')+'">'+st.label+'</span></td><td><button class="btn sm danger" onclick="removeUnitBatchRow('+i+')">'+icon('x','12')+'</button></td></tr>';
+  }).join('');
+  preview.innerHTML=
+    '<div style="margin-bottom:8px;font-size:13px;color:var(--gray)">解析完成，预览如下（可删除不需要的行；重名行提交时自动跳过）：</div>'+
+    '<div class="table-wrap" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius)">'+
+      '<table><thead><tr><th style="width:36px">#</th><th>单位名称</th><th>角色</th><th>联系人</th><th>电话</th><th>评级</th><th>账期</th><th style="width:110px">状态</th><th style="width:40px"></th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
+    '</div>'+
+    '<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">'+
+      '<button class="btn" onclick="closeDrawer()">取消</button>'+
+      '<button class="btn primary" onclick="submitUnitBatch()">'+icon('check','14')+' 批量提交 ('+addCount+' 条新增)</button>'+
+    '</div>';
+  preview.style.display='block';
+}
+
+/** 从批量导入预览中删除指定行并刷新预览 */
+function removeUnitBatchRow(idx){
+  if(!window._batchUnitData)return;
+  window._batchUnitData.splice(idx,1);
+  if(!window._batchUnitData.length){closeDrawer();toast('已清空所有数据','info');return;}
+  renderUnitBatchPreview(window._batchUnitData);
+}
+
+/** 批量提交解析后的单位数据（与已有单位重名 / 批内重名自动跳过） */
+function submitUnitBatch(){
+  if(_unitBatchSaving){toast('正在保存中，请稍候...','info');return;}
+  _unitBatchSaving=true;
+  setTimeout(function(){_unitBatchSaving=false;},500);
+  const data=window._batchUnitData;
+  if(!data||!data.length){toast('没有可提交的数据','warning');return;}
+  DB.units=DB.units||[];
+  const existNames=new Set(DB.units.map(function(u){return u.name;}));
+  const seen=new Set();
+  let succ=0,skipped=0;
+  data.forEach(function(r){
+    const st=_unitBatchRowStatus(r,existNames,seen);
+    if(st.skip){skipped++;return;}
+    const sides=[];
+    if(r.roles.indexOf('供应商')>=0)sides.push('供应');
+    if(r.roles.indexOf('采购商')>=0)sides.push('采购');
+    const side=sides.indexOf('供应')>=0?'供应商':'采购商';
+    const contact=(r.contact||r.phone)?[{name:r.contact||'联系人',phone:r.phone||'',wechat:'',sides:sides,side:side}]:[];
+    DB.units.push({id:uid('U'),name:r.name,roles:r.roles.slice(),contacts:contact,term:r.term||'',rating:r.rating||'',invoice:{taxId:'',phone:'',bank:'',accountNo:'',address:''}});
+    succ++;
+  });
+  if(!succ){toast('没有可新增的单位（全部重名跳过）','warning');return;}
+  saveDB();closeDrawer();render();
+  toast('✅ 成功导入 '+succ+' 家单位'+(skipped?'，跳过重名 '+skipped+' 行':''),'success');
+}
+
+/** 切换「新建关联单位」下拉菜单显隐（与 BOM/签约报价同款交互） */
+function toggleUnitDropdown(e){
+  e.stopPropagation();
+  const dd=document.getElementById('unitDropdown');
+  if(!dd)return;
+  const isOpen=dd.style.display==='block';
+  dd.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    setTimeout(function(){
+      document.addEventListener('click',closeUnitDropdown,{once:true});
+    },0);
+  }
+}
+/** 关闭「新建关联单位」下拉菜单 */
+function closeUnitDropdown(){
+  const dd=document.getElementById('unitDropdown');
+  if(dd)dd.style.display='none';
 }

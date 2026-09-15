@@ -1,11 +1,25 @@
 # 紧固件贸易工作台
 
-面向紧固件贸易场景的离线工作台，覆盖关联单位管理、规格管理、价格管理、采购订单全流程，支持多供应商分配寻源。
+面向紧固件贸易场景的离线工作台：关联单位、属性管理、BOM 管理、签约报价、采购订单（多供应商分配寻源）、对账结算、发票管理，内置 AI 助手（多端点接入 + 对话附件 + 本地知识库 + Function Calling 提案确认）。
 
-> **当前版本：v1.0.38** — 采购订单送货/收货编辑改为白名单：仅「送货中」状态可修改，其它状态一律只读
+> **当前版本：v1.0.52** — 修复顶部提示条相同内容整个会话只弹一次的问题；签约报价工具栏恢复常驻分体下拉（新增报价/批量导入），与其他列表统一
 
 ## 更新日志
 
+- **v1.0.52** — 修复顶部浮动提示条（toast）相同「类型+文案」整个会话只弹一次、隐藏后无法再次唤起的问题：去重由会话级 Set 改为 Map 同屏去重（显示期间防连闪保留，提示淡出移除后自动解除，可再次触发）
+- **v1.0.51** — 签约报价工具栏统一为分体下拉按钮：「新增报价」主按钮 + 更多操作下拉（含「批量导入」），与其他列表一致（同日曾短暂改为筛选态条件显示，已按反馈恢复常驻下拉）
+- **v1.0.50** — 关联单位 / 采购订单列表页「批量导入」入口收入「新建」按钮右侧的下拉菜单（更多操作），与 BOM 管理 / 签约报价同款分体下拉样式；功能逻辑不变
+- **v1.0.49** — 采购订单新增**批量导入**（老数据迁移）：粘贴 Excel 按行解析，相邻且「采购商+项目+交货日期」相同的行自动合并为一张订单；采购商不存在自动新建；日期多格式归一化；状态一律「待确认」
+- **v1.0.48** — 关联单位新增**批量导入**：粘贴 Excel 按列序「名称(必填)/角色/联系人/电话/评级/账期」解析，角色留空默认供应商，重名行自动跳过
+- **v1.0.47** — 采购订单「开始寻货」前置校验放开意向价限制：意向价 0 / 空 / 未填均不再拦截（共享校验 validateStartSourcing 移除该项，视图按钮与 AI 工具 flow_order_status 双入口同步生效），SKU/名称/规格校验保留
+- **v1.0.46** — AI 助手输入区气泡化改版（对齐参考图）：composer 整体为一块圆角气泡，输入域无边框融入，附件改「+ 附件」胶囊，当前上下文信息移至操作行，聚焦浮现身份色光环；亮/暗主题全变量适配
+- **v1.0.45** — 签约报价与采购订单关联 BOM 改为**仅按 SKU 关联**：选中 BOM 仅回填 SKU，规格与六属性为独立填写字段（不再复制/锁定/被 BOM 覆盖），移除按规格反查自动关联
+- **v1.0.44** — 数据齐全性字段级审计收口：导入/恢复后的字段补全统一走 ensureDBFields（修复导入后 trash/aiOps/aiChats/aiWorkflows 缺失导致首次删除报错的隐患）；全链路字段级单测 47 项
+- **v1.0.43** — 修复导出/备份数据不全（BOM 丢失）：批量导入的 BOM 条目无 id，被导入 ID 清洗整批丢弃 → 改为补发安全 id 保留数据，加载/合并两处兜底自愈，批量导入源头生成 id
+- **v1.0.42** — 修复 Windows「导出 JSON 备份」产物空文件：blob 下载竞态（click 后同步 revokeObjectURL），改为延迟 3 秒释放；属性导出同款一并修复
+- **v1.0.41** — AI 附件扩展：桌面版可在对话正文直接写本地文件路径（/绝对路径、C:\ 盘符、~/ 家目录）自动读取注入上下文；浏览器版受沙箱限制时提示改用附件上传
+- **v1.0.40** — AI 助手新增**对话附件**：上传/拖拽本地文件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf）本地直读解析注入对话上下文，全程不上传、不产生临时文件；解析全文随消息存 IndexedDB，重试/重新生成携带附件
+- **v1.0.39** — 版本号维护（chore）
 - **v1.0.38** — 采购订单「送货信息」与「收货管理」编辑权限由完成态黑名单改为白名单：仅订单状态为「送货中」时可编辑，其它任何状态（完成/签约完成/待确认/寻货中/报价中/异常/取消/未成交）一律只读；渲染层隐藏编辑入口并显示 🔒 锁定提示，saveDeliveryInfo / enterEditDelivery / updateReceiveField 入口与 AI 侧 update_order_meta 同步拦截兜底；版本号 6 处统一升级 1.0.38，SW 缓存名换新 ftwb-v1.0.38
 - **v1.0.37** — 采购订单「完成」态锁定送货信息与收货管理（黑名单式前置实现，v1.0.38 已升级为白名单式；版本号 6 处统一 1.0.37）
 - **v1.0.36** — AI 助手消息操作区新增「复制」（Markdown 原文）与「刷新」（重新生成）按钮，刷新需确认防误点、仅会话最后一条 AI 消息可重新生成（渲染层+逻辑层双层校验）；关闭 AI 助手抽屉不再清空输入框草稿（localStorage 实时持久化），重开自动恢复未发送内容；本地模型回复疑似截断双保险：内容疑似不全自动续写（仅本地端点启用启发式，至多 3 轮）+ AI 消息「继续生成」按钮与"疑似不完整"提示条
@@ -18,9 +32,21 @@
 
 ## 快速开始
 
-用浏览器直接打开 `src/index.html` 即可使用。推荐使用 Chrome / Edge（完整支持 File System Access API 本地文件同步），Safari / Firefox 可使用全部核心功能但自动降级为手动导出导入。
+**直接使用（推荐）**：双击 `dist/index.html` 即可在浏览器中使用——构建产物为零依赖单页应用，不需要任何本地服务器（推荐 Chrome / Edge，完整支持文件同步与知识库目录绑定）。
 
-> 历史单文件版可在 `紧固件贸易工作台.html` 找回，无需安装任何环境。
+**开发调试**：
+
+```bash
+npm install
+npm run dev        # Vite 开发服务器
+npm run vite:build # 构建零依赖产物到 dist/（file:// 双击可运行）
+```
+
+**桌面版打包**（Tauri）：
+
+```bash
+npm run tauri:build   # 生成 .app / .dmg / 安装包
+```
 
 ## macOS 桌面版：首次打开提示「已损坏」的解决办法
 
@@ -45,40 +71,50 @@ xattr -dr com.apple.quarantine "/Applications/FastenerTradeWorkbench.app"
 - 支持名称、联系人、电话、角色、评级、账期检索
 - 评级（S/A/B/C）、账期（天数）、备注
 
-### 3. 规格管理
+### 3. 属性管理
 - 六个维度枚举：类型 / 标准 / 直径 / 硬度 / 表面处理 / 材质
-- 每个维度可新增 / 删除枚举值
-- 全局复用，价格管理和订单选规格时引用
+- 每个维度可新增 / 删除枚举值（被引用的枚举值禁止删除）
+- 全局复用，BOM / 报价 / 订单选规格时引用
 
-### 4. 价格管理
-- 供应商 × 规格 × 单价的报价记录
-- 按供应商、规格维度筛选
-- 记录联系人、报价有效期、备注
+### 4. BOM 管理
+- SKU 物料清单：SKU / 名称 / 规格 / 六维属性
+- 支持单个新建与批量粘贴导入（SKU 去重）
+- 签约报价与采购订单通过 **SKU** 关联 BOM（规格/属性独立填写，不随 BOM 联动）
+
+### 5. 签约报价
+- 供应商 × BOM SKU × 单价的报价记录，含六维属性与有效期
+- 按供应商、SKU 维度筛选；同一供应商+SKU+规格+属性组合防重复
 - 采购订单手动录入供应商时自动写入价格库
 
-### 5. 采购订单管理
+### 6. 采购订单管理
 - **多供应商分配制**：一个产品规格可由多个供应商分别供货
   - 每个供应商分配数量（allocQty），系统自动汇总寻源进度
   - 寻源状态：待寻源 → 部分寻源 → 已确认
   - 分配进度条可视化（绿=满量，黄=部分）
-- **七种状态流转**：待确认 → 寻货中 → 待签约 → 签约完成 → 完成 / 异常 / 取消
-- 寻货弹窗：价格库自动匹配 + 手动录入（自动建供应商和报价）
+- **状态流转**：待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成（「未成交」从报价中分出可恢复；异常/取消为终态）
+- 寻货弹窗：价格库自动匹配 + 手动录入（自动建供应商和报价）；「开始寻货」意向价可为 0 或空
 - 订单详情页 / 编辑页，支持产品明细增删改
+- 送货信息与收货管理仅「送货中」状态可编辑
 
-### 6. 数据管理
-- **IndexedDB**（主力数据库，容量数百 MB+）
+### 7. 对账结算 / 发票管理
+- 收款 / 付款记录，关联订单自动汇总金额
+- 开票 / 收票记录由结算同步生成，可编辑金额 / 日期 / 备注
+
+### 8. 数据管理
+- **IndexedDB**（浏览器版主存储） / **应用数据目录 data.json**（桌面版主存储）
 - **本地 JSON 文件同步**（File System Access API，持久备份）
-- **localStorage**（仅表单草稿缓存，防填写中途丢失）
-- JSON 导出 / 导入备份（不限条数）
-- CSV 导出（订单明细）
-- 二次确认清空
+- **自动备份**：按间隔自动快照，备份文件列表支持恢复 / 删除
+- JSON 导出 / 导入备份（导出不含回收站与操作历史）、CSV 导出（订单明细）
+- 操作历史（AI / 手动操作审计，可单条 / 整批回滚）、回收站（软删除恢复 / 彻底删除）
+- 知识库绑定与索引（见 AI 助手）
 
 ## 数据存储架构
 
 ```
 ┌─────────────────────────────────────────┐
-│           IndexedDB（唯一数据库）          │
-│         wb_fastener_idb / key            │
+│      浏览器版：IndexedDB（唯一数据库）      │
+│           wb_fastener_idb / key          │
+│      桌面版：应用数据目录 data.json         │
 └──────────────┬──────────────────────────┘
                │  双向同步（时间戳对比）
 ┌──────────────┴──────────────────────────┐
@@ -97,16 +133,28 @@ xattr -dr com.apple.quarantine "/Applications/FastenerTradeWorkbench.app"
 
 填写「新建关联单位」或「新建采购订单」时，表单数据自动保存到 localStorage 草稿。如遇退出、关闭、误操作，下次打开时弹窗提示恢复草稿或放弃。
 
-## AI 助手（DeepSeek 接入）
+## AI 助手（多端点接入）
 
-> 需在 AI 设置中填写 DeepSeek API_KEY（桌面版存应用数据目录，浏览器版存 localStorage）。
+> 需在 AI 设置中配置端点与 Key：预设 **DeepSeek** / **OpenAI**，或自定义任意 OpenAI 兼容端点（本地 Ollama 可留空 Key）。桌面版 Key 存应用数据目录，浏览器版存 localStorage。
 
 ### 两种模式
 
 | 模式 | 说明 |
 |------|------|
 | 只读分析 | 基于脱敏业务快照回答经营分析、催款建议、比价、话术生成等问题 |
-| 工具调用（写入） | AI 起草 34 类数据操作（7 类数据 CRUD + 订单寻货/状态流转 + 视图导航/导出），**逐条经确认弹窗后执行** |
+| 工具调用（写入） | AI 起草数据操作（单位/报价/订单 CRUD、寻货、状态流转、视图导航/Excel 导出），**逐条经确认弹窗后执行** |
+
+### 对话附件（v1.0.40 起）
+
+- 输入区「附件」按钮上传，或直接拖拽文件到助手窗口；桌面版还可在正文直接写本地文件路径（`/绝对路径`、`C:\ 盘符`、`~/ 家目录`）
+- 支持 txt / md / markdown / log / csv / xls / xlsx / docx / pdf（单文件 ≤20MB，单条消息最多 6 个）
+- **本地直读**：浏览器走 File 直读、桌面版走路径直读，不上传服务器、不产生临时文件
+- 解析全文随消息存 IndexedDB；GBK 编码自动识别；扫描型 PDF（无文字层）不支持
+
+### 本地知识库（RAG）
+
+- 绑定本地目录（md / txt / pdf / docx），自动增量索引 + BM25 检索
+- AI 按需调用 query_knowledge 检索并在回答中标注【依据：文件名】
 
 ### 能力边界（硬性约束）
 
@@ -123,66 +171,63 @@ xattr -dr com.apple.quarantine "/Applications/FastenerTradeWorkbench.app"
 
 ### 运行形态
 
-- 浏览器版（file://）：前端直连 DeepSeek（CORS 已放行），API_KEY 存 localStorage
+- 浏览器版（file://）：前端直连 AI 端点（DeepSeek CORS 已放行），API_KEY 存 localStorage
 - 桌面版（Tauri）：前端经 Rust 命令代理调用（API_KEY 存应用数据目录，前端不可读明文）
 
 ---
 
 ## 技术特点
 
-- **ES module 模块化架构**，按职责拆分 store / utils / ui / router / views，易于维护扩展
-- **零外部依赖**，纯 HTML / CSS / JS，无需构建工具，直接浏览器打开即用
-- **离线可用**，无需联网
+- **Vue3 + Vite 开发**，打包产物 `dist/` 为零依赖可双击运行的 SPA（iife 单 chunk + 相对路径，file:// 直接可用）
+- **业务层全局挂载**：core/views 业务 JS 以间接 eval 按序执行，保持 window.* 全局语义，零算法改动可迁移
+- **离线可用**：AI 之外的全部功能无需联网；Excel 导出 / PDF 解析 / docx 解析依赖本地 vendor 与打包资源
 - **响应式适配**，PC 侧边栏导航，移动端汉堡菜单 + 底部安全区
-- **数据迁移**，旧版单供应商格式自动迁移为 options 数组格式
+- **数据迁移**，旧版单供应商格式自动迁移为 options 数组格式，导入数据自动补齐缺失字段
 - **Combo 检索下拉**组件，支持搜索 + 手动输入新值
 
 ## 项目结构
 
 ```
 FastenerTradeWorkbench/
-├── src/                    ← 前端真源（浏览器版）
-│   ├── index.html          ← 主 HTML（仅骨架 + <script type="module">入口）
-│   ├── css/
-│   │   ├── variables.css   ← CSS 变量 / 6 套主题定义
-│   │   ├── layout.css      ← 布局（sidebar / topbar / main / content）
-│   │   └── components.css  ← 组件（card / table / modal / drawer / tag / btn / form）
-│   ├── js/
-│   │   ├── store.js        ← DB 数据模型 + IndexedDB 存储层 + 文件同步
-│   │   ├── utils.js        ← escHtml / escAttr / fmt / fmtN / icon / uid 等工具函数
-│   │   ├── ui.js           ← combo / modal / drawer / toast / confirmModal 等 UI 组件
-│   │   ├── router.js       ← view 路由 + AppState + render 入口
-│   │   ├── views/
-│   │   │   ├── dashboard.js ← 概览页
-│   │   │   ├── units.js     ← 关联单位
-│   │   │   ├── specs.js     ← 属性管理
-│   │   │   ├── bom.js       ← BOM 管理
-│   │   │   ├── prices.js    ← 报价管理
-│   │   │   ├── orders.js    ← 采购订单（列表 / 详情 / 编辑）
-│   │   │   └── data.js      ← 数据管理
-│   │   └── app.js           ← 初始化入口（initApp + theme + 全局 handler 挂载）
-│   └── images/              ← 图标 / favicon 等静态资源
-├── docs/                    ← 项目文档
-├── scripts/                 ← 构建 / 版本脚本
-├── src-tauri/               ← Tauri 桌面封装
-├── dist/                    ← copy-frontend 产物
-└── 紧固件贸易工作台.html    ← 历史单文件版 v1.0.46（参考备份）
+├── src/                    ← Vite root（前端真源）
+│   ├── index.html          ← 入口 HTML（Vue 挂载点 + module 入口）
+│   ├── main.js             ← Vue 入口（样式引入 + AI/Markdown 依赖挂载）
+│   ├── App.vue             ← 壳组件（core/views 业务 JS 间接 eval 加载）
+│   ├── styles/             ← variables / layout / components 三层样式
+│   ├── core/               ← 数据 / 工具 / UI / 路由层
+│   │   ├── store.js        ← DB 模型 + IndexedDB / data.json 双通道存储
+│   │   ├── ai.js           ← AI 服务层（多端点、流式、上下文压缩）
+│   │   ├── ai-files.js     ← AI 对话附件解析（txt/md/csv/xls/xlsx/docx/pdf）
+│   │   ├── ai-tools.js     ← AI Function Calling 工具协议（提案/校验/审计）
+│   │   ├── kb.js           ← 本地知识库（索引 / BM25 / 引用）
+│   │   ├── validators.js   ← 共享校验（视图层与 AI 工具层统一引用）
+│   │   ├── exporter.js     ← Excel 导出（xlsx-js-style 本地 vendor）
+│   │   └── ...
+│   ├── views/              ← 各业务模块视图（dashboard / units / specs / bom / prices / orders / settlements / invoices / data / ai-chat 等）
+│   └── public/             ← 静态资源（images / vendor，构建原样复制到 dist/）
+├── docs/                   ← 项目文档（操作手册 / API / 发布日志 / 流程）
+├── scripts/                ← 构建 / 版本 / 打包脚本
+├── src-tauri/              ← Tauri 桌面封装（Rust 命令：AI 代理 / 备份 / KB 读取）
+├── dist/                   ← 构建产物（零依赖，双击 index.html 可运行）
+└── package.json            ← 版本号单一来源（构建注入 __APP_VERSION__）
 ```
 
 ## 文件说明
 
 | 文件 | 说明 |
 |------|------|
-| `src/index.html` | 应用入口，加载 CSS 与 JS 模块 |
-| `src/js/app.js` | 模块入口，导入全部依赖并挂载全局 handler |
-| `src/js/store.js` | 数据层：DB 模型 + IndexedDB + 文件同步 |
-| `src/js/utils.js` | 通用工具函数 |
-| `src/js/ui.js` | 通用 UI 组件（弹窗 / 抽屉 / toast / combo） |
-| `src/js/router.js` | 路由与全局状态 |
-| `src/js/views/*.js` | 各业务模块视图 |
-| `src/css/*.css` | 主题变量 / 布局 / 组件样式 |
-| `src/js/seed.js` | 预置示例数据 |
-| `紧固件贸易工作台.html` | 历史单文件版（v1.0.46 参考备份） |
+| `dist/index.html` | 构建产物入口，双击即可使用（零依赖） |
+| `src/main.js` | Vue 入口，挂载应用与 AI / Markdown 依赖 |
+| `src/core/store.js` | 数据层：DB 模型 + IndexedDB / data.json + 文件同步 + 备份 |
+| `src/core/ai.js` | AI 服务层：多端点直连/代理、流式、上下文、附件注入 |
+| `src/core/ai-files.js` | AI 附件解析器（txt/md/csv/excel/word/pdf → 纯文本） |
+| `src/core/ai-tools.js` | AI Function Calling 工具协议（提案 / 校验 / 执行 / 审计） |
+| `src/core/kb.js` | 本地知识库（目录绑定 / 索引 / BM25 检索） |
+| `src/core/validators.js` | 共享校验模块（视图层与 AI 工具层统一引用） |
+| `src/views/*.js` | 各业务模块视图 |
+| `src/styles/*.css` | 主题变量 / 布局 / 组件样式 |
+| `src-tauri/` | Tauri 桌面封装（Rust 命令 + 打包配置） |
+| `docs/version/` | 发布日志（每次迭代的完整变更记录） |
 | `README.md` | 本说明文档 |
 
 ## 浏览器兼容性
@@ -191,7 +236,8 @@ FastenerTradeWorkbench/
 |------|:---:|:---:|:---:|
 | 基础功能 | ✅ | ✅ | ✅ |
 | IndexedDB 存储 | ✅ | ✅ | ✅ |
-| 本地文件同步 | ✅ | ❌ | ❌ |
+| 本地文件同步 / 知识库目录绑定 | ✅ | ❌ | ❌ |
+| AI 对话附件解析 | ✅ | ✅ | ✅ |
 | 表单草稿缓存 | ✅ | ✅ | ✅ |
 
-> Safari / Firefox 不支持 File System Access API，会自动隐藏文件同步功能，回退到手动导出导入 JSON。
+> Safari / Firefox 不支持 File System Access API，会自动隐藏文件同步与知识库目录绑定功能，回退到手动导出导入 JSON。AI 附件在 Safari / Firefox 走上传通道（拖拽与解析可用）。桌面版专属能力（正文写路径直读、备份到应用数据目录）不受浏览器差异影响。

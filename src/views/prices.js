@@ -59,6 +59,16 @@ function viewPrices(){
   const pg=buildPaging(filtered.length,_pricePage,totalPages,'pricePage',{id:'pricesPaging'});
 
   const specFilt=SPEC_FIELDS.map(k=>'<div id="pf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val=""></div>').join('');
+  // v1.0.52 补充：恢复常驻分体下拉（「新增报价」主按钮 + 更多操作下拉含「批量导入」），
+  // 与 BOM管理 / 关联单位 / 采购订单工具栏统一；v1.0.51 的「筛选态才显示」条件渲染废弃
+  const priceActions='<div class="btn-group">'+
+      '<button class="btn primary" onclick="newPrice()">'+icon('plus')+'新增报价</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<div class="dropdown-menu" id="priceDropdown" style="display:none">'+
+        '<button class="dropdown-item" onclick="closePriceDropdown();newPrice()">'+icon('plus')+'新增报价</button>'+
+        '<button class="dropdown-item" onclick="closePriceDropdown();openPriceBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
+      '</div>'+
+    '</div>';
 
   return '<div class="toolbar">'+
     '<div class="search-box" style="max-width:200px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
@@ -66,14 +76,7 @@ function viewPrices(){
     '<div class="spacer"></div>'+
     '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+
     '<button id="priceBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeletePrices()">'+icon('trash')+'批量删除(<span id="priceBatchCount">0</span>)</button>'+
-    '<div class="btn-group">'+
-      '<button class="btn primary" onclick="newPrice()">'+icon('plus')+'新增报价</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
-      '<div class="dropdown-menu" id="priceDropdown" style="display:none">'+
-        '<button class="dropdown-item" onclick="closePriceDropdown();newPrice()">'+icon('plus')+'新增报价</button>'+
-        '<button class="dropdown-item" onclick="closePriceDropdown();openPriceBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
-      '</div>'+
-    '</div>'+
+    priceActions+
   '</div>'+
   '<div class="filter-bar">'+
     specFilt+

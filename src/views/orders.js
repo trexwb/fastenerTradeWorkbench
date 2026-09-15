@@ -29,7 +29,14 @@ function renderOrderEmptyRow(){
       '<div class="es-desc">'+(hasFilter?'试试调整搜索关键词或清除筛选条件':'点击下方按钮创建第一个采购订单，管理供应商报价和发货进度')+'</div>'+
       '<div class="es-action">'+
         (hasFilter?'<button class="btn ghost" onclick="onOrderSearch(\'\');orderStatusFilter=\'\';onOrderStatusFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
-        '<button class="btn primary" onclick="newOrder()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新建采购订单</button>'+
+    '<div class="btn-group">'+
+      '<button class="btn primary" onclick="newOrder()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新建采购订单</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
+        '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建采购订单</button>'+
+        '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
+      '</div>'+
+    '</div>'+
       '</div>'+
     '</div>'+
   '</td></tr>';
@@ -58,7 +65,14 @@ function viewOrders(){
     '<div class="spacer"></div>'+
     countTag+
     '<button id="orderBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteOrders()">'+icon('trash')+'批量删除(<span id="orderBatchCount">0</span>)</button>'+
-    '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button>'+
+    '<div class="btn-group">'+
+      '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
+        '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建采购订单</button>'+
+        '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
+      '</div>'+
+    '</div>'+
   '</div>'+
   '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th></th></tr></thead><tbody id="orderBody">'+
   (rows||renderOrderEmptyRow())+
@@ -1918,4 +1932,192 @@ function batchDeleteOrders(){
     const bid=uid('AOB');ids.forEach(function(id){try{softDelete('order',id,{operator:'user',batchId:bid});}catch(e){}});
     render();toast('已删除 '+ids.length+' 条','info');
   },'确认删除');
+}
+
+/* ---- 订单批量导入（v1.0.49，参照 BOM/关联单位粘贴导入模式；面向老数据迁移） ----
+ * 一行 = 一个产品行；相邻且「采购商+项目+交货日期」相同的行合并为同一张订单。
+ * 采购商不存在时自动新建「采购商」单位；订单编号走 genOrderNo() 统一序列；状态一律「待确认」。 */
+let _orderImportSaving=false;
+
+/** 日期归一化：YYYY-MM-DD / YYYY/M/D / YYYY.M.D / 含年月日中文 → YYYY-MM-DD；无法解析返回 '' */
+function _normOrderDate(txt){
+  const t=String(txt||'').trim();
+  if(!t)return '';
+  const m=t.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/);
+  if(!m)return '';
+  const mo=+m[2],d=+m[3];
+  if(mo<1||mo>12||d<1||d>31)return '';
+  return m[1]+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+/** 解析粘贴的订单表格数据（纯函数，可独立测试）
+ *  列序：采购商(必填) | 项目 | 交货日期 | SKU/名称(必填) | 规格 | 数量(必填>0) | 意向价 | 报价 | 备注
+ * @returns {{rows:Array, errCount:number}} rows：{buyer,project,date,dateInvalid,sku,spec,qty,salePrice,quotePrice,remark}
+ */
+function parseOrderImportRows(raw){
+  const lines=String(raw||'').split(/\r?\n/).filter(function(l){return l.trim();});
+  if(!lines.length)return {rows:[],errCount:0};
+  const headerKeywords=['序号','采购商','项目','交货','sku','名称','规格','数量','意向','报价','备注'];
+  const firstCols=lines[0].split('\t');
+  // v1.0.50 补充：表头识别要求「≥2 个关键词命中」——单关键词命中可能来自数据本身
+  // （如采购商名称含「采购商」、备注含「交货日期」），会导致首行数据被误判为表头而静默丢失
+  let isHeader=false;
+  {
+    let hits=0;
+    for(let j=0;j<firstCols.length;j++){
+      const c=(firstCols[j]||'').trim().toLowerCase();
+      for(let k=0;k<headerKeywords.length;k++){
+        if(c.indexOf(headerKeywords[k])!==-1){hits++;break;}
+      }
+    }
+    isHeader=hits>=2;
+  }
+  const dataLines=isHeader?lines.slice(1):lines;
+  const rows=[];let errCount=0;
+  for(let li=0;li<dataLines.length;li++){
+    const cols=dataLines[li].split('\t');
+    const firstIsNum=/^\d+$/.test((cols[0]||'').trim());
+    const valid=cols.slice(firstIsNum?1:0).map(function(c){return (c||'').trim();});
+    while(valid.length&&valid[valid.length-1]==='')valid.pop();
+    if(!valid.length)continue;
+    const buyer=valid[0]||'';
+    if(!buyer){errCount++;continue;}
+    const sku=valid[3]||'';
+    const qty=parseFloat((valid[5]||'').replace(/[^0-9.\-]/g,''));
+    if(!sku||!FTValidators.isPositiveNumber(qty)){errCount++;continue;}
+    const dateRaw=valid[2]||'';
+    const date=_normOrderDate(dateRaw);
+    const num=(t)=>{const n=parseFloat(String(t||'').replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n;};
+    rows.push({buyer:buyer,project:valid[1]||'',dateRaw:dateRaw,date:date,dateInvalid:!!dateRaw&&!date,sku:sku,spec:valid[4]||'',qty:qty,salePrice:num(valid[6]),quotePrice:num(valid[7]),remark:valid[8]||''});
+  }
+  return {rows:rows,errCount:errCount};
+}
+
+/** 相邻行分组：采购商+项目+交货日期 相同的连续行合并为一张订单 */
+function groupOrderImportRows(rows){
+  const groups=[];let cur=null;let key='';
+  rows.forEach(function(r){
+    const k=r.buyer+'||'+r.project+'||'+r.date;
+    if(!cur||cur.key!==k){cur={key:k,buyer:r.buyer,project:r.project,date:r.date,items:[]};groups.push(cur);}
+    cur.items.push(r);
+  });
+  return groups;
+}
+
+/** 打开批量导入订单抽屉（粘贴解析流程说明+文本框） */
+function openOrderImport(){
+  const body='<div class="batch-intro">'+
+    '<div class="batch-steps">'+
+      '<div class="bs-step"><span class="bs-n">①</span><span>从 Excel 复制订单数据（一行一个产品）</span></div>'+
+      '<div class="bs-step"><span class="bs-n">②</span><span>粘贴到下方文本框</span></div>'+
+      '<div class="bs-step"><span class="bs-n">③</span><span>点击「解析」预览分组，确认后批量提交</span></div>'+
+    '</div></div>'+
+    '<div class="field"><label class="f">粘贴数据</label>'+
+      '<textarea id="orderImportPaste" class="paste-area" tabindex="30" placeholder="粘贴 Excel 表格内容到此（Ctrl+V）\\n支持列（按顺序）：采购商(必填) | 项目 | 交货日期(YYYY-MM-DD) | SKU/名称(必填) | 规格 | 数量(必填>0) | 意向价 | 报价 | 备注\\n相邻且采购商/项目/交货日期相同的行合并为一张订单；表头行自动跳过，序号列自动忽略；采购商不存在时自动新建（角色=采购商）；导入订单状态均为「待确认」"></textarea>'+
+    '</div>'+
+    '<div id="orderImportParseBtn" style="margin-bottom:10px">'+
+      '<button class="btn primary" onclick="parseOrderImport()">'+icon('search','14')+' 解析数据</button>'+
+    '</div>'+
+    '<div id="orderImportPreview" class="batch-preview" style="display:none"></div>';
+  openDrawer('批量导入订单',body,null,true,true);
+}
+
+/** 解析粘贴的订单数据并渲染预览（按订单分组展示） */
+function parseOrderImport(){
+  const raw=document.getElementById('orderImportPaste').value;
+  if(!raw.trim()){toast('请先粘贴数据','warning');return;}
+  const res=parseOrderImportRows(raw);
+  if(!res.rows.length){toast('解析失败，未识别到有效数据行（需采购商、SKU/名称、数量>0）','error');return;}
+  window._batchOrderImportData=res.rows;
+  renderOrderImportPreview(res.rows);
+  document.getElementById('orderImportParseBtn').style.display='none';
+  if(res.errCount>0)toast('共 '+res.errCount+' 行解析失败已跳过（缺采购商 / SKU / 有效数量）','warning');
+  else toast('解析完成，共 '+res.rows.length+' 行明细，确认无误后提交','success');
+}
+
+/** 渲染订单导入预览（分组号 + 采购商新建标注 + 汇总） */
+function renderOrderImportPreview(rows){
+  const preview=document.getElementById('orderImportPreview');
+  if(!preview)return;
+  const groups=groupOrderImportRows(rows);
+  const unitNames=new Set((DB.units||[]).map(function(u){return u.name;}));
+  let newUnits=0;
+  groups.forEach(function(g){if(!unitNames.has(g.buyer))newUnits++;});
+  const gno=new Map();
+  groups.forEach(function(g,gi){g.items.forEach(function(r){gno.set(r,gi+1);});});
+  const dateWarn=rows.filter(function(r){return r.dateInvalid;}).length;
+  const rowsHtml=rows.map(function(r,i){
+    const tds=['第'+gno.get(r)+'张',r.buyer,(r.date||'<span style="color:var(--amber)">未解析</span>'),r.sku,r.spec||'-',fmtN(r.qty),(r.salePrice>0?fmt(r.salePrice):'-'),(r.quotePrice>0?fmt(r.quotePrice):'-')].map(function(v,vi){
+      const html=(vi===2&&r.dateInvalid)?v:escHtml(v);
+      return '<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+html+'</td>';
+    }).join('');
+    return '<tr><td>'+(i+1)+'</td>'+tds+'</tr>';
+  }).join('');
+  preview.innerHTML=
+    '<div style="margin-bottom:8px;font-size:13px;color:var(--gray)">解析完成：将创建 <b>'+groups.length+'</b> 张订单（'+rows.length+' 行明细）'+(newUnits?'，新建采购商 <b>'+newUnits+'</b> 家':'')+(dateWarn?'，<span style="color:var(--amber)">'+dateWarn+' 行交货日期未解析（将置空，可导入后补填）</span>':'')+'。删除行会重新分组：</div>'+
+    '<div class="table-wrap" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius)">'+
+      '<table><thead><tr><th style="width:52px">订单</th><th>采购商</th><th>交货日期</th><th style="max-width:130px">SKU/名称</th><th>规格</th><th>数量</th><th>意向价</th><th>报价</th><th style="width:40px"></th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
+    '</div>'+
+    '<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">'+
+      '<button class="btn" onclick="closeDrawer()">取消</button>'+
+      '<button class="btn primary" onclick="submitOrderImport()">'+icon('check','14')+' 批量提交 ('+groups.length+' 张订单)</button>'+
+    '</div>';
+  preview.style.display='block';
+}
+
+/** 从导入预览中删除指定行并刷新（分组随之重算） */
+function removeOrderImportRow(idx){
+  if(!window._batchOrderImportData)return;
+  window._batchOrderImportData.splice(idx,1);
+  if(!window._batchOrderImportData.length){closeDrawer();toast('已清空所有数据','info');return;}
+  renderOrderImportPreview(window._batchOrderImportData);
+}
+
+/** 批量提交：采购商缺失自动建「采购商」单位；订单编号走 genOrderNo；状态一律「待确认」 */
+function submitOrderImport(){
+  if(_orderImportSaving){toast('正在保存中，请稍候...','info');return;}
+  _orderImportSaving=true;
+  setTimeout(function(){_orderImportSaving=false;},500);
+  const rows=window._batchOrderImportData;
+  if(!rows||!rows.length){toast('没有可提交的数据','warning');return;}
+  DB.units=DB.units||[];DB.orders=DB.orders||[];
+  const unitByName={};
+  DB.units.forEach(function(u){unitByName[u.name]=u;});
+  let newUnits=0,created=0;
+  const groups=groupOrderImportRows(rows);
+  groups.forEach(function(g){
+    let unit=unitByName[g.buyer];
+    if(!unit){
+      unit={id:uid('U'),name:g.buyer,roles:['采购商'],contacts:[],term:'',rating:'',invoice:{taxId:'',phone:'',bank:'',accountNo:'',address:''}};
+      DB.units.push(unit);unitByName[g.buyer]=unit;newUnits++;
+    }
+    const items=g.items.map(function(r){
+      const bom=(DB.bom||[]).find(function(b){return b.sku===r.sku;});
+      return {id:uid('I'),sku:r.sku,name:r.sku,spec:r.spec||'',type:'',standard:'',diameter:'',hardness:'',surface:'',material:'',qty:r.qty,salePrice:r.salePrice,quotePrice:r.quotePrice,usage:'',remark:r.remark||'',bomSku:bom?r.sku:'',options:[]};
+    });
+    const o={id:genOrderNo(),buyerId:unit.id,buyerContact:'',project:g.project,delivery:g.date,status:'待确认',remark:'',items:items,createdAt:now()};
+    DB.orders.push(o);created++;
+  });
+  if(!created){toast('没有可导入的订单','warning');return;}
+  saveDB();closeDrawer();render();
+  toast('✅ 已导入 '+created+' 张订单'+(newUnits?'，新建采购商 '+newUnits+' 家':''),'success');
+}
+
+/** 切换「新建采购订单」下拉菜单显隐（四列表统一：主按钮 + 更多操作下拉，含单个新增与批量导入） */
+function toggleOrderDropdown(e){
+  e.stopPropagation();
+  const dd=document.getElementById('orderDropdown');
+  if(!dd)return;
+  const isOpen=dd.style.display==='block';
+  dd.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    setTimeout(function(){
+      document.addEventListener('click',closeOrderDropdown,{once:true});
+    },0);
+  }
+}
+/** 关闭「新建采购订单」下拉菜单 */
+function closeOrderDropdown(){
+  const dd=document.getElementById('orderDropdown');
+  if(dd)dd.style.display='none';
 }
