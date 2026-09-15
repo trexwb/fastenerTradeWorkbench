@@ -29,7 +29,7 @@
 > - **版本回退规则**：当用户要求"回退到 X.Y.Z"时，以上三处必须**同时**改写成用户指定的值，且本回合内不得再以"我刚才做了修改所以要 +1"为由推进。
 > - **不推进版本号时仍必须写更新日志**：每次修复追加到 `docs/version/RELEASE-v{主版本}.md` 对应分节，标注日期并明确"不推进版本号"。发布日志只增不改。
 
-当前基准版本：**v1.0.39**。
+当前基准版本：**v1.0.47**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -168,6 +168,7 @@ FastenerTradeWorkbench/
 - **批量操作**：抽屉方式弹出，先解析预览、确认后再提交（不静默写入）
 - **批量删除**：复选框 + 全选 + 工具栏按钮，confirmModal 确认后执行
 - **寻货入口**：仅在详情页 `viewOrderDetail()` 的「寻源状态」列，不足量时才显示按钮；不在列表页显示
+- **BOM 关联仅按 SKU（v1.0.45）**：签约报价与采购订单的 BOM 引用只存 SKU（bomSku 字段），选中 BOM 仅回填 SKU 输入框；规格与六属性为独立填写字段，不从 BOM 复制/锁定/清空，禁止按规格等其他信息反查关联
 - **寻货与编辑分离**：详情页寻货直接弹窗，不进编辑模式；编辑模式中寻货在 `viewOrderEdit()` 内完成
 - **产品变更自动保存**：编辑模式下产品明细的添加/修改/删除/寻货分配均自动写 DB，无需手动「保存订单」
 - **「保存订单」按钮**：仅用于保存表单字段（采购方、对接人、项目、交期等元信息）
@@ -197,6 +198,8 @@ sourceItemFromDetail → sourceItem 弹窗 → addMatchSupplier/manualSupplier/r
 - **脱敏快照**：所有 AI 请求的上下文以脱敏快照（snapshot）注入 system prompt，金额、利润、余额、排名一律以本地快照为准，模型不得替代确定性计算，禁止编造单位/订单 ID。
 - **Function Calling（`src/core/ai-tools.js`，AIT 对象）**：写入类工具（create_unit/update_unit/create_price/update_price/flow_order_status 等）只生成**提案**，前端要求用户逐条确认后才执行，写入记 `aiOps` 可回滚；查询类工具（query_*）读取脱敏数据；功能层工具（navigate_view/export_order_excel/open_settlement_drawer/open_invoice_drawer/open_unit_form/open_order_form/open_price_form/open_bom_form）触发 UI 动作。
 - **帮助知识库（`src/core/help-knowledge.js`）**：`HELP_KNOWLEDGE` 数组覆盖各模块操作说明，供 `query_help` 工具检索。
+- **对话附件（v1.0.40，`src/core/ai-files.js` → `window.AF` + `views/ai-chat.js`）**：AI 助手支持添加/拖拽本地文件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf）解析为纯文本注入对话上下文；浏览器走 File 直读、Tauri 走 kb_read_b64/kb_read_pdf_text 直读，**全程不上传、不产生临时文件**；解析全文随消息存 IndexedDB，注入预算当轮 30000/60000 字符、历史 2000/8000 字符（ai.js `attachBlock`）；Excel 复用 exporter 的 loadXLSX，docx/pdf 复用 main.js 打包的 mammoth/pdfjs-dist。
+- **正文路径直读（v1.0.41，仅桌面版）**：用户在消息正文写本地文件路径（/绝对路径、C:\ 盘符、~/ 家目录），发送时 `AF.extractPaths` 识别候选（白名单扩展名过滤防假阳性）→ 挂附件芯片阻塞解析 → 复用附件链路注入上下文；浏览器版沙箱不允许按路径读文件，仅 toast 引导上传。
 - AI 代理未运行/无 Key 时必须优雅降级，不得影响 `file://` 核心功能。
 
 ### 11. 用户偏好

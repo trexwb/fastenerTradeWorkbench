@@ -34,6 +34,16 @@
   --focus-ring:var(--pri);--focus-ring-soft:var(--pri-p);
   /* 骨架屏 shimmer 占位色 */
   --skeleton-from:var(--bg-soft);--skeleton-to:var(--line);
+  /* ===== AI 助手专属令牌（default：铜品牌泡 + 靛蓝身份色） ===== */
+  --ai-accent:#3b5998;--ai-accent-d:#2d4578;
+  --ai-soft:#eff2f8;--ai-line:#e2e5ee;--ai-input-line:#dfe3ec;--ai-glow:rgba(59,89,152,.12);
+  --ai-surface:#fefdfb;
+  --ai-user-bg:#b45309;--ai-user-bg-2:#92400e;
+  --ai-user-ink:#fff;
+  --ai-user-soft:rgba(255,255,255,.16);--ai-user-soft-2:rgba(255,255,255,.08);--ai-user-line:rgba(255,255,255,.30);
+  --ai-brand-ink:#fff;
+  --ai-bubble-shadow:0 1px 2px rgba(28,27,26,.05);
+  --radius-bubble:14px;
 }
 /* ===== THEME: 奶油白（薄荷绿·浅蓝） ===== */
 [data-theme="cream"]{
@@ -60,6 +70,16 @@
   --green-line:#d4f0e2;--amber-line:#f8e3c8;--red-line:#f8dcd8;
   --purple:#8b5cf6;--purple-l:#f3f0ff;--purple-line:#ddd6fe;
   --tooltip-bg:#334155;
+  /* ===== AI 助手专属令牌（奶油白：薄荷绿品牌泡 + 浅蓝身份色） ===== */
+  --ai-accent:#6a9dd4;--ai-accent-d:#4d82b8;
+  --ai-soft:#f1f6fc;--ai-line:#e4ecf6;--ai-input-line:#d9e4f0;--ai-glow:rgba(106,157,212,.14);
+  --ai-surface:#fffefc;
+  --ai-user-bg:#7ec8a0;--ai-user-bg-2:#5da880;
+  --ai-user-ink:#0f3d29;
+  --ai-user-soft:rgba(15,61,41,.10);--ai-user-soft-2:rgba(15,61,41,.06);--ai-user-line:rgba(15,61,41,.20);
+  --ai-brand-ink:#fff;
+  --ai-bubble-shadow:0 2px 6px rgba(60,50,30,.06);
+  --radius-bubble:18px;
 }
 /* ===== THEME: 暗色（夜间模式·护眼） ===== */
 /* 第三套主题：深炭灰背景 + 浅色文字，长时间夜间使用护眼。
@@ -89,5 +109,14 @@
   --green-line:#2d3b0f;--amber-line:#3b2806;--red-line:#3b1414;
   --purple:#a78bfa;--purple-l:#1e1b2e;--purple-line:#3b2f5e;
   --tooltip-bg:#0f0f10;
-  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-cmd:1600;--z-toast:2000;
+  /* ===== AI 助手专属令牌（暗色：亮琥珀用户泡 → 深字保证对比度） ===== */
+  --ai-accent:#60a5fa;--ai-accent-d:#3b82f6;
+  --ai-soft:#1e293b;--ai-line:#2b3648;--ai-input-line:#46577a;--ai-glow:rgba(96,165,250,.22);
+  --ai-surface:#1f1f23;
+  --ai-user-bg:#f59e0b;--ai-user-bg-2:#d97706;
+  --ai-user-ink:#2a1a02;
+  --ai-user-soft:rgba(42,26,2,.10);--ai-user-soft-2:rgba(42,26,2,.06);--ai-user-line:rgba(42,26,2,.22);
+  --ai-brand-ink:#0b1220;
+  --ai-bubble-shadow:0 1px 3px rgba(0,0,0,.35);
+  --radius-bubble:14px;
 }

@@ -269,22 +269,13 @@ function nextStepButton(o){
   }
   return '';
 }
-/** 「待确认 → 寻货中」：校验产品列表非空+每行有意向价；不满足 toast 提醒不跳转 */
+/** 「待确认 → 寻货中」：校验产品列表非空+每行 SKU/规格；不满足 toast 提醒不跳转（v1.0.47 起意向价可为 0/空） */
 function nextStepStartSourcing(id){
   const o=DB.orders.find(x=>x.id===id);if(!o)return;
-  const items=o.items||[];
-  const missing=[];
-  if(!items.length){
-    missing.push('订单无任何产品行');
-  }else{
-    items.forEach((it,i)=>{
-      if(!(it.sku||it.name))missing.push('第 '+(i+1)+' 行产品名称/SKU 未填');
-      if(!(it.spec))missing.push('第 '+(i+1)+' 行规格未填');
-      if(!(it.salePrice>0))missing.push('第 '+(i+1)+' 行未设意向价');
-    });
-  }
-  if(missing.length){
-    toast('开始寻货前需补齐：'+missing.join('；'),'warning');
+  // v1.0.47：开始寻货前置校验复用共享模块（产品行非空+SKU/名称+规格），与 AI 工具 flow_order_status 双入口一致；意向价不再拦截
+  const v=window.FTValidators.validateStartSourcing(o);
+  if(!v.ok){
+    toast('开始寻货前需补齐：'+v.missing.join('；'),'warning');
     return;
   }
   changeOrderStatus(id,'寻货中');
@@ -767,16 +758,12 @@ function delItem(i){
 /** 打开产品新增/编辑抽屉面板（含 BOM 引用下拉） */
 function openItemModal(idx){
   const it=idx>=0?_fItems[idx]:{type:'',standard:'',diameter:'',hardness:'',surface:'',material:'',spec:'',qty:'',salePrice:'',quotePrice:'',usage:'',remark:''};
-  // 旧数据恢复：若无bomSku但spec能匹配到已录入BOM，自动补上关联
-  if(idx>=0&&!it.bomSku&&it.spec){
-    const match=DB.bom.find(b=>b.spec===it.spec);
-    if(match){it.bomSku=match.sku;_fItems[idx].bomSku=match.sku;}
-  }
+  // v1.0.45：BOM 关联仅按 SKU——移除「按规格反查 BOM 自动补关联」的旧逻辑（属与其他信息关联）
   const body=document.createElement('div');
-  body.innerHTML='<div class="field" style="margin-bottom:10px"><label class="f">BOM引用 <span style="color:var(--accent);font-size:11px">（选择后自动填入SKU与下方属性）</span></label><div id="m_bom_ref" class="combo" data-placeholder="搜索BOM..." data-val="'+escAttr(it.bomSku||'')+'"></div></div>'+
+  body.innerHTML='<div class="field" style="margin-bottom:10px"><label class="f">BOM引用 <span style="color:var(--accent);font-size:11px">（仅按 SKU 关联，规格/属性独立填写）</span></label><div id="m_bom_ref" class="combo" data-placeholder="搜索BOM..." data-val="'+escAttr(it.bomSku||'')+'"></div></div>'+
   '<div class="grid2" style="gap:12px;margin-bottom:10px">'+
     '<div class="field" style="margin:0"><label class="f">SKU</label><input id="m_sku" tabindex="10" value="'+escAttr(it.sku||'')+'" placeholder="选择BOM后自动填入"></div>'+
-    '<div class="field" style="margin:0"><label class="f">规格</label><input id="m_spec" tabindex="11" value="'+escAttr(it.spec||'')+'" placeholder="选择BOM后自动填入"></div>'+
+    '<div class="field" style="margin:0"><label class="f">规格</label><input id="m_spec" tabindex="11" value="'+escAttr(it.spec||'')+'" placeholder="如：M8×20 DIN933"></div>'+
   '</div>'+
   '<div class="grid2" style="gap:12px">'+
     '<div class="field" style="margin:0"><label class="f">类型</label><div id="m_type" class="combo" data-placeholder="选择类型..." data-val="'+escAttr(it.type||'')+'"></div></div>'+
@@ -812,7 +799,7 @@ function openItemModal(idx){
       if(!el)return;
       combo(el,(DB.specs[k]||[]).map(v=>({id:v,label:v})),opt=>{el.dataset.val=opt.id;},SPEC_LABELS[k]+'(可直接输入)...',true);
     });
-    if(bomRef && bomRef.dataset.val)fillSpecFromBOM('m');
+    // v1.0.45：表单打开不再执行 BOM 联动重填（规格/属性/SKU 均以已存值为准，避免被 BOM 当前值覆盖）
   },50);
 }
 /** 保存产品弹窗数据到临时产品列表 */

@@ -26,6 +26,7 @@ const SCRIPTS = [
   'core/updater.js',
   'core/exporter.js',
   'core/ai.js',
+  'core/ai-files.js', // v1.0.40：AI 对话附件解析（txt/md/csv/xls/xlsx/docx/pdf → 纯文本，本地直读）
   'core/help-knowledge.js',
   'core/ai-tools.js',
   'core/kb.js',

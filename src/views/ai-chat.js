@@ -156,7 +156,7 @@ function aiStatusLabel(){
   if(hasKey)return '<span class="ai-status online">● '+(AI.state.runtime==='tauri'?'桌面就绪':'直连就绪')+'</span>';
   return '<span class="ai-status warning">● 未设置 API_KEY</span>';
 }
-function aiMessageHTML(message){
+function aiMessageHTML(message,enter){
   const isUser=message.role==='user';const roleLabel=isUser?'我':'AI 助手';
   // 2026-09-04：消息操作区新增「复制」「刷新（仅 AI 回复）」按钮，均位于删除按钮之前（hover 展示，见 .ai-message-op）。
   // 刷新仅允许作用于「会话最后一条」普通 AI 回复（避免中间消息重生成导致后续上下文错乱）：以 DB.aiChats 顺序判定，末尾为其它消息时不展示刷新。
@@ -170,7 +170,12 @@ function aiMessageHTML(message){
   const _busyNow=isAIBusy();
   const deleteButton=(message.id&&!message.pending)?'<button type="button" class="ai-message-delete'+(_busyNow?' is-disabled':'')+'" title="'+(_busyNow?'AI 回复中，暂不能删除':'删除这条记录')+'" aria-label="删除'+roleLabel+'记录" onclick="deleteAIMessage(\''+escJsStr(message.id)+'\')">'+icon('trash','13')+'</button>':'';
   // 2026-09-04：user 消息同样按 Markdown 渲染（renderAIMarkdown 内部先 escHtml 再解析，安全）；assistant 额外渲染「依据」引用
-  const content=isUser?renderAIMarkdown(message.content):aiRenderCite(renderAIMarkdown(message.content));
+  // 附件芯片（v1.0.40）：用户消息携带附件时在气泡内展示名称与字符数（不渲染全文）
+  const _attChips=(isUser&&Array.isArray(message.attachments)&&message.attachments.length)?'<div class="ai-att-list">'+message.attachments.map(function(a){
+    const _meta=((a&&a.chars)||0)+' 字'+((a&&a.truncated)?' · 截断':'');
+    return '<span class="ai-attach-chip ready" title="'+escAttr(String((a&&a.name)||'')+'（'+String((a&&a.ext)||'').replace('.','').toUpperCase()+' · '+_meta+'）')+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(String((a&&a.name)||''))+'</span><span class="mt">'+escHtml(_meta)+'</span></span>';
+  }).join('')+'</div>':'';
+  const content=_attChips+(isUser?renderAIMarkdown(message.content):aiRenderCite(renderAIMarkdown(message.content)));
   // 失败/超时消息附「重新提交」按钮（点击用原始问题+快照重发，见 retryAIMessage）
   const retryBar=(!isUser&&message.id&&message.retry)?'<div class="ai-undo-bar"><button type="button" class="ai-undo-btn" onclick="retryAIMessage(\''+escJsStr(message.id)+'\')">'+icon('refresh','13')+' 重新提交此问题</button><span class="ai-undo-hint">'+escHtml(message.retryError||'')+'</span></div>':'';
   // 2026-09-04：疑似截断轻提示（含手动继续入口）。消息对象带 truncated 标记（自动续写后仍不完整 / 本地模型内容疑似中断）且其后无新提问时展示；重开抽屉/刷新渲染同样可见
@@ -307,19 +312,28 @@ async function runWorkflowSteps(wfId,chatId){
     setAISendingUI(false);
   }
 }
-function aiWelcomeHTML(){return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong><p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p><p style="font-size:13px;color:var(--gray)">当前运行：'+escHtml(AI.runtimeLabel())+'</p></article>';}
+function aiWelcomeHTML(){
+  // 冷启动引导一体化：无历史时把「常用提问」chips 内嵌进空态卡（沿用 .ai-action 与 runAIQuickAction，不改函数名）
+  const quick=(typeof AI!=='undefined'&&AI.QUICK_ACTIONS)?AI.QUICK_ACTIONS.map(action=>'<button type="button" class="ai-action" onclick="runAIQuickAction(\''+action.id+'\')">'+escHtml(action.label)+'</button>').join(''):'';
+  return '<article class="ai-empty"><span class="ai-empty-icon">'+icon('zap','22')+'</span><strong>开始一段新对话</strong>'+
+    '<p>我会依据你确认过的脱敏业务快照，帮助分析订单、利润和应收应付。</p>'+
+    '<p class="ai-empty-runtime">当前运行：'+escHtml(AI.runtimeLabel())+'</p>'+
+    (quick?'<div class="ai-empty-quick" role="group" aria-label="常用提问">'+quick+'</div>':'')+
+  '</article>';
+}
 function aiScrollBottom(force){const box=document.getElementById('aiMessages');if(!box)return;const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<200;if(force||nearBottom)box.scrollTop=box.scrollHeight;}
 function openAIAssistant(){
   if(document.querySelector('.drawer-wrap'))closeDrawer();
-  const actions=AI.QUICK_ACTIONS.map(action=>'<button type="button" class="ai-action" onclick="runAIQuickAction(\''+action.id+'\')">'+escHtml(action.label)+'</button>').join('');
-  const history=(DB.aiChats||[]).map(aiMessageHTML).join('')||aiWelcomeHTML();
-  // 已有对话历史时不再显示「常用提问」快捷区（冷启动引导只在无对话时出现）
-  const hasChat=!!(DB.aiChats&&DB.aiChats.length);
-  const quickSection=hasChat?'':'<section class="ai-quick-section"><div class="ai-section-title">常用提问</div><div class="ai-actions">'+actions+'</div></section>';
+  // 历史按时间顺序渲染（不传 enter，避免重开抽屉整屏闪动）；「常用提问」chips 已内嵌到空态卡（见 aiWelcomeHTML）
+  const history=(DB.aiChats||[]).map(item=>aiMessageHTML(item)).join('')||aiWelcomeHTML();
   const body='<section class="ai-chat" aria-label="AI 助手">'+
-    '<header class="ai-chat-head"><div><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div><div class="ai-head-actions"><button type="button" class="ai-head-btn ai-clear-history'+(isAIBusy()?' is-disabled':'')+'" data-title="清空全部对话记录" onclick="clearAIHistory()" title="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()">'+icon('palette','15')+' 设置</button></div></header>'+
-    quickSection+'<div id="aiMessages" class="ai-messages">'+history+'</div>'+
-    '<div class="ai-composer"><div class="ai-context">'+icon('link','13')+' 当前上下文：'+escHtml(aiContextName())+' <span>发送前可审阅</span></div><div class="ai-input-row"><textarea id="aiInput" rows="3" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea><button type="button" id="aiSendBtn" class="btn primary" onclick="requestAISend()">发送</button></div><div class="ai-input-hint">Enter 发送 · Ctrl / Shift + Enter 换行</div></div></section>';
+    '<header class="ai-chat-head">'+
+      '<span class="ai-brand" aria-hidden="true">'+icon('zap','15')+'</span>'+
+      '<div class="ai-head-main"><span class="ai-eyebrow">AI · '+escHtml(AI.providerLabel?AI.providerLabel():'直连')+'</span><div id="aiStatus">'+aiStatusLabel()+'</div></div>'+
+      '<div class="ai-head-actions"><button type="button" class="ai-head-btn ai-clear-history'+(isAIBusy()?' is-disabled':'')+'" data-title="清空全部对话记录" onclick="clearAIHistory()" title="清空全部对话记录" aria-label="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()" title="AI 设置" aria-label="打开 AI 设置">'+icon('palette','15')+' 设置</button></div>'+
+    '</header>'+
+    '<div id="aiMessages" class="ai-messages" role="log" aria-label="对话记录">'+history+'</div>'+
+    '<div class="ai-composer"><div id="aiAttachBar" class="ai-attach-bar"></div><div class="ai-input-box"><textarea id="aiInput" rows="1" aria-label="向 AI 助手提问" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea></div><div class="ai-actions-row"><button type="button" id="aiAttachBtn" class="ai-attach-pill" title="添加附件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf · 本地直读解析，不上传、不产生临时文件）" aria-label="添加附件" onclick="aiAttachPick()">'+icon('plus','14')+'<span>附件</span></button><div class="ai-actions-right"><span class="ai-context" title="发送前可审阅：AI 基于当前页面脱敏快照回答">'+icon('link','12')+'当前上下文：'+escHtml(aiContextName())+'</span><button type="button" id="aiSendBtn" class="ai-send-btn" aria-label="发送消息" title="发送消息" onclick="requestAISend()">'+icon('chevronUp','18')+'</button></div></div><div class="ai-input-hint"><span class="ai-hint-main">Enter 发送 · Ctrl / Shift + Enter 换行</span><span class="ai-hint-note">可上传/拖拽附件，桌面版还可在正文直接写文件路径：txt/md/csv/xls/xlsx/docx/pdf（本地直读，不上传）</span></div><input type="file" id="aiFileInput" class="ai-file-input" multiple accept="'+(typeof AF!=='undefined'&&AF.ACCEPT?AF.ACCEPT:'')+'" onchange="aiAttachFromInput(this)"></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
   syncAIGenerateProtection(); // 重开抽屉时若正处于生成中，立即将删除/清空按钮置为禁用态
   // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，并实时写 localStorage（关闭/重开均不丢）
@@ -332,6 +346,21 @@ function openAIAssistant(){
       try{localStorage.setItem(AI_DRAFT_KEY,this.value);}catch(e){}
     });
   }
+  // 附件（v1.0.40）：恢复附件条渲染 + 绑定拖拽（浏览器 File 直读 / Tauri 路径直读，双通道）
+  renderAIAttachments();
+  const _dw=document.querySelector('.drawer-wrap');
+  if(_dw&&!_dw.dataset.aiDnd){
+    _dw.dataset.aiDnd='1';
+    _dw.addEventListener('dragover',function(e){e.preventDefault();_dw.classList.add('ai-dragover');});
+    _dw.addEventListener('dragleave',function(e){if(e.target===_dw)_dw.classList.remove('ai-dragover');});
+    _dw.addEventListener('drop',function(e){
+      e.preventDefault();_dw.classList.remove('ai-dragover');
+      if(IS_TAURI_CHAT)return; // 桌面版走 tauri://drag-drop 全局事件（见 aiBindTauriDnD）
+      const _fs=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]);
+      if(_fs.length)aiAttachAddFiles(_fs);
+    });
+  }
+  aiBindTauriDnD();
   // 后台回复仍在进行时（弹窗中途关过再重开）：发送按钮保持「停止」态并标记忙碌，禁止重复提交
   if(AI.state.chatting)setAISendingUI(true);
 }
@@ -361,7 +390,85 @@ function openAIWithMessage(text,extraContext){
     requestAISend();
   },60);
 }
-function requestAISend(){
+/* ===== 附件上传：本地直读 → 解析为文本 → 注入对话上下文（v1.0.40，解析器见 core/ai-files.js window.AF） =====
+ * 浏览器：<input type=file>/拖拽 File 对象直读；Tauri：kb_pick_files/拖拽路径直读（kb_read_b64 / kb_read_pdf_text）。
+ * 全程不产生临时文件（无存储/清理动作）；解析全文随消息存 IndexedDB，注入预算见 ai.js attachBlock。 */
+let _aiAttachments=[]; // {id,name,ext,size,path?,file?,status:'parsing'|'ready'|'error',chars,truncated,text,error}
+let _aiAttSeq=0;
+const IS_TAURI_CHAT=!!(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==='function');
+let _aiTauriDndBound=false;
+function aiBindTauriDnD(){
+  if(_aiTauriDndBound||!IS_TAURI_CHAT)return;
+  try{
+    const evApi=window.__TAURI__&&window.__TAURI__.event;
+    if(evApi&&typeof evApi.listen==='function'){
+      evApi.listen('tauri://drag-drop',function(ev){
+        if(!document.getElementById('aiMessages'))return; // 助手抽屉未打开时忽略拖拽
+        const pl=(ev&&ev.payload)||{};
+        const paths=Array.isArray(pl)?pl:(Array.isArray(pl.paths)?pl.paths:[]);
+        if(paths.length)aiAttachFromPaths(paths);
+      });
+      _aiTauriDndBound=true;
+    }
+  }catch(e){console.warn('[AI附件] Tauri 拖拽监听失败',e);}
+}
+function renderAIAttachments(){
+  const bar=document.getElementById('aiAttachBar');
+  if(!bar)return;
+  if(!_aiAttachments.length){bar.innerHTML='';bar.classList.remove('has-items');return;}
+  bar.classList.add('has-items');
+  bar.innerHTML=_aiAttachments.map(function(a,i){
+    let cls='parsing',meta='解析中…';
+    if(a.status==='error'){cls='error';meta=a.error||'解析失败';}
+    else if(a.status==='ready'){cls='ready';meta=(a.chars||0)+' 字'+(a.truncated?' · 超长截断':'');}
+    return '<span class="ai-attach-chip '+cls+'" title="'+escAttr(a.name+' · '+meta)+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(a.name)+'</span><span class="mt">'+escHtml(meta)+'</span><button type="button" class="rm" title="移除该附件" onclick="aiAttachRemove('+i+')">'+icon('x','11')+'</button></span>';
+  }).join('');
+}
+function aiAttachRemove(i){_aiAttachments.splice(i,1);renderAIAttachments();}
+function aiAttachPick(){
+  if(AI.state.chatting){toast('AI 正在生成回复，暂不能添加附件','info');return;}
+  if(typeof AF==='undefined'){toast('附件解析模块未加载，请刷新页面','error');return;}
+  if(IS_TAURI_CHAT){aiAttachPickTauri();return;}
+  const inp=document.getElementById('aiFileInput');
+  if(!inp)return;inp.value='';inp.click();
+}
+async function aiAttachPickTauri(){
+  try{
+    // 复用知识库的通用多选文件对话框（Rust 端无扩展名过滤，前端白名单校验）
+    const paths=await window.__TAURI__.core.invoke('kb_pick_files')||[];
+    aiAttachFromPaths(paths);
+  }catch(e){toast('选择文件失败：'+String((e&&e.message)||e),'error');}
+}
+function aiAttachFromPaths(paths){
+  (paths||[]).forEach(function(p){
+    const name=String(p).replace(/\\/g,'/').split('/').pop()||('文件'+(++_aiAttSeq));
+    aiAttachPush({name:name,path:String(p)});
+  });
+}
+function aiAttachFromInput(inp){
+  const files=Array.from((inp&&inp.files)||[]);
+  aiAttachAddFiles(files);
+  if(inp)inp.value='';
+}
+function aiAttachAddFiles(files){
+  (files||[]).forEach(function(f){
+    aiAttachPush({name:f.name||'未命名',file:f,size:f.size||0});
+  });
+}
+function aiAttachPush(init){
+  if(_aiAttachments.length>=6){toast('单条消息最多携带 6 个附件','warning');return;}
+  if(typeof AF!=='undefined'&&AF.isSupported&&!AF.isSupported(init.name)){toast('不支持的文件类型：'+init.name+'（支持 txt/md/markdown/log/csv/xls/xlsx/docx/pdf）','warning');return;}
+  const entry=Object.assign({id:++_aiAttSeq,status:'parsing',ext:(typeof AF!=='undefined'&&AF.extOf)?AF.extOf(init.name):''},init);
+  _aiAttachments.push(entry);
+  renderAIAttachments();
+  if(typeof AF==='undefined'){entry.status='error';entry.error='附件解析模块未加载';renderAIAttachments();return;}
+  AF.parseEntry(entry).then(function(res){
+    entry.status=res.status;entry.chars=res.chars||0;entry.truncated=!!res.truncated;entry.text=res.text||'';entry.error=res.error||'';entry.ext=res.ext||entry.ext;
+    renderAIAttachments();
+    if(res.status==='error')toast('附件解析失败：'+entry.name+'（'+entry.error+'）','error');
+  });
+}
+async function requestAISend(){
   const input=document.getElementById('aiInput');
   if(!input)return;
   if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;} // 明确反馈：后台回复仍在进行（弹窗重开后同样适用）
@@ -369,18 +476,62 @@ function requestAISend(){
   const now=Date.now();
   if(now-(_aiSendGateAt||0)<300)return;
   _aiSendGateAt=now;
+  // 附件（v1.0.40）：解析未完成禁止发送（防重复提交约定）；仅就绪附件随消息注入上下文
+  if((_aiAttachments||[]).some(a=>a&&a.status==='parsing')){toast('附件解析中，请稍候再发送','info');return;}
+  let readyAtts=(_aiAttachments||[]).filter(a=>a&&a.status==='ready'&&String(a.text||'').trim());
   const message=input.value.trim();
-  if(!message){input.focus();return;}
-  if(message.length>8000){toast('提问过长（'+message.length+' 字），请精简到 8000 字以内再发送','warning');return;} // 输入长度校验
+  // 正文路径直读（v1.0.41，桌面版）：消息中的本地文件路径 → 附件芯片解析 → 就绪后随消息注入；浏览器版仅提示引导上传
+  if(message&&typeof AF!=='undefined'&&AF.extractPaths){
+    const _cand=(AF.extractPaths(message)||[]).filter(p=>!(_aiAttachments||[]).some(a=>a.path===p));
+    if(_cand.length){
+      if(!IS_TAURI_CHAT)toast('浏览器版受安全沙箱限制，不能按路径读取本地文件——请用附件按钮上传（桌面版支持在正文写路径直读）','info');
+      else{
+        await aiAttachPathsParse(_cand);
+        if((_aiAttachments||[]).some(a=>a&&a.status==='parsing')){toast('附件解析中，请稍候再发送','info');return;}
+        readyAtts=(_aiAttachments||[]).filter(a=>a&&a.status==='ready'&&String(a.text||'').trim());
+      }
+    }
+  }
+  if(!message&&!readyAtts.length){input.focus();return;}
+  const sendText=message||'请分析我上传的附件内容。';
+  if(sendText.length>8000){toast('提问过长（'+sendText.length+' 字），请精简到 8000 字以内再发送','warning');return;} // 输入长度校验（附件文本单独走预算，不占此上限）
   if(!AI.state.hasKey&&!AI.state.apiKey){toast('请先在 AI 设置中填写 API_KEY（本地模型可留空）','warning');return;}
   const extra=_aiExtraContext;_aiExtraContext='';
-  _aiCurrentSnapshot=AI.buildPreview(message,extra);
+  _aiCurrentSnapshot=AI.buildPreview(sendText,extra);
   // 数据快照确认弹窗：首次发送提示一次，确认后记住（localStorage），后续发送不再重复弹
   let confirmed=false;
   try{confirmed=localStorage.getItem('wb_fastener_ai_confirm')==='1';}catch(e){}
-  if(confirmed){sendAIMessage(message,_aiCurrentSnapshot);return;}
+  if(confirmed){aiSendWithAttachments(sendText,readyAtts);return;}
   const body='<p class="note">以下是本次将发送给 AI 的脱敏数据快照，不含联系人电话、地址、税号或银行账户。</p><pre class="ai-preview">'+escHtml(_aiCurrentSnapshot)+'</pre>';
-  modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}sendAIMessage(message,_aiCurrentSnapshot);},true);
+  modal('确认发送数据',body,'确认发送',()=>{closeModal();try{localStorage.setItem('wb_fastener_ai_confirm','1');}catch(e){}aiSendWithAttachments(sendText,readyAtts);},true);
+}
+/** 正文路径直读（v1.0.41，桌面版专属）：路径候选 → 家目录展开（~/）→ 挂附件芯片并阻塞等待解析结果（就绪/失败），失败仅 toast 不阻断发送 */
+async function aiAttachPathsParse(paths){
+  let home='';
+  try{
+    const pApi=window.__TAURI__&&window.__TAURI__.path;
+    if(pApi&&typeof pApi.homeDir==='function')home=String(await pApi.homeDir()||'');
+  }catch(e){/* homeDir 不可用时 ~/ 路径按原样交给后端，读取失败会给出明确错误 */}
+  await Promise.all((paths||[]).map(function(p0){
+    let p=String(p0);
+    if(p.indexOf('~/')===0&&home)p=home.replace(/\/+$/,'')+'/'+p.slice(2);
+    const name=p.replace(/\\/g,'/').split('/').pop()||p;
+    const entry={name:name,path:p,status:'parsing'};
+    _aiAttachments.push(entry);
+    renderAIAttachments();
+    if(typeof AF==='undefined'){entry.status='error';entry.error='附件解析模块未加载';renderAIAttachments();return Promise.resolve();}
+    return AF.parseEntry(entry).then(function(res){
+      entry.status=res.status;entry.chars=res.chars||0;entry.truncated=!!res.truncated;entry.text=res.text||'';entry.error=res.error||'';entry.ext=res.ext||entry.ext;
+      renderAIAttachments();
+      if(res.status==='error')toast('路径读取失败：'+p+'（'+entry.error+'）','warning');
+    });
+  }));
+}
+/** 发送收口（v1.0.40）：携带就绪附件调用 sendAIMessage，并从附件条移除已发送项（解析失败项保留供重试/移除） */
+function aiSendWithAttachments(text,atts){
+  sendAIMessage(text,_aiCurrentSnapshot,{attachments:(atts||[]).map(a=>({name:a.name,ext:a.ext,size:a.size||0,path:a.path||'',file:a.file||null,chars:a.chars||0,truncated:!!a.truncated,text:String(a.text||'')}))});
+  _aiAttachments=(_aiAttachments||[]).filter(a=>!(a&&a.status==='ready'));
+  renderAIAttachments();
 }
 async function sendAIMessage(message,snapshot,options){
   if(_wfRunning){toast('执行计划正在运行，请先完成或停止后再提问','info');return;}
@@ -399,7 +550,7 @@ async function sendAIMessage(message,snapshot,options){
     if(!u||!String(u.content||'').trim()){toast('未找到该条回复对应的提问，无法重新生成','warning');return;}
     // 请求上下文取目标消息之前（最多 20 条，剔除本次提问本身），不把目标回复及其后对话喂给模型，避免"看到自己/未来内容"
     const start=Math.max(0,mi-20);
-    history=dbAll.slice(start,mi).filter(x=>x.id!==u.id).map(x=>({role:x.role,content:x.content}));
+    history=dbAll.slice(start,mi).filter(x=>x.id!==u.id).map(x=>({role:x.role,content:String(x.content||'')+(typeof AI.attachBlock==='function'?AI.attachBlock(x,2000,8000):'')}));
     message=String(u.content||'');
     let snap=String((m.retry&&m.retry.snapshot)||m.snapshot||u.snapshot||'');
     if(!snap){try{snap=AI.buildPreview(message,'');}catch(e){}}
@@ -421,14 +572,21 @@ async function sendAIMessage(message,snapshot,options){
     const _welcome=document.querySelector('#aiMessages .ai-empty');
     if(_welcome)_welcome.remove();
     if(input){input.value='';try{localStorage.removeItem(AI_DRAFT_KEY);}catch(e){}} // 发送后清空输入框并清除草稿，下次打开不回填已发内容
-    userMessage=AI.persistMessage('user',message);messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
+    userMessage=AI.persistMessage('user',message);
+    // 附件（v1.0.40）：解析文本随消息落库（IndexedDB，全程无临时文件）；历史轮次由 getHistory 按小预算回注
+    const _optAtts=(options&&Array.isArray(options.attachments))?options.attachments:[];
+    if(_optAtts.length){
+      userMessage.attachments=_optAtts.map(a=>({name:String((a&&a.name)||''),ext:String((a&&a.ext)||''),chars:Number(a&&a.chars)||0,truncated:!!(a&&a.truncated),text:String((a&&a.text)||'')}));
+      saveDB();
+    }
+    messages.insertAdjacentHTML('beforeend',aiMessageHTML(userMessage));
     // 助手消息改为「创建即入库 + 流式增量防抖落盘」：关闭弹窗 / 中断 / 退出应用都不丢已生成的部分
     // （修复：接口未完全返回时关闭 AI 弹窗，重开对话内容丢失的问题）
     liveMsg={id:uid('AI'),role:'assistant',content:'',context:view,timestamp:Date.now(),snapshot:snapshot||'',pending:true};
     DB.aiChats.push(liveMsg);
     if(DB.aiChats.length>50)DB.aiChats=DB.aiChats.slice(-50); // 与 ai.js HISTORY_LIMIT 保持一致
     saveDBDebounced(400);
-    messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg));
+    messages.insertAdjacentHTML('beforeend',aiMessageHTML(liveMsg,true));
   }
   setAISendingUI(true);
   aiScrollBottom(true);
@@ -466,7 +624,9 @@ async function sendAIMessage(message,snapshot,options){
         }
       }
     }catch(e){console.warn('KB retrieve failed',e);}
-    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message}]);
+    // 当轮附件全文注入（单附件 30000 / 总量 60000 字符预算；历史轮次走 getHistory 的 2000/8000 小预算回注）
+    const _attCur=(userMessage&&Array.isArray(userMessage.attachments)&&userMessage.attachments.length&&typeof AI.attachBlock==='function')?AI.attachBlock(userMessage,30000,60000):'';
+    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message+_attCur}]);
     // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
     // 写入确认被用户取消时：若正处于执行计划运行中，一并中止该计划（步骤无法继续推进）
     const onConfirm=async(toolCalls)=>{
@@ -518,7 +678,7 @@ async function sendAIMessage(message,snapshot,options){
     liveMsg.content=(liveMsg.content?liveMsg.content+'\n\n':'')+note;
     liveMsg.pending=false;
     // 失败/超时/停止都保留原始问题与快照，供「重新提交」按钮一键重发
-    liveMsg.retry={text:message,snapshot:snapshot||''};
+    liveMsg.retry={text:message,snapshot:snapshot||'',atts:(userMessage&&Array.isArray(userMessage.attachments))?userMessage.attachments:[]};
     liveMsg.retryError=error&&error.name==='AbortError'?(AI.state.abortReason==='timeout'?'响应超时，可重新提交':'已手动停止，可重新提交'):errMsg;
     saveDB();
     const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
@@ -531,10 +691,10 @@ function stopAIMessage(){AI.abort();}
 function setAISendingUI(on){
   const button=document.getElementById('aiSendBtn');const composer=document.querySelector('.ai-composer');
   if(on){
-    if(button){button.textContent='停止';button.onclick=stopAIMessage;}
+    if(button){button.innerHTML=icon('x','18');button.title='停止生成';button.onclick=stopAIMessage;}
     if(composer)composer.classList.add('ai-busy');
   }else{
-    if(button){button.textContent='发送';button.onclick=requestAISend;}
+    if(button){button.innerHTML=icon('chevronUp','18');button.title='发送消息';button.onclick=requestAISend;}
     if(composer)composer.classList.remove('ai-busy');
   }
   syncAIGenerateProtection(); // 生成开始/结束同步删除/清空按钮禁用态
@@ -545,7 +705,7 @@ async function retryAIMessage(id){
   if(!m||!m.retry||!m.retry.text){toast('未找到可重试的原始问题','warning');return;}
   if(AI.state.chatting){toast('AI 正在生成回复，请稍候…','info');return;}
   if(!document.getElementById('aiMessages'))openAIAssistant(); // 弹窗未开时先打开（重开弹窗点击历史按钮场景）
-  await sendAIMessage(m.retry.text,m.retry.snapshot||'');
+  await sendAIMessage(m.retry.text,m.retry.snapshot||'',{attachments:((m.retry&&Array.isArray(m.retry.atts))?m.retry.atts:[]).map(a=>({name:a.name,ext:a.ext,chars:a.chars,truncated:a.truncated,text:a.text}))});
 }
 /** 复制单条消息（原始 Markdown 文本写入剪贴板）
  *  @param {string} id - 消息 ID
@@ -614,7 +774,7 @@ async function continueAIMessage(id,fromHint){
   // 本地小模型上下文有限：若拼接历史过长（>6000 字）只保留最近 3 条并显式标注省略，避免请求超窗失败
   const start=Math.max(0,idx-20);
   const ctxAll=dbAll.slice(start,idx).filter(x=>(x.role==='user'||x.role==='assistant')&&x.id!==id&&String(x.content||'').trim())
-    .map(x=>({role:x.role,content:String(x.content||'')}));
+    .map(x=>({role:x.role,content:String(x.content||'')+(typeof AI.attachBlock==='function'?AI.attachBlock(x,1500,6000):'')}));
   let ctx=ctxAll;
   const _ctxChars=ctxAll.reduce((s,x)=>s+String(x.content).length,0);
   if(_ctxChars>6000&&ctxAll.length>3){ctx=[{role:'user',content:'（为节省上下文，此前的 '+Math.max(0,ctxAll.length-3)+' 条对话历史已省略，以下为最近对话）'}].concat(ctxAll.slice(-3));}

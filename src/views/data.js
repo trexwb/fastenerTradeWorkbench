@@ -439,8 +439,13 @@ function exportJSON(){
   a.download='紧固件贸易工作台_备份_'+today()+'.json';
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // v1.0.42 修复（Windows 导出空文件）：下载子系统对 blob URL 的内容读取是异步的，
+  // click 后同步 revokeObjectURL 会让 Windows（尤其 Tauri WebView2）拿到已失效的 URL，
+  // 导出 0 字节/空文件。延迟到读取完成后再释放（与 exporter.js 延迟释放模式对齐）。
+  setTimeout(function(){
+    document.body.removeChild(a);
+    try{URL.revokeObjectURL(url);}catch(e){}
+  },3000);
   toast('已导出 '+DB.orders.length+' 条订单、'+DB.prices.length+' 条价格记录','success');
 }
 

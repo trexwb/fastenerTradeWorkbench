@@ -79,7 +79,28 @@
     return Number(v)>0;
   }
 
-  const api={NEXT_STATUS,canFlowOrderStatus,validateOrderInput,isPositiveNumber};
+  /**
+   * 「开始寻货」前置业务校验（待确认 → 寻货中 专属）。
+   * 语义与视图层 nextStepStartSourcing 完全一致：产品行非空 + 每行 SKU/名称 + 规格。
+   * v1.0.47：意向价不再作为前置条件——允许为 0 或空（寻货报价阶段可后续补充）。
+   * @param {{items?:Array}} o 订单对象
+   * @returns {{ok:boolean, missing:string[]}} missing 为未通过项的人类可读描述
+   */
+  function validateStartSourcing(o){
+    const missing=[];
+    const items=Array.isArray(o&&o.items)?o.items:[];
+    if(!items.length){
+      missing.push('订单无任何产品行');
+    }else{
+      items.forEach((it,i)=>{
+        if(!(it&&(it.sku||it.name)))missing.push('第 '+(i+1)+' 行产品名称/SKU 未填');
+        if(!(it&&it.spec))missing.push('第 '+(i+1)+' 行规格未填');
+      });
+    }
+    return {ok:missing.length===0,missing};
+  }
+
+  const api={NEXT_STATUS,canFlowOrderStatus,validateOrderInput,isPositiveNumber,validateStartSourcing};
   global.FTValidators=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
