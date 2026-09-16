@@ -713,4 +713,16 @@ function fillSpecFromBOM(bomPrefix){
   if(!bomItem)return;
   const skuEl=document.getElementById(bomPrefix+'_sku');
   if(skuEl){skuEl.value=bomItem.sku||'';skuEl.readOnly=false;skuEl.style.opacity='';}
+  // v1.0.55：恢复属性自动填充（v1.0.45 为解耦曾移除）——选中 BOM 时把六维属性带出，
+  // 但不锁定字段、不清空用户已填值：仅当对应字段为空时填充（不覆盖手动输入），全程可自由修改
+  SPEC_FIELDS.forEach(function(k){
+    const el=document.getElementById(bomPrefix+'_'+k);
+    if(!el)return;
+    const v=bomItem[k]||'';
+    if(!v)return;
+    const inp=el.querySelector?el.querySelector('input'):null;
+    const cur=inp?inp.value:(el.dataset?el.dataset.val:'');
+    if(cur) return; // 用户已填/已有值 → 不覆盖
+    if(inp){el.dataset.val=v;inp.value=v;}
+  });
 }

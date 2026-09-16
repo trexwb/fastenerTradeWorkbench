@@ -484,14 +484,26 @@ function priceAttrCol(p){
   let html=specTags(p);
   return html||'<span class="muted">-</span>';
 }
-// specMatch: 只有当 item 有规格值时才要求 price 对应字段匹配；item 未填的字段不限制（宽泛匹配）
+// specMatch（v1.0.54 修复）：价格库匹配必须先过 SKU 关，再按六维属性过滤
 /**
- * 规格宽松匹配：item 已填的所有 SPEC_FIELDS 在 price 中必须一致，item 未填的字段不限制。
- * @param {Object} price - 报价记录（含 SPEC_FIELDS 属性）
- * @param {Object} item - 订单行项目（含 SPEC_FIELDS 属性）
+ * 价格匹配（寻货用）：**SKU 优先，属性兜底（防噪）**。
+ * - 行有 SKU 且报价有 SKU → 必须完全一致（核心修复：此前不校验 SKU，显示全量报价）
+ * - 行有 SKU、报价无 SKU → 仅当行有属性可校验且全部一致时兜底显示；行属性全空则排除（无法核验不显示）
+ * - 行无 SKU → 保持既有属性宽松匹配（item 已填属性在 price 中一致，未填不限制；兼容旧流程）
+ * @param {Object} price - 报价记录（含 bomSku + SPEC_FIELDS）
+ * @param {Object} item - 订单行项目（含 bomSku + SPEC_FIELDS）
  * @returns {boolean} 匹配返回 true，否则 false
  */
-function specMatch(price,item){return SPEC_FIELDS.every(k=>!item[k]||item[k]===price[k]);}
+function specMatch(price,item){
+  const pSku=(price&&price.bomSku||'').trim();
+  const iSku=(item&&item.bomSku||'').trim();
+  if(iSku&&pSku)return pSku===iSku;
+  if(iSku&&!pSku){
+    const filled=SPEC_FIELDS.filter(k=>item[k]);
+    return filled.length>0&&filled.every(k=>String(item[k])===String((price&&price[k])||''));
+  }
+  return SPEC_FIELDS.every(k=>!item[k]||item[k]===price[k]);
+}
 /**
  * 获取订单行项目中状态为「已选」的寻源选项列表。
  * @param {Object} it - 订单行项目
