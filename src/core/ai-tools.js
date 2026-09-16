@@ -231,6 +231,22 @@ const AIT=(function(){
         }
       }
     },
+    // ===== 阶段3.5：本地文件读取（v1.0.57，桌面版专属、只读、免确认） =====
+    {
+      type:'function',
+      function:{
+        name:'read_local_file',
+        description:'读取本地文件内容（仅桌面版；支持 txt/md/markdown/log/csv/xls/xlsx/docx/pdf）。当用户在对话中给出文件路径（如 /Users/xxx/报价单.xlsx、C:\\报价\\合同.pdf、~/文档/规格.md）并希望 AI 查看其内容时调用本工具。浏览器版不可用（会返回 not_supported）。立即执行不需确认。返回 {ok, name, ext, chars, truncated, content}，content 上限约 12000 字符（超长截断标 truncated:true）。全程本地直读，不上传。',
+        parameters:{
+          type:'object',
+          properties:{
+            path:{type:'string',description:'文件的绝对路径（必填；支持 ~ 前缀家目录）'},
+            range:{type:'array',items:{type:'integer'},description:'字符区间 [start,end]（可选，用于翻页读取超长文件）'}
+          },
+          required:['path']
+        }
+      }
+    },
     // ===== 阶段3：BOM/属性写入 =====
     {
       type:'function',
@@ -861,6 +877,9 @@ const AIT=(function(){
 
   /** 知识库只读工具名集合（v1.0.15 新增）：自动执行不经弹窗；校验器对它们免未知报错 */
   const KB_TOOL_NAMES=new Set(['query_knowledge','list_kb_files','get_kb_file','search_kb_detail']);
+
+  /** 本地文件读取只读工具集合（v1.0.57）：桌面版专属、自动执行不经弹窗、校验免未知报错 */
+  const FILE_TOOL_NAMES=new Set(['read_local_file']);
 
   /** 工具校验：name → (args) → {ok:boolean,error:string,preview:object} */
   const validators={
@@ -1511,6 +1530,8 @@ const AIT=(function(){
   function validateOp(op){
     // 知识库只读工具无副作用：不进写入校验表，直接放行（避免弹窗场景误报「未知工具」）
     if(KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
+    // v1.0.57：本地文件读取/白名单系统指令只读无副作用，同样直接放行
+    if(FILE_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     const v=validators[op.name];
     if(!v)return {ok:false,error:'未知工具：'+op.name};
     try{return v(op.args||{});}
@@ -1806,6 +1827,40 @@ const AIT=(function(){
         if(args.unitId)list=list.filter(i=>i.unitId===args.unitId);
         const result=list.slice(0,200).map(i=>({id:i.id,type:i.type,unitId:i.unitId,unitName:i.unitName||unitNameSafe(i.unitId),date:i.date,amount:i.amount,remark:i.remark,invoiceStatus:i.invoiceStatus,receiveStatus:i.receiveStatus}));
         return JSON.stringify({ok:true,count:result.length,items:result});
+      }
+      // ===== v1.0.57：本地文件直读（仅桌面版；复用 AF 解析链路；只读免确认） =====
+      if(name==='read_local_file'){
+        const IS_TAURI=!!(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==='function');
+        if(!IS_TAURI)return JSON.stringify({ok:false,error:'not_supported','reason':'浏览器版受安全沙箱限制不能读取本地文件路径；请让用户使用附件按钮上传，或在桌面版使用本工具'});
+        const rawPath=String(args.path||'').trim();
+        if(!rawPath)return JSON.stringify({ok:false,error:'路径不能为空'});
+        if(typeof AF==='undefined'||!AF.parseEntry)return JSON.stringify({ok:false,error:'附件解析模块未加载'});
+        // 同步返回：把 AF.parseEntry 的 Promise 结果缓存为一次性查询（工具协议要求同步 JSON 字符串）
+        // 实现方式：预先触发解析并在本轮返回占位，下一轮模型带 range 翻页时读缓存——
+        // 简化：直接触发解析，结果挂到 pending 缓存，返回 started 提示模型重试
+        const cacheKey='rf_'+rawPath;
+        if(!window.__rfCache)window.__rfCache={};
+        const cached=window.__rfCache[cacheKey];
+        if(cached&&cached.status==='ready'){
+          if(cached.error)return JSON.stringify({ok:false,error:'文件读取失败：'+cached.error,name:cached.name});
+          const range=Array.isArray(args.range)&&args.range.length===2?args.range:[0,12000];
+          const start=Math.max(0,range[0]||0),end=Math.min(cached.text.length,start+(range[1]||12000));
+          const content=cached.text.slice(start,end);
+          return JSON.stringify({ok:true,name:cached.name,ext:cached.ext,chars:cached.chars,truncated:end<cached.text.length,content:content});
+        }
+        if(cached&&cached.status==='error')return JSON.stringify({ok:false,error:'文件读取失败：'+cached.error});
+        // 触发异步解析（下一轮调用同 path 读缓存；LLM 工具循环天然支持多轮）
+        window.__rfCache[cacheKey]={status:'parsing'};
+        AF.parseEntry({name:rawPath.split('/').pop()||rawPath,path:rawPath}).then(function(res){
+          if(res.status==='error'){
+            window.__rfCache[cacheKey]={status:'error',error:res.error||'解析失败'};
+          }else{
+            window.__rfCache[cacheKey]={status:'ready',name:rawPath.split('/').pop(),ext:res.ext||'',chars:(res.text||'').length,text:res.text||''};
+          }
+        }).catch(function(e){
+          window.__rfCache[cacheKey]={status:'error',error:String(e&&e.message||e)};
+        });
+        return JSON.stringify({ok:true,started:true,hint:'文件正在后台解析，请立即再次调用本工具（相同 path）读取内容'});
       }
       return JSON.stringify({ok:false,error:'未知查询工具：'+name});
     }catch(e){

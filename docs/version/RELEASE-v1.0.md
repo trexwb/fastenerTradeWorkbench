@@ -1,8 +1,46 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 16825e3339a4e87ec3619b4c10842061_1e86de02b1ad11f19420525400050647
+    ReservedCode1: +b6N+y5IwzxQIkCvryV5XJgA7WXzkBaqzU9qC1Y0H638ZCTlGoYWgoRxFaG9m22IZWP+eOBZnhUiEv9qnBjOKJqpj6obCJM3HgGPe3OaZS/fNWUSBa58HqtCNmigvTrfZLpPt54lLCqaPoS/KHT6+18w9Pt1xJyi7aFhHgU6c/I6WpafRwBrN1QXyso=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 16825e3339a4e87ec3619b4c10842061_1e86de02b1ad11f19420525400050647
+    ReservedCode2: +b6N+y5IwzxQIkCvryV5XJgA7WXzkBaqzU9qC1Y0H638ZCTlGoYWgoRxFaG9m22IZWP+eOBZnhUiEv9qnBjOKJqpj6obCJM3HgGPe3OaZS/fNWUSBa58HqtCNmigvTrfZLpPt54lLCqaPoS/KHT6+18w9Pt1xJyi7aFhHgU6c/I6WpafRwBrN1QXyso=
+---
+
 # 版本发布日志 · v1.0
 
 > 本文件按主版本组织：v1.0.x 的全部迭代日志集中于此（最新在前）。
 > 命名规则：`RELEASE-v{主版本}.md`；次版本迭代追加到文件顶部新分节。
-> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.56**。
+> 整理规则（2026-08-28 起）：同类问题多次修复的条目合并为一条，统一记述于最终修复版本；被合并的早期版本保留编号与合并指向，不再重复正文。当前最新版本：**v1.0.57**。
+
+---
+
+## v1.0.57 · ✅ 已发布
+
+> **状态**: ✅ 已发布（供应商批量报价导入重构：SKU 精确匹配 + 意向价/报价/供应商多供应商分配列对齐，移除名称列；版本号 5 处统一 1.0.57，构建已通过）
+> **发布日期**: 2026-09-16
+> **上一版本**: v1.0.56
+> **版本范围**: 供应商批量报价导入功能重构（承接 v1.0.56 业务逻辑审计后对订单寻货链路的深化）
+
+---
+
+## 供应商批量报价导入重构
+
+### 一、导入列结构与订单产品字段对齐（SKU 唯一关联键）
+
+- **问题**：原「批量导入供应商报价」解析列仅为「序号/名称/表面处理/规格/数量/单价/金额」，无 SKU，匹配时拿名称去猜测订单产品行的 `it.sku`，无法精确锁定具体产品；名称列在全链路（订单产品/BOM/签约报价）均以 SKU 关联的体系下无意义
+- **新列结构**：`序号 | SKU（必填）| 数量（千支，必填>0）| 意向价 | 报价（元/千支）| 供应商 | 规格（可选）`，提示框占位符与 Excel 结构完全一致
+- **修复**：
+  - `parseSupplierQuote`：headerKeywords 增加 sku/数量/意向价/报价/供应商/规格，SKU 缺失行判无效跳过；去重 key 为 `sku|supplierName|qty|price`
+  - `findQuoteItemIndex`：简化为纯 `it.sku === r.sku` 精确匹配（移除名称/模糊兜底）
+  - 意向价（`salePrice`）>0 时回填订单产品行；报价写入寻货结果 `option.price`、数量写入 `option.allocQty`（受剩余量限制）
+  - **多供应商分配**：同一 SKU 多行不同供应商 → 自然生成多条寻货结果 options；供应商列支持按名称匹配已有单位（roles 含"供应商"）或新建
+
+### 二、导入数据 Demo 同步更新
+
+- `docs/导入数据Demo.xlsx`「供应商报价」sheet：列头改为新 7 列结构，6 行示例数据，含同一 SKU 两行不同供应商的多供应商分配示例（M8X20-304 → 宁波标准件厂 50千支@1.15 / 温州紧固件有限公司 30千支@1.08）
 
 ---
 
@@ -2380,3 +2418,4 @@ create_unit / update_unit / create_price / update_price / flow_order_status
 ## 四、变更文件
 
 - 完整项目初始化：src/（core/views/styles）、src-tauri/、docs/、.github/workflows/、scripts/
+*（内容由AI生成，仅供参考）*

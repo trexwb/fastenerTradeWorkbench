@@ -1581,7 +1581,7 @@ function openSupplierQuoteImport(){
   const html=
     '<div class="field">'+
       '<label class="f">从Excel粘贴供应商报价</label>'+
-      '<textarea id="quotePaste" class="paste-area" tabindex="51" placeholder="从 Excel 复制数据后 Ctrl+V 粘贴到此&#10;支持列：序号 / 名称 / 表面处理 / 规格 / 数量（千支）/ 单价（元/千支）/ 金额（元）&#10;首行如表头含关键词会自动跳过"></textarea>'+
+      '<textarea id="quotePaste" class="paste-area" tabindex="51" placeholder="从 Excel 复制数据后 Ctrl+V 粘贴到此&#10;支持列：序号 / SKU（必填）/ 数量（千支，必填&gt;0）/ 意向价 / 报价（元/千支）/ 供应商 / 规格&#10;SKU 用于精确匹配订单产品（唯一关联键）；同一 SKU 多行不同供应商 = 分配给多个供应商；首行如表头含关键词会自动跳过"></textarea>'+
       '<div class="note">按 Tab 分列，换行分行；序号列自动跳过</div>'+
     '</div>'+
     '<div id="quoteParseBtn" style="margin-bottom:10px">'+
@@ -1591,13 +1591,13 @@ function openSupplierQuoteImport(){
   openDrawer('批量导入供应商报价',html,null,true,true);
   setTimeout(function(){bindBatchPasteUX('quotePaste','quoteParseBtn');},50);
 }
-/** 解析粘贴的 Excel 报价数据并预览（列：序号/名称/表面处理/规格/数量/单价/金额） */
+/** 解析粘贴的 Excel 报价数据并预览（列：序号/SKU/数量/意向价/报价/供应商/规格） */
 function parseSupplierQuote(){
   const raw=document.getElementById('quotePaste').value;
   if(!raw.trim()){toast('请先粘贴数据','warning');return;}
   const lines=raw.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length){toast('未检测到有效数据','warning');return;}
-  const headerKeywords=['序号','名称','表面处理','规格','数量','单价','金额'];
+  const headerKeywords=['序号','sku','数量','意向价','报价','供应商','规格'];
   const firstCols=lines[0].split('\t').map(c=>(c||'').trim().toLowerCase());
   const isHeader=firstCols.some(c=>c&&headerKeywords.some(k=>c.indexOf(k)!==-1));
   const dataLines=isHeader?lines.slice(1):lines;
@@ -1606,40 +1606,39 @@ function parseSupplierQuote(){
   for(const line of dataLines){
     const cols=line.split('\t');
     const startIdx=/^\d+$/.test((cols[0]||'').trim())?1:0;
-    const name=(cols[startIdx]||'').trim();
-    const surface=(cols[startIdx+1]||'').trim();
-    const spec=(cols[startIdx+2]||'').trim();
-    const qty=parseFloat((cols[startIdx+3]||'').trim());
-    const price=parseFloat((cols[startIdx+4]||'').trim());
-    const amount=parseFloat((cols[startIdx+5]||'').trim());
-    if(!name){errCount++;continue;}
-    parsed.push({name,surface,spec,qty:isNaN(qty)?0:qty,price:isNaN(price)?0:price,amount:isNaN(amount)?0:amount,supplierId:''});
+    const sku=(cols[startIdx]||'').trim();
+    const qty=parseFloat((cols[startIdx+1]||'').trim());
+    const salePrice=parseFloat((cols[startIdx+2]||'').trim());
+    const price=parseFloat((cols[startIdx+3]||'').trim());
+    const supplierName=(cols[startIdx+4]||'').trim();
+    const spec=(cols[startIdx+5]||'').trim();
+    if(!sku){errCount++;continue;}
+    parsed.push({sku,spec,qty:isNaN(qty)?0:qty,salePrice:isNaN(salePrice)?0:salePrice,price:isNaN(price)?0:price,supplierName,supplierId:''});
   }
-  if(!parsed.length){toast('解析失败，未识别到有效数据行','error');return;}
+  if(!parsed.length){toast('解析失败，未识别到有效数据行（SKU 为必填列）','error');return;}
   window._quoteImportData=window._quoteImportData||[];
-  const mg=mergeBatchRows(window._quoteImportData,parsed,r=>r.name+'|'+r.spec+'|'+r.qty+'|'+r.price);
+  const mg=mergeBatchRows(window._quoteImportData,parsed,r=>r.sku+'|'+r.supplierName+'|'+r.qty+'|'+r.price);
   renderSupplierQuotePreview();
   afterBatchParseOK('quotePaste','quoteParseBtn');
   if(errCount>0)toast('共 '+errCount+' 行解析失败已跳过','warning');
   if(mg.skipped>0)toast('新增 '+mg.added+' 条，跳过重复 '+mg.skipped+' 条（可继续粘贴）','success');
   else toast('新增 '+mg.added+' 条，确认无误后提交；可继续粘贴累加','success');
 }
-/** 渲染报价导入预览表格（每行含供应商下拉） */
+/** 渲染报价导入预览表格（每行含供应商下拉，预填 Excel 解析出的供应商名） */
 function renderSupplierQuotePreview(){
   const data=window._quoteImportData;
   if(!data)return;
   const preview=document.getElementById('quotePreview');
-  const cols_=['序号','名称','表面处理','规格','数量(千支)','单价(元/千支)','金额(元)','供应商','操作'];
+  const cols_=['序号','SKU','数量(千支)','意向价','报价(元/千支)','供应商','规格','操作'];
   const rowsHtml=data.map((r,i)=>{
     return '<tr>'+
       '<td>'+(i+1)+'</td>'+
-      '<td>'+escHtml(r.name||'-')+'</td>'+
-      '<td>'+escHtml(r.surface||'-')+'</td>'+
-      '<td>'+escHtml(r.spec||'-')+'</td>'+
+      '<td style="font-weight:600">'+escHtml(r.sku||'-')+'</td>'+
       '<td>'+fmtN(r.qty)+'</td>'+
+      '<td>'+fmt(r.salePrice)+'</td>'+
       '<td>'+fmt(r.price)+'</td>'+
-      '<td>'+fmt(r.amount||(r.qty*r.price))+'</td>'+
-      '<td><div id="qsup_'+i+'" class="combo" data-placeholder="搜索或输入供应商..." data-val="'+escAttr(r.supplierId||'')+'"></div></td>'+
+      '<td><div id="qsup_'+i+'" class="combo" data-placeholder="搜索或输入供应商..." data-val="'+escAttr(r.supplierId||r.supplierName||'')+'"></div></td>'+
+      '<td>'+escHtml(r.spec||'-')+'</td>'+
       '<td class="td-act"><button class="btn sm danger" onclick="removeQuoteRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
   }).join('');
@@ -1654,7 +1653,7 @@ function renderSupplierQuotePreview(){
   preview.style.display='block';
   initQuoteSupplierCombos();
 }
-/** 初始化报价预览各行供应商检索下拉（同手动录入供应商的搜索逻辑，避免公司过多无法下拉） */
+/** 初始化报价预览各行供应商检索下拉（预填 Excel 解析出的供应商名，选中后写回 supplierId） */
 function initQuoteSupplierCombos(){
   if(!window._quoteImportData)return;
   const opts=quoteSupplierComboOptions();
@@ -1662,7 +1661,12 @@ function initQuoteSupplierCombos(){
     window._quoteImportData.forEach((r,i)=>{
       const el=document.getElementById('qsup_'+i);
       if(!el)return;
-      combo(el,opts,opt=>{window._quoteImportData[i].supplierId=opt.id;},'搜索或输入供应商...',true);
+      // 按 Excel 供应商名预匹配已有单位，回填 supplierId 并让下拉显示单位名
+      if(!r.supplierId&&r.supplierName){
+        const u=DB.units.find(x=>(x.name===r.supplierName)&&(x.roles||[]).includes('供应商'))||DB.units.find(x=>x.name===r.supplierName);
+        if(u){r.supplierId=u.id;el.dataset.val=u.id;}
+      }
+      combo(el,opts,opt=>{window._quoteImportData[i].supplierId=opt.id;window._quoteImportData[i].supplierName=opt.label;},'搜索或输入供应商...',true);
     });
   },50);
 }
@@ -1673,26 +1677,11 @@ function removeQuoteRow(idx){
   if(!window._quoteImportData.length){closeDrawer();toast('已清空所有数据','info');return;}
   renderSupplierQuotePreview();
 }
-/** 按名称/规格匹配订单产品行 */
+/** 按 SKU 精确匹配订单产品行（SKU 为唯一关联键） */
 function findQuoteItemIndex(items,r){
-  const name=(r.name||'').trim();
-  const spec=(r.spec||'').trim();
-  let idx=items.findIndex(it=>((it.sku||'').trim()===name)||((it.name||'').trim()===name));
-  if(idx>=0)return idx;
-  if(spec){
-    idx=items.findIndex(it=>{
-      const n=(it.sku||it.name||'').trim();
-      const s=(it.spec||'').trim();
-      return n===name&&s===spec;
-    });
-    if(idx>=0)return idx;
-  }
-  idx=items.findIndex(it=>{
-    const n=(it.sku||it.name||'').trim();
-    if(!n||!name)return false;
-    return n.indexOf(name)>=0||name.indexOf(n)>=0;
-  });
-  return idx;
+  const sku=(r.sku||'').trim();
+  if(!sku)return -1;
+  return items.findIndex(it=>((it.sku||'').trim()===sku));
 }
 /** 提交报价数据，按匹配结果生成寻货结果（写入订单产品选项） */
 function submitSupplierQuote(){
@@ -1709,8 +1698,10 @@ function submitSupplierQuote(){
   const unmatchedNames=[];
   for(const r of data){
     const idx=findQuoteItemIndex(o.items,r);
-    if(idx<0){unmatched++;if(unmatchedNames.length<3)unmatchedNames.push(r.name);continue;}
+    if(idx<0){unmatched++;if(unmatchedNames.length<3)unmatchedNames.push(r.sku);continue;}
     const it=o.items[idx];
+    // 意向价：Excel 意向价 >0 时回填订单产品行
+    if(r.salePrice>0)it.salePrice=r.salePrice;
     let u=DB.units.find(x=>x.id===r.supplierId);
     if(!u){u=DB.units.find(x=>x.name===r.supplierId);}
     if(!u){u={id:uid('U'),name:r.supplierId,roles:['供应商'],sides:['供应'],term:'',rating:'新客',contacts:[]};DB.units.push(u);}
