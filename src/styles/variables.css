@@ -31,8 +31,6 @@
   --ease-in-out:cubic-bezier(.4,0,.2,1);
   /* 焦点环（键盘可达性；可见焦点用 outline，不用 box-shadow 冒充） */
   --focus-ring:var(--pri);--focus-ring-soft:var(--pri-p);
-  /* 骨架屏 shimmer 占位色 */
-  --skeleton-from:var(--bg-soft);--skeleton-to:var(--line);
   /* ===== AI 助手专属令牌（default：铜品牌泡 + 靛蓝身份色） ===== */
   --ai-accent:#3b5998;--ai-accent-d:#2d4578;
   --ai-soft:#eff2f8;--ai-line:#e2e5ee;--ai-glow:rgba(59,89,152,.12);

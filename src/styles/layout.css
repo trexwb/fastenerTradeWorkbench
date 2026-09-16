@@ -67,7 +67,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-s
 @media (max-width: 640px){
   body{font-size:15px;line-height:1.5;}
   .topbar .crumb{font-size:15px;gap:6px;}
-  .topbar .crumb .crumb-sub{display:none;}
+
   .content{padding:12px;}
   .card{padding:14px 12px;margin-bottom:14px;border-radius:12px;}
   .stat{padding:14px;border-radius:12px;}

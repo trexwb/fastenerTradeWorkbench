@@ -16,7 +16,7 @@ function bootApp() {
   if (app) {
     app.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px">' +
-      '<div class="spin" style="width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--pri);border-radius:50%;animation:spin 1s linear infinite"></div>' +
+      '<div class="spin"></div>' +
       '<div style="color:var(--gray);font-size:14px">正在加载数据...</div>' +
       '</div>';
   }

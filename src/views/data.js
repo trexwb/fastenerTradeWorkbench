@@ -689,7 +689,7 @@ function _aiOpsSelftest(){
   checks.push({name:'trash 条数：'+(DB.trash||[]).length,ok:true});
   // 渲染结果
   const allOk=checks.every(c=>c.ok);
-  const rows=checks.map(c=>'<tr><td>'+escHtml(c.name)+'</td><td>'+(c.ok?'<span class="tag green">通过</span>':'<span class="tag err">失败</span>')+'</td><td>'+(c.detail?escHtml(c.detail):'')+'</td></tr>').join('');
+  const rows=checks.map(c=>'<tr><td>'+escHtml(c.name)+'</td><td>'+(c.ok?'<span class="tag ok">通过</span>':'<span class="tag err">失败</span>')+'</td><td>'+(c.detail?escHtml(c.detail):'')+'</td></tr>').join('');
   const summary=allOk?'✓ 全部 '+checks.length+' 项检查通过':'✗ 共 '+checks.filter(c=>!c.ok).length+' 项失败';
   modal('AI 操控系统自检',
     '<div class="selftest-summary '+(allOk?'ok':'fail')+'">'+summary+'</div>'+

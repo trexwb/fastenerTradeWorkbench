@@ -117,7 +117,10 @@ function viewUnits(){
       '<div class="es-icon">'+icon('users',28)+'</div>'+
       '<div class="es-title">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配单位':'暂无关联单位')+'</div>'+
       '<div class="es-desc">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'试试调整筛选条件':'添加供应商和采购商，用于报价、订单和结算管理')+'</div>'+
-      '<div class="es-action"><button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button></div>'+
+      '<div class="es-action">'+
+        ((unitSearch||_unitRoleFilter||_unitRatingFilter)?'<button class="btn ghost" onclick="onUnitSearch(\'\');setUnitRoleFilter(\'\');setUnitRatingFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="newUnit()" style="margin-left:'+((unitSearch||_unitRoleFilter||_unitRatingFilter)?'8px':'0')+'">'+icon('plus')+'新建关联单位</button>'+
+      '</div>'+
     '</div>'+
   '</td></tr>')+
   '</tbody></table></div>'+pg+'</div>';
@@ -140,10 +143,13 @@ function refreshUnitList(){
       '<div class="es-icon">'+icon('users',28)+'</div>'+
       '<div class="es-title">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'无匹配单位':'暂无关联单位')+'</div>'+
       '<div class="es-desc">'+(unitSearch||_unitRoleFilter||_unitRatingFilter?'试试调整筛选条件':'添加供应商和采购商，用于报价、订单和结算管理')+'</div>'+
-      '<div class="es-action"><button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button></div>'+
+      '<div class="es-action">'+
+        ((unitSearch||_unitRoleFilter||_unitRatingFilter)?'<button class="btn ghost" onclick="onUnitSearch(\'\');setUnitRoleFilter(\'\');setUnitRatingFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="newUnit()" style="margin-left:'+((unitSearch||_unitRoleFilter||_unitRatingFilter)?'8px':'0')+'">'+icon('plus')+'新建关联单位</button>'+
+      '</div>'+
     '</div>'+
   '</td></tr>';
-  if(paging)paging.innerHTML=totalPages>1?buildPaging(all.length,_unitPage,totalPages,'unitPage',{id:'unitPaging',showCount:false}):'';
+  if(paging)paging.innerHTML=totalPages>1?buildPaging(all.length,_unitPage,totalPages,'unitPage',{id:'unitPaging'}):'';
   let tag=document.getElementById('unitCountTag');
   if(tag){let total=DB.units.length,matched=all.length;tag.style.display='';tag.textContent=matched+' / '+total;}
   // 同步更新筛选标签激活状态
@@ -603,6 +609,7 @@ function openUnitBatchAdd(){
     '</div>'+
     '<div id="unitBatchPreview" class="batch-preview" style="display:none"></div>';
   openDrawer('批量导入关联单位',body,null,true,true);
+  setTimeout(function(){bindBatchPasteUX('unitBatchPaste','unitBatchParseBtn');},50);
 }
 
 /** 解析粘贴的单位数据并渲染预览（重名行在预览中直接标注状态） */
@@ -611,11 +618,13 @@ function parseUnitBatch(){
   if(!raw.trim()){toast('请先粘贴数据','warning');return;}
   const res=parseUnitBatchRows(raw);
   if(!res.rows.length){toast('解析失败，未识别到有效数据行','error');return;}
-  window._batchUnitData=res.rows;
-  renderUnitBatchPreview(res.rows);
-  document.getElementById('unitBatchParseBtn').style.display='none';
+  window._batchUnitData=window._batchUnitData||[];
+  const mg=mergeBatchRows(window._batchUnitData,res.rows,r=>r.name);
+  renderUnitBatchPreview(window._batchUnitData);
+  afterBatchParseOK('unitBatchPaste','unitBatchParseBtn');
   if(res.errCount>0)toast('共 '+res.errCount+' 行解析失败已跳过（缺少单位名称）','warning');
-  else toast('解析完成，共 '+res.rows.length+' 条，确认无误后提交','success');
+  if(mg.skipped>0)toast('新增 '+mg.added+' 条，跳过重名 '+mg.skipped+' 条（可继续粘贴）','success');
+  else toast('新增 '+mg.added+' 条，确认无误后提交；可继续粘贴累加','success');
 }
 
 /** 渲染批量导入预览区（含重名/批内重复状态标注与删行） */

@@ -82,9 +82,9 @@ function renderSpecGroup(k){
     '<div class="sg-body" id="sgb_'+k+'">'+
       // 搜索过滤行（§8 交互约定：回车或点击🔍图标触发；oninput 仅做防抖高亮，不触发真实"搜索过滤"语义动作）
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
-        '<div class="spec-filter-box" style="position:relative;flex:1;display:flex;align-items:center">'+
-          '<a href="javascript:void(0)" class="spec-filter-icon" onclick="runSpecFilter(\''+k+'\')" style="text-decoration:none;color:inherit;cursor:pointer;position:absolute;left:10px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center">'+icon('search','12')+'</a>'+
-          '<input id="'+filterId+'" type="text" placeholder="搜索已有值（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runSpecFilter(\''+k+'\')" oninput="highlightSpecVals(\''+k+'\',this.value)" style="width:100%;padding:6px 10px 6px 30px;font-size:13px;border:1px solid var(--line);border-radius:var(--radius);box-sizing:border-box;background:var(--card)">'+
+        '<div class="spec-filter-box">'+
+          '<a href="javascript:void(0)" class="spec-filter-icon" onclick="runSpecFilter(\''+k+'\')">'+icon('search','12')+'</a>'+
+          '<input id="'+filterId+'" type="text" placeholder="搜索已有值（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runSpecFilter(\''+k+'\')" oninput="highlightSpecVals(\''+k+'\',this.value)" class="spec-filter-input">'+
         '</div>'+
         '<button class="btn sm ghost" onclick="clearSpecFilter(\''+k+'\')" id="sfcl_'+k+'" style="display:none;font-size:12px;padding:2px 10px">清除</button>'+
       '</div>'+
