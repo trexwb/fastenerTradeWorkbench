@@ -131,7 +131,8 @@ function settleUnitOrderDetails(unitId,type){
           if(so.orderId===o.id)received+=so.amount||0;
         });
       });
-      result.push({orderId:o.id,total:total,received:received,status:o.status});
+      // v1.0.56（审计 M3）：意向价未填（应收为 0）时标注「未定价」，避免对账误解
+      result.push({orderId:o.id,total:total,received:received,status:o.status,unpriced:(type==='receipt'&&total<=0&&(o.items||[]).length>0)});
     });
   }else{
     orders.forEach(function(o){
@@ -427,7 +428,7 @@ function openSettleDetail(unitId, tabType){
     return '<tr>'+
       '<td><b>'+escHtml(d.orderId)+'</b></td>'+
       '<td><span class="tag '+STATUS_COLORS[d.status]+'">'+escHtml(d.status)+'</span></td>'+
-      '<td>'+fmt(d.total)+'</td>'+
+      '<td>'+fmt(d.total)+(d.unpriced?' <span class="tag warn" title="订单产品未填意向价，应收按 0 计">未定价</span>':'')+'</td>'+
       '<td style="color:var(--green)">'+fmt(d.received)+'</td>'+
       '<td style="color:'+(remain>0?'var(--red)':'var(--gray)')+'">'+fmt(remain)+'</td>'+
       '<td>'+st+'</td>'+
@@ -513,12 +514,22 @@ function delSettlement(id){
   let invRefs=(DB.invoices||[]).filter(function(inv){return inv.settleId===id;});
   let warnMsg='';
   if(invRefs.length>0){
-    warnMsg='⚠ 该结算记录已生成 '+invRefs.length+' 条发票记录（发票号 '+invRefs.map(function(inv){return escHtml(inv.invoiceNo||inv.id);}).join('、')+'），删除后发票数据会失配，是否仍继续？\n\n';
+    warnMsg='⚠ 该结算记录已生成 '+invRefs.length+' 条发票记录（发票号 '+invRefs.map(function(inv){return escHtml(inv.invoiceNo||inv.id);}).join('、')+'）。\n\n';
   }
-  confirmModal(warnMsg+'确认删除该结算记录？（删除后进入回收站，可恢复）',function(){
+  // v1.0.56（审计 M2）：删除时提供「同时删除关联发票记录」选项，避免发票孤儿（settleId 悬空）
+  const body=warnMsg+'确认删除该结算记录？（删除后进入回收站，可恢复）'+
+    (invRefs.length>0?'<div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="delSettleInvChk" style="width:15px;height:15px;cursor:pointer;accent-color:var(--green)"> 同时删除关联的 '+invRefs.length+' 条发票记录（一并进回收站）</label></div>':'');
+  confirmModal(body,function(){
+    const chk=document.getElementById('delSettleInvChk');
+    const cascadeDel=!!(chk&&chk.checked);
+    if(cascadeDel){
+      invRefs.forEach(function(inv){
+        softDelete('invoice',inv.id,{operator:'user'});
+      });
+    }
     softDelete('settlement',id,{operator:'user'});
     render();
-    toast('结算记录已删除','info');
+    toast(cascadeDel?('结算记录与关联发票（'+invRefs.length+' 条）已删除'):'结算记录已删除','info');
   },'确认删除',null,null,true);
 }
 
