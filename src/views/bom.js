@@ -174,10 +174,20 @@ function refreshBOMTable(){
   }).join('');
 
   const body=document.getElementById('bomBody');
-  if(body)body.innerHTML=rows||'<tr><td colspan="11"><div class="no-data">'+(isFiltered?'无匹配结果，试试调整筛选条件':'暂无 BOM 记录，点击「新建BOM」开始')+'</div></td></tr>';
+  if(body)body.innerHTML=rows||'<tr><td colspan="11">'+
+    '<div class="empty-state">'+
+      '<div class="es-icon">'+icon('package',28)+'</div>'+
+      '<div class="es-title">'+(isFiltered?'无匹配 BOM':'暂无 BOM 记录')+'</div>'+
+      '<div class="es-desc">'+(isFiltered?'试试调整筛选条件或清除筛选':'添加产品规格到 BOM，用于订单寻货和报价管理')+'</div>'+
+      '<div class="es-action">'+
+        (isFiltered?'<button class="btn ghost" onclick="clearBOMFilter()">'+icon('x','14')+'清除筛选</button>':'')+
+        '<button class="btn primary" onclick="openBOMForm(-1)" style="margin-left:'+(isFiltered?'8px':'0')+'">'+icon('plus')+'新建 BOM</button>'+
+      '</div>'+
+    '</div>'+
+  '</td></tr>';
 
   let pgEl=document.getElementById('bomPaging');
-  if(pgEl)pgEl.innerHTML=buildPaging(filtered.length,_bomPage,totalPages,'bomPage',{id:'bomPaging',showCount:false});
+  if(pgEl)pgEl.innerHTML=buildPaging(filtered.length,_bomPage,totalPages,'bomPage',{id:'bomPaging'});
 
   // 计数标签更新（工具栏）
   let tag=document.getElementById('bomCountTag');
@@ -484,6 +494,7 @@ function openBOMBatchAdd(){
     '</div>'+
     '<div id="batchPreview" class="batch-preview" style="display:none"></div>';
   openDrawer('批量增加BOM',body,null,true,true);
+  setTimeout(function(){bindBatchPasteUX('batchPaste','batchParseBtn');},50);
 }
 
 /** 解析批量粘贴的表格数据并渲染预览表格
@@ -531,11 +542,13 @@ function parseBOMBatch(){
 
   if(!parsed.length){toast('解析失败，未识别到有效数据行','error');return;}
 
-  renderBOMBatchPreview(parsed);
-  document.getElementById('batchParseBtn').style.display='none';
-  window._batchBOMData=parsed;
+  window._batchBOMData=window._batchBOMData||[];
+  const mg=mergeBatchRows(window._batchBOMData,parsed,r=>r.sku);
+  renderBOMBatchPreview(window._batchBOMData);
+  afterBatchParseOK('batchPaste','batchParseBtn');
   if(errCount>0)toast('共 '+errCount+' 行解析失败已跳过','warning');
-  else toast('解析完成，共 '+parsed.length+' 条，确认无误后提交','success');
+  if(mg.skipped>0)toast('新增 '+mg.added+' 条，跳过重复 SKU '+mg.skipped+' 条（可继续粘贴）','success');
+  else toast('新增 '+mg.added+' 条，确认无误后提交；可继续粘贴累加','success');
 }
 
 /** 渲染批量导入预览区（解析与删行共用同一模板，避免两份 HTML 漏改）

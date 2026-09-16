@@ -71,7 +71,7 @@ function viewPrices(){
     '</div>';
 
   return '<div class="toolbar">'+
-    '<div class="search-box" style="max-width:200px"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
     '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+
@@ -139,7 +139,7 @@ function refreshPricesTable(){
   if(body)body.innerHTML=rows||priceEmptyRowHTML();
 
   let pgEl=document.getElementById('pricesPaging');
-  if(pgEl)pgEl.innerHTML=buildPaging(filtered.length,_pricePage,totalPages,'pricePage',{id:'pricesPaging',showCount:false});
+  if(pgEl)pgEl.innerHTML=buildPaging(filtered.length,_pricePage,totalPages,'pricePage',{id:'pricesPaging'});
 }
 
 /** 翻页并刷新报价表格 */
@@ -421,11 +421,12 @@ function openPriceBatchAdd(){
       '<textarea id="priceBatchPaste" class="paste-area" tabindex="50" placeholder="从 Excel 复制数据后 Ctrl+V 粘贴到此&#10;支持列：供应商、SKU、规格、单价、联系人、有效期起&#10;（可选后续列：类型、标准、直径、硬度、表面处理、材质，未提供时自动从 BOM 匹配）&#10;首行如表头含关键词会自动跳过，序号列自动跳过"></textarea>'+
       '<div class="note">按 Tab 分列，换行分行；供应商按名称自动匹配；单价单位：元/千支</div>'+
     '</div>'+
-    '<div style="margin-bottom:10px">'+
-      '<button class="btn primary" onclick="parsePriceBatch()">'+icon('search')+'解析</button>'+
+    '<div id="priceBatchParseBtn" style="margin-bottom:10px">'+
+      '<button class="btn primary" onclick="parsePriceBatch()">'+icon('search','14')+' 解析数据</button>'+
     '</div>'+
     '<div id="priceBatchPreview" class="batch-preview" style="display:none"></div>';
   openDrawer('批量导入报价',body,null,true,true);
+  setTimeout(function(){bindBatchPasteUX('priceBatchPaste','priceBatchParseBtn');},50);
 }
 /** Excel 日期序列号转 YYYY-MM-DD */
 function excelSerialToDate(serial){
@@ -509,10 +510,13 @@ function parsePriceBatch(){
     toast('解析失败，未识别到有效数据行','error');
     return;
   }
-  renderPriceBatchPreview(parsed);
-  window._batchPriceData=parsed;
+  window._batchPriceData=window._batchPriceData||[];
+  const mg=mergeBatchRows(window._batchPriceData,parsed,r=>r.unitName+'|'+r.bomSku);
+  renderPriceBatchPreview(window._batchPriceData);
+  afterBatchParseOK('priceBatchPaste','priceBatchParseBtn');
   if(errCount>0)toast('共 '+errCount+' 行解析失败已跳过','warning');
-  else toast('解析完成，共 '+parsed.length+' 条','success');
+  if(mg.skipped>0)toast('新增 '+mg.added+' 条，跳过重复（供应商+SKU）'+mg.skipped+' 条（可继续粘贴）','success');
+  else toast('新增 '+mg.added+' 条，确认无误后提交；可继续粘贴累加','success');
 }
 /** 渲染批量导入报价预览表 */
 function renderPriceBatchPreview(data){

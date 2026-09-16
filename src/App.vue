@@ -143,7 +143,7 @@ onMounted(async () => {
     if (app) {
       const msg = (err && err.message) ? String(err.message) : String(err)
       app.innerHTML =
-        '<div style="padding:40px;text-align:center;color:var(--err)">' +
+        '<div style="padding:40px;text-align:center;color:var(--red)">' +
         '<h3>应用启动失败</h3>' +
         '<p>核心脚本加载或执行出错，请刷新重试；若持续出现请查看控制台（Console）错误详情。</p>' +
         '<pre style="white-space:pre-wrap;text-align:left;max-width:720px;margin:16px auto;font-size:12px;color:var(--gray)">' + msg.replace(/</g, '&lt;') + '</pre>' +

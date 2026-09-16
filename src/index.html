@@ -19,10 +19,10 @@
     // file:// 双击运行不注入 manifest（unique origin 下加载会触发 CORS 拦截）、
     // 不注册 SW（file:// 下浏览器禁用 SW）；Tauri 桌面版跳过 SW 注册。
     (function () {
-      var isHttp = location.protocol === 'http:' || location.protocol === 'https:';
+      const isHttp = location.protocol === 'http:' || location.protocol === 'https:';
       if (!isHttp) return;
       // manifest：注入 link 标签，供「添加到主屏幕 / 安装」识别
-      var m = document.createElement('link');
+      const m = document.createElement('link');
       m.rel = 'manifest';
       m.href = './manifest.json';
       document.head.appendChild(m);
@@ -32,7 +32,7 @@
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('./sw.js').catch(function () {});
         // 新 SW 接管页面时刷新一次，确保用户立即使用最新版本
-        var refreshed = false;
+        let refreshed = false;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
           if (refreshed) return;
           refreshed = true;

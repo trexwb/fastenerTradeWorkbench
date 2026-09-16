@@ -618,6 +618,54 @@ function toast(text,type){
 
 
 /* =========================================================
+   批量粘贴导入交互（v1.0.53）：空内容禁用 / 解析成功清空 / 二次粘贴累加
+   ========================================================= */
+/** 绑定批量粘贴文本框与解析按钮的交互：
+ *  - 文本框无内容时禁用解析按钮（disabled + 半透明）
+ *  - 有内容时启用
+ *  在打开批量导入抽屉后调用（textarea 与按钮渲染完成后）。
+ * @param {string} taId - textarea 元素 id
+ * @param {string|Element} btn - 解析按钮元素或其 id（无 id 容器时传元素）
+ * @returns {void}
+ */
+function bindBatchPasteUX(taId,btn){
+  const ta=document.getElementById(taId);
+  const b=(typeof btn==='string')?document.getElementById(btn):btn;
+  if(!ta||!b)return;
+  const sync=()=>{b.disabled=!ta.value.trim();b.style.opacity=ta.value.trim()?'':'0.5';b.style.cursor=ta.value.trim()?'':'not-allowed';};
+  ta.addEventListener('input',sync);
+  sync();
+}
+/** 批量解析成功后的通用收尾（v1.0.53）：
+ *  清空文本框、禁用解析按钮（等待二次粘贴重新启用）。
+ * @param {string} taId - textarea 元素 id
+ * @param {string|Element} btn - 解析按钮元素或其 id
+ * @returns {void}
+ */
+function afterBatchParseOK(taId,btn){
+  const ta=document.getElementById(taId);
+  const b=(typeof btn==='string')?document.getElementById(btn):btn;
+  if(ta)ta.value='';
+  if(b){b.disabled=true;b.style.opacity='0.5';b.style.cursor='not-allowed';}
+}
+/** 累加合并：将新解析的行追加到已有数组，按主键去重（已有则跳过）
+ * @param {Array} cur - 已有行数组（原地修改）
+ * @param {Array} incoming - 新解析的行
+ * @param {Function} keyFn - 行 → 去重键（如 r=>r.sku）
+ * @returns {{added:number, skipped:number}} 新增与跳过计数
+ */
+function mergeBatchRows(cur,incoming,keyFn){
+  const seen=new Set(cur.map(keyFn));
+  let added=0,skipped=0;
+  incoming.forEach(function(r){
+    const k=keyFn(r);
+    if(seen.has(k)){skipped++;return;}
+    seen.add(k);cur.push(r);added++;
+  });
+  return {added,skipped};
+}
+
+/* =========================================================
    Combo 检索下拉 (支持 allow-create)
    ========================================================= */
 /**
@@ -644,7 +692,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   placeholder=placeholder||'搜索或直接输入...';
   allowCreate=allowCreate!==false;
   const listId='cl_'+Math.random().toString(36).slice(2,8);
-  el.innerHTML='<div class="combo-wrap" style="position:relative">'+
+  el.innerHTML='<div class="combo-wrap">'+
     '<input role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-autocomplete="list" aria-controls="'+listId+'" placeholder="'+escAttr(placeholder)+'" autocomplete="off" style="width:100%" />'+
     '<ul role="listbox" id="'+listId+'" class="combo-drop" style="display:none;position:absolute;top:calc(100%+4px);left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.09);z-index:var(--z-combo-over);max-height:240px;overflow-y:auto;padding:4px 0;list-style:none;margin:0" aria-label="可选项"></ul>'+
   '</div>';

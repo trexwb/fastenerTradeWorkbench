@@ -200,7 +200,7 @@ async function kbShowFile(nameOrRel){
   if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
   const blocks=await KB.fileBlocks(nameOrRel);
   if(!blocks.length){toast('未在知识库中找到该文件：'+nameOrRel,'warning');return;}
-  const html='<div class="kb-viewer"><div style="margin-bottom:8px"><span class="tag green">'+escHtml(nameOrRel)+'</span> <span class="note">'+blocks.length+' 个分块</span></div>'+blocks.map(function(b,bi){
+  const html='<div class="kb-viewer"><div style="margin-bottom:8px"><span class="tag ok">'+escHtml(nameOrRel)+'</span> <span class="note">'+blocks.length+' 个分块</span></div>'+blocks.map(function(b,bi){
     const meta=[];
     if(b.chapter)meta.push('章节：'+escHtml(b.chapter));
     if(b.page)meta.push('第'+b.page+'页');
@@ -1044,7 +1044,7 @@ function kbrenderZone(stat){
   const s=stat;
   let head='';
   if(s.bound){
-    head+='<div class="ai-kb-head"><span class="tag green">已绑定</span> <strong>'+escHtml(s.dirName)+'</strong>'+(s.indexing?' <span class="ai-status warning">● 索引中…</span>':'')+(s.enabled?' <span class="tag blue">检索开启（Top '+s.topN+'）</span>':' <span class="tag">检索关闭</span>')+'</div>'+
+    head+='<div class="ai-kb-head"><span class="tag ok">已绑定</span> <strong>'+escHtml(s.dirName)+'</strong>'+(s.indexing?' <span class="ai-status warning">● 索引中…</span>':'')+(s.enabled?' <span class="tag info">检索开启（Top '+s.topN+'）</span>':' <span class="tag">检索关闭</span>')+'</div>'+
       '<div class="note">'+s.files+' 个文件 · '+s.blocks+' 个分块 · 约 '+Math.round(s.chars/1000)+'K 字'+(s.indexedAt?(' · 索引于 '+new Date(s.indexedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):'')+'</div>';
     if(s.error)head+='<div class="ai-status warning">⚠ '+escHtml(s.error)+'</div>';
   }else{
@@ -1138,7 +1138,7 @@ async function openAISettings(){
     const hostText=(function(){try{return new URL(savedBase).host;}catch(e){return savedBase;}})();
     return '<div class="ai-set-hero">'+
         '<div class="ai-set-hero-main"><div id="aiStatus" class="ai-set-hero-status">'+aiStatusLabel()+'</div><div class="ai-set-hero-model">'+escHtml(savedModel)+'</div><div class="ai-set-hero-host">'+escHtml(hostText)+'</div></div>'+
-        '<div class="ai-set-hero-side"><span class="tag '+(isTauri?'green':'blue')+'">'+(isTauri?'桌面版':'浏览器版')+'</span><span class="ai-set-hero-note">API_KEY 仅保存在本机，不会发送给任何第三方</span></div>'+
+        '<div class="ai-set-hero-side"><span class="tag '+(isTauri?'ok':'info')+'">'+(isTauri?'桌面版':'浏览器版')+'</span><span class="ai-set-hero-note">API_KEY 仅保存在本机，不会发送给任何第三方</span></div>'+
       '</div>'+
       '<div class="ai-set-hd">模型服务</div>'+
       '<div class="ai-set-card">'+

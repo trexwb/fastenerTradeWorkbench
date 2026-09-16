@@ -8,6 +8,8 @@ let _settleSearch='';
 let _settleUnitFilter=''; // 单位筛选
 /** 结算提交防重锁 */
 let _settlementSaving=false;
+/** 结算提交防重锁释放延时（ms） */
+const SETTLE_SAVE_LOCK_MS=500;
 
 /* ---- 获取符合条件的订单（签约完成/送货中/完成） ---- */
 /** 获取所有符合条件的订单（签约完成/送货中/完成）
@@ -250,11 +252,11 @@ function viewSettlements(type){
     '</tr>';
   }).join('');
 
-  let pg=totalPages>1?buildPaging(activeData.length,_settlePage,totalPages,'settlePage',{id:'settlePaging'}):'';
+  const pg=buildPaging(activeData.length,_settlePage,totalPages,'settlePage',{id:'settlePaging'});
   let tabSearchLabel=_settleTab==='receipt'?'收款':'付款';
 
   return '<div class="toolbar">'+
-    '<div class="search-box' + (_settleSearch ? ' has-val' : '') + '" style="max-width:220px">'+
+    '<div class="search-box' + (_settleSearch ? ' has-val' : '') + '">'+
       '<a href="javascript:void(0)" data-search-fn="onSettleSearch" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onSettleSearch(this.value)">'+
       '<span class="clear-btn" onclick="onSettleSearch(\'\')">×</span>'+
@@ -263,13 +265,13 @@ function viewSettlements(type){
     '<button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')">'+icon('plus')+'新增结算记录</button>'+
   '</div>'+
   // 统计卡片（按当前主Tab）
-  '<div class="stats" style="grid-template-columns:repeat(3,1fr)">'+
+  '<div class="stats">'+
     '<div class="stat stat-static"><div class="k">'+(_settleTab==='receipt'?'应收总额':'应付总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
     '<div class="stat stat-click" onclick="drillSettleTab(\'paid\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"><div class="k">'+(_settleTab==='receipt'?'已收总额':'已付总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
     '<div class="stat stat-click" onclick="drillSettleTab(\'unpaid\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"><div class="k">'+(_settleTab==='receipt'?'未收总额':'未付总额')+'</div><div class="v" style="color:'+(tabTotal-tabDone>0?'var(--red)':'var(--gray)')+'">'+fmt(tabTotal-tabDone)+'</div></div>'+
   '</div>'+
   // 子Tabs（已升级为唯一Tabs）
-  '<div class="settle-tabs" style="display:flex;border-bottom:2px solid var(--line);margin-bottom:16px">'+
+  '<div class="settle-tabs">'+
     '<button class="settle-tab ' + (_settleSubTab === 'unpaid' ? 'active' : '') + '" onclick="switchSettleSubTab(\'unpaid\')"><span>'+subUnpaidLabel+'</span></button>'+
     '<button class="settle-tab ' + (_settleSubTab === 'paid' ? 'active' : '') + '" onclick="switchSettleSubTab(\'paid\')"><span>'+subPaidLabel+'</span></button>'+
   '</div>'+
@@ -286,8 +288,11 @@ function viewSettlements(type){
       '<div class="empty-state">'+
         '<div class="es-icon">'+icon('wallet',28)+'</div>'+
         '<div class="es-title">'+(_settleSearch?'未找到匹配记录':(_settleTab==='receipt'?'暂无收款记录':'暂无付款记录'))+'</div>'+
-        '<div class="es-desc">'+(_settleSearch?'试试调整搜索关键词':(_settleTab==='receipt'?'创建收款结算记录，跟踪采购商付款进度':'创建付款结算记录，管理供应商应付账款'))+'</div>'+
-        '<div class="es-action"><button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')">'+icon('plus')+'新建结算</button></div>'+
+        '<div class="es-desc">'+(_settleSearch?'试试调整搜索关键词或清除筛选条件':(_settleTab==='receipt'?'创建收款结算记录，跟踪采购商付款进度':'创建付款结算记录，管理供应商应付账款'))+'</div>'+
+        '<div class="es-action">'+
+          ((_settleSearch||_settleUnitFilter)?'<button class="btn ghost" onclick="onSettleSearch(\'\');onSettleUnitFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
+          '<button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')" style="margin-left:'+((_settleSearch||_settleUnitFilter)?'8px':'0')+'">'+icon('plus')+'新建结算</button>'+
+        '</div>'+
       '</div>'+
     '</td></tr>')+
   '</tbody></table></div>' + pg + '</div>';
@@ -570,7 +575,7 @@ function openNewSettlement(presetUnitId,type){
       }
       if(amount<=0)return'';
       return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0">'+
-        '<input type="checkbox" class="settle-order-chk" value="'+o.id+'" data-max="'+amount+'" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">'+
+        '<input type="checkbox" class="settle-order-chk" value="'+o.id+'" data-max="'+amount+'">'+
         '<span>'+escHtml(o.id)+'</span>'+
         '<span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span>'+
         '<span style="margin-left:auto">未结: <b>'+fmt(amount)+'</b></span>'+
@@ -740,7 +745,7 @@ function refreshSettleOrderList(){
       }
       if(amount<=0)return'';
       return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0">'+
-        '<input type="checkbox" class="settle-order-chk" value="'+o.id+'" data-max="'+amount+'" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">'+
+        '<input type="checkbox" class="settle-order-chk" value="'+o.id+'" data-max="'+amount+'">'+
         '<span>'+escHtml(o.id)+'</span>'+
         '<span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span>'+
         '<span style="margin-left:auto">未结: <b>'+fmt(amount)+'</b></span>'+
@@ -785,7 +790,7 @@ function submitSettlement(){
   // 防重锁：防止重复点击导致重复提交结算
   if(_settlementSaving){toast('正在保存中，请稍候...','info');return;}
   _settlementSaving=true;
-  setTimeout(function(){_settlementSaving=false;},500);
+  setTimeout(function(){_settlementSaving=false;},SETTLE_SAVE_LOCK_MS);
   let type=document.getElementById('st_type').value;
   let unitId=document.getElementById('st_unit').dataset.val;
   let date=document.getElementById('st_date').value;

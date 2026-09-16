@@ -13,6 +13,10 @@ let _invEditSaving=false;
 
 const INV_ISSUE_STATUS=['未开票','已开票'];
 const INV_RECEIVE_STATUS=['未收票','已收票'];
+/** 发票保存防重锁释放延时（ms） */
+const INV_SAVE_LOCK_MS=500;
+/** 抽屉事件绑定延时（ms） */
+const DRAWER_BIND_DELAY_MS=50;
 
 /* ---- 从结算记录同步生成发票记录（去重：同一settleId只生成一次） ---- */
 /**
@@ -295,7 +299,7 @@ function viewInvoices(type){
     }).join('');
   }).join('');
 
-  let pg='<div id="invPaging">'+(totalPages>1?'<div style="display:flex;align-items:center;gap:6px;padding:10px 0;font-size:14px">'+icon('chevronLeft','14')+' <a href="javascript:void(0)" onclick="invPage('+(_invPage-1)+')" style="color:var(--blue);text-decoration:none'+( _invPage<=1?';visibility:hidden':'')+'">上一页</a><span style="padding:2px 10px;background:var(--bg-soft);border-radius:4px">'+_invPage+' / '+totalPages+'</span><a href="javascript:void(0)" onclick="invPage('+(_invPage+1)+')" style="color:var(--blue);text-decoration:none'+( _invPage>=totalPages?';visibility:hidden':'')+'">下一页</a> '+icon('chevronRight','14')+'</div>':'')+'</div>';
+  const pg=buildPaging(activeData.length,_invPage,totalPages,'invPage',{id:'invPaging'});
 
   let cols=_invTab==='issue'?
     '<th class="m-hide-s2">结算日期</th><th>公司名称</th><th class="m-hide-s2">应收金额</th><th class="m-hide-s1">已收金额</th><th>未收金额</th><th>开票状态</th><th>操作</th>':
@@ -305,20 +309,20 @@ function viewInvoices(type){
   tabUndone=Math.max(0,tabTotal-tabDone);
 
   return '<div class="toolbar">'+
-    '<div class="search-box' + (_invSearch ? ' has-val' : '') + '" style="max-width:220px">'+
+    '<div class="search-box' + (_invSearch ? ' has-val' : '') + '">'+
       '<a href="javascript:void(0)" data-search-fn="onInvSearch" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
       '<input id="invSearchInput" type="text" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onInvSearch(this.value)">'+
       '<span class="clear-btn" onclick="onInvSearch(\'\')">×</span>'+
     '</div>'+
     '<div class="spacer"></div>'+
   '</div>'+
-  '<div class="stats" style="grid-template-columns:repeat(3,1fr)">'+
+  '<div class="stats">'+
     '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'应开发票总额':'应收票总额')+'</div><div class="v">'+fmt(tabTotal)+'</div></div>'+
     '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'已开票总额':'已收票总额')+'</div><div class="v" style="color:var(--green)">'+fmt(tabDone)+'</div></div>'+
     '<div class="stat stat-static"><div class="k">'+(_invTab==='issue'?'未开票总额':'未收票总额')+'</div><div class="v" style="color:var(--red)">'+fmt(tabUndone)+'</div></div>'+
   '</div>'+
   // 子Tabs
-  '<div class="settle-tabs" style="display:flex;border-bottom:2px solid var(--line);margin-bottom:16px">'+
+  '<div class="settle-tabs">'+
     '<button class="settle-tab' + (_invSubTab === 'unpaid' ? ' active' : '') + '" onclick="switchInvSubTab(\'unpaid\')"><span>'+subUnpaidLabel+'</span></button>'+
     '<button class="settle-tab' + (_invSubTab === 'paid' ? ' active' : '') + '" onclick="switchInvSubTab(\'paid\')"><span>'+subPaidLabel+'</span></button>'+
   '</div>'+
@@ -326,9 +330,12 @@ function viewInvoices(type){
     (rows || '<tr><td colspan="'+colSpan+'">'+
       '<div class="empty-state">'+
         '<div class="es-icon">'+icon('receipt',28)+'</div>'+
-        '<div class="es-title">'+(_invTab==='issue'?'暂无开票记录':'暂无收票记录')+'</div>'+
-        '<div class="es-desc">'+(_invTab==='issue'?'从结算记录生成开票记录，管理开票状态':'从结算记录生成收票记录，跟踪收到的发票')+'</div>'+
-        '<div class="es-action"><button class="btn primary" onclick="openInvEdit(\'\')">'+icon('plus')+'新增发票</button></div>'+
+        '<div class="es-title">'+(_invSearch?'未找到匹配记录':(_invTab==='issue'?'暂无开票记录':'暂无收票记录'))+'</div>'+
+        '<div class="es-desc">'+(_invSearch?'试试调整搜索关键词或清除筛选条件':(_invTab==='issue'?'从结算记录生成开票记录，管理开票状态':'从结算记录生成收票记录，跟踪收到的发票'))+'</div>'+
+        '<div class="es-action">'+
+          ((_invSearch||_invUnitFilter)?'<button class="btn ghost" onclick="onInvSearch(\'\');onInvUnitFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
+          '<button class="btn primary" onclick="openInvEdit(\'\')" style="margin-left:'+((_invSearch||_invUnitFilter)?'8px':'0')+'">'+icon('plus')+'新增发票</button>'+
+        '</div>'+
       '</div>'+
     '</td></tr>')+
   '</tbody></table></div>' + pg + '</div>';
@@ -500,7 +507,7 @@ function openInvEdit(invId){
     // 防重锁：防止重复点击导致重复保存
     if(_invEditSaving){toast('正在保存中，请稍候...','info');return;}
     _invEditSaving=true;
-    setTimeout(function(){_invEditSaving=false;},500);
+    setTimeout(function(){_invEditSaving=false;},INV_SAVE_LOCK_MS);
     inv.settleNote=document.getElementById('invEdit_remark').value.trim();
     inv.invoiceNumber=document.getElementById('invEdit_number').value.trim();
     if(isIssue){
@@ -527,5 +534,5 @@ function openInvEdit(invId){
   setTimeout(function(){
     const bd=document.querySelector('.drawer-panel .drawer-bd');
     if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
-  },50);
+  },DRAWER_BIND_DELAY_MS);
 }
