@@ -24,19 +24,18 @@
   --purple:#7c3aed;--purple-l:#f5f3ff;--purple-line:#ddd6fe;
   --tooltip-bg:#1e293b;
   /* z-index 层级（从低到高） */
-  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-cmd:1600;--z-toast:2000;
+  --z-combo:40;--z-topbar:50;--z-combo-over:60;--z-overlay:99;--z-sidebar:100;--z-dropdown:100;--z-drawer:1000;--z-modal:1050;--z-cmd:1600;--z-tooltip:1500;--z-toast:2000;
   /* 动效令牌（全局常量，三主题共用，dark/cream 自动继承） */
   --dur-fast:120ms;--dur-base:200ms;--dur-slow:300ms;
   --ease-out:cubic-bezier(.16,1,.3,1);
   --ease-in-out:cubic-bezier(.4,0,.2,1);
-  --ease-spring:cubic-bezier(.34,1.56,.64,1);
   /* 焦点环（键盘可达性；可见焦点用 outline，不用 box-shadow 冒充） */
   --focus-ring:var(--pri);--focus-ring-soft:var(--pri-p);
   /* 骨架屏 shimmer 占位色 */
   --skeleton-from:var(--bg-soft);--skeleton-to:var(--line);
   /* ===== AI 助手专属令牌（default：铜品牌泡 + 靛蓝身份色） ===== */
   --ai-accent:#3b5998;--ai-accent-d:#2d4578;
-  --ai-soft:#eff2f8;--ai-line:#e2e5ee;--ai-input-line:#dfe3ec;--ai-glow:rgba(59,89,152,.12);
+  --ai-soft:#eff2f8;--ai-line:#e2e5ee;--ai-glow:rgba(59,89,152,.12);
   --ai-surface:#fefdfb;
   --ai-user-bg:#b45309;--ai-user-bg-2:#92400e;
   --ai-user-ink:#fff;
@@ -111,7 +110,7 @@
   --tooltip-bg:#0f0f10;
   /* ===== AI 助手专属令牌（暗色：亮琥珀用户泡 → 深字保证对比度） ===== */
   --ai-accent:#60a5fa;--ai-accent-d:#3b82f6;
-  --ai-soft:#1e293b;--ai-line:#2b3648;--ai-input-line:#46577a;--ai-glow:rgba(96,165,250,.22);
+  --ai-soft:#1e293b;--ai-line:#2b3648;--ai-glow:rgba(96,165,250,.22);
   --ai-surface:#1f1f23;
   --ai-user-bg:#f59e0b;--ai-user-bg-2:#d97706;
   --ai-user-ink:#2a1a02;

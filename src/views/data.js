@@ -208,7 +208,7 @@ async function refreshBackupList(){
     box.querySelectorAll('[data-delete]').forEach(function(btn){
       btn.addEventListener('click',function(){deleteBackup(btn.getAttribute('data-delete'));});
     });
-  }catch(e){box.innerHTML='<div style="font-size:13px;color:var(--err)">备份列表加载失败：'+escHtml(e.message||e)+'</div>';}
+  }catch(e){box.innerHTML='<div style="font-size:13px;color:var(--red)">备份列表加载失败：'+escHtml(e.message||e)+'</div>';}
 }
 /** 字节数格式化 */
 function fmtBytes(n){

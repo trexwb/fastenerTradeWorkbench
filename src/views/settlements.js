@@ -8,6 +8,8 @@ let _settleSearch='';
 let _settleUnitFilter=''; // 单位筛选
 /** 结算提交防重锁 */
 let _settlementSaving=false;
+/** 结算提交防重锁释放延时（ms） */
+const SETTLE_SAVE_LOCK_MS=500;
 
 /* ---- 获取符合条件的订单（签约完成/送货中/完成） ---- */
 /** 获取所有符合条件的订单（签约完成/送货中/完成）
@@ -250,7 +252,7 @@ function viewSettlements(type){
     '</tr>';
   }).join('');
 
-  let pg=totalPages>1?buildPaging(activeData.length,_settlePage,totalPages,'settlePage',{id:'settlePaging'}):'';
+  const pg=buildPaging(activeData.length,_settlePage,totalPages,'settlePage',{id:'settlePaging'});
   let tabSearchLabel=_settleTab==='receipt'?'收款':'付款';
 
   return '<div class="toolbar">'+
@@ -785,7 +787,7 @@ function submitSettlement(){
   // 防重锁：防止重复点击导致重复提交结算
   if(_settlementSaving){toast('正在保存中，请稍候...','info');return;}
   _settlementSaving=true;
-  setTimeout(function(){_settlementSaving=false;},500);
+  setTimeout(function(){_settlementSaving=false;},SETTLE_SAVE_LOCK_MS);
   let type=document.getElementById('st_type').value;
   let unitId=document.getElementById('st_unit').dataset.val;
   let date=document.getElementById('st_date').value;

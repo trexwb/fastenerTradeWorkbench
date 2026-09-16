@@ -61,7 +61,6 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-s
   .cmd-overlay{padding-top:8vh;}
   .cmd-panel{width:100%;border-radius:12px;}
   /* 统计卡片换行（Dashboard） */
-  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
 }
 
 /* 手机竖屏：更激进的间距收缩与自适应字号 */

@@ -13,6 +13,10 @@ let _invEditSaving=false;
 
 const INV_ISSUE_STATUS=['未开票','已开票'];
 const INV_RECEIVE_STATUS=['未收票','已收票'];
+/** 发票保存防重锁释放延时（ms） */
+const INV_SAVE_LOCK_MS=500;
+/** 抽屉事件绑定延时（ms） */
+const DRAWER_BIND_DELAY_MS=50;
 
 /* ---- 从结算记录同步生成发票记录（去重：同一settleId只生成一次） ---- */
 /**
@@ -295,7 +299,7 @@ function viewInvoices(type){
     }).join('');
   }).join('');
 
-  let pg='<div id="invPaging">'+(totalPages>1?'<div style="display:flex;align-items:center;gap:6px;padding:10px 0;font-size:14px">'+icon('chevronLeft','14')+' <a href="javascript:void(0)" onclick="invPage('+(_invPage-1)+')" style="color:var(--blue);text-decoration:none'+( _invPage<=1?';visibility:hidden':'')+'">上一页</a><span style="padding:2px 10px;background:var(--bg-soft);border-radius:4px">'+_invPage+' / '+totalPages+'</span><a href="javascript:void(0)" onclick="invPage('+(_invPage+1)+')" style="color:var(--blue);text-decoration:none'+( _invPage>=totalPages?';visibility:hidden':'')+'">下一页</a> '+icon('chevronRight','14')+'</div>':'')+'</div>';
+  const pg=buildPaging(activeData.length,_invPage,totalPages,'invPage',{id:'invPaging'});
 
   let cols=_invTab==='issue'?
     '<th class="m-hide-s2">结算日期</th><th>公司名称</th><th class="m-hide-s2">应收金额</th><th class="m-hide-s1">已收金额</th><th>未收金额</th><th>开票状态</th><th>操作</th>':
@@ -500,7 +504,7 @@ function openInvEdit(invId){
     // 防重锁：防止重复点击导致重复保存
     if(_invEditSaving){toast('正在保存中，请稍候...','info');return;}
     _invEditSaving=true;
-    setTimeout(function(){_invEditSaving=false;},500);
+    setTimeout(function(){_invEditSaving=false;},INV_SAVE_LOCK_MS);
     inv.settleNote=document.getElementById('invEdit_remark').value.trim();
     inv.invoiceNumber=document.getElementById('invEdit_number').value.trim();
     if(isIssue){
@@ -527,5 +531,5 @@ function openInvEdit(invId){
   setTimeout(function(){
     const bd=document.querySelector('.drawer-panel .drawer-bd');
     if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
-  },50);
+  },DRAWER_BIND_DELAY_MS);
 }

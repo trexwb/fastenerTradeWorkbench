@@ -29,14 +29,7 @@ function renderOrderEmptyRow(){
       '<div class="es-desc">'+(hasFilter?'试试调整搜索关键词或清除筛选条件':'点击下方按钮创建第一个采购订单，管理供应商报价和发货进度')+'</div>'+
       '<div class="es-action">'+
         (hasFilter?'<button class="btn ghost" onclick="onOrderSearch(\'\');orderStatusFilter=\'\';onOrderStatusFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
-    '<div class="btn-group">'+
-      '<button class="btn primary" onclick="newOrder()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新建采购订单</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
-      '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
-        '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建采购订单</button>'+
-        '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
-      '</div>'+
-    '</div>'+
+    '<button class="btn primary" onclick="newOrder()" style="margin-left:'+(hasFilter?'8px':'0')+'">'+icon('plus')+'新建订单</button>'+
       '</div>'+
     '</div>'+
   '</td></tr>';
@@ -66,10 +59,10 @@ function viewOrders(){
     countTag+
     '<button id="orderBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteOrders()">'+icon('trash')+'批量删除(<span id="orderBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
-      '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建采购订单</button>'+
+      '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建订单</button>'+
       '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
-        '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建采购订单</button>'+
+        '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建订单</button>'+
         '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
       '</div>'+
     '</div>'+
@@ -2103,7 +2096,7 @@ function submitOrderImport(){
   toast('✅ 已导入 '+created+' 张订单'+(newUnits?'，新建采购商 '+newUnits+' 家':''),'success');
 }
 
-/** 切换「新建采购订单」下拉菜单显隐（四列表统一：主按钮 + 更多操作下拉，含单个新增与批量导入） */
+/** 切换「新建订单」下拉菜单显隐（与关联单位/BOM管理/签约报价同款交互） */
 function toggleOrderDropdown(e){
   e.stopPropagation();
   const dd=document.getElementById('orderDropdown');
@@ -2116,7 +2109,7 @@ function toggleOrderDropdown(e){
     },0);
   }
 }
-/** 关闭「新建采购订单」下拉菜单 */
+/** 关闭「新建订单」下拉菜单 */
 function closeOrderDropdown(){
   const dd=document.getElementById('orderDropdown');
   if(dd)dd.style.display='none';
