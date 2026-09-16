@@ -115,6 +115,12 @@ function syncInvoices(){
     }
     changed=true;
   });
+  // v1.0.56（审计 M2）：来源结算记录已删除（回收站/级联删）的发票标记「失配」，避免无法溯源的孤儿发票
+  DB.invoices.forEach(function(inv){
+    const orphan=!DB.settlements.some(function(x){return x.id===inv.settleId;});
+    if(orphan&&!inv.orphan){inv.orphan=true;changed=true;}
+    else if(!orphan&&inv.orphan){delete inv.orphan;changed=true;}
+  });
   if(changed)saveDB();
 }
 
@@ -289,7 +295,7 @@ function viewInvoices(type){
       let gap=_invTab==='issue'?(inv.receivable||0)-(inv.amount||0):(inv.payable||0)-(inv.amount||0);
       return '<tr>'+
         '<td class="m-hide-s2" style="font-size:12px;color:var(--gray)">结算 '+escHtml(inv.settleDate)+'</td>'+
-        '<td>'+escHtml(inv.unitName)+'</td>'+
+        '<td>'+escHtml(inv.unitName)+(inv.orphan?' <span class="tag warn" title="来源结算记录已删除">来源已删</span>':'')+'</td>'+
         '<td class="m-hide-s2">'+fmt(_invTab==='issue'?inv.receivable:inv.payable)+'</td>'+
         '<td class="m-hide-s1" style="color:'+(inv.amount>0?'var(--green)':'var(--gray)')+'">'+fmt(inv.amount)+'</td>'+
         '<td style="color:'+(gap>0?'var(--red)':'var(--gray)')+'">'+fmt(gap)+'</td>'+

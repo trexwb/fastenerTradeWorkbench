@@ -253,9 +253,24 @@ function viewOrderDetail(){
 function changeOrderStatus(id,status){
   const o=DB.orders.find(x=>x.id===id);
   if(!o)return;
-  o.status=status;
-  o.statusChangedAt=now();
-  saveDB();render();toast('订单状态已更改为「'+status+'」','success');
+  // v1.0.56（审计 H1）：离开结算聚合状态集（签约完成/送货中/完成）且存在关联结算时，
+  // 确认口径影响——订单转异常/取消等后不再计入结算页应收/应付聚合，避免对账口径错位
+  const wasSettled=['签约完成','送货中','完成'].indexOf(o.status)>=0;
+  const willSettle=['签约完成','送货中','完成'].indexOf(status)>=0;
+  const applyChange=function(){
+    o.status=status;
+    o.statusChangedAt=now();
+    saveDB();render();toast('订单状态已更改为「'+status+'」','success');
+  };
+  if(wasSettled&&!willSettle){
+    const linked=_orderLinkedSettlements(id);
+    if(linked.length){
+      const total=linked.reduce(function(a,s2){return a+(s2.amount||0);},0);
+      confirmModal('⚠ 该订单已关联 '+linked.length+' 条结算记录（合计 '+fmt(total)+' 元）。\n\n订单转为「'+status+'」后将不再计入结算页的应收/应付聚合（结算记录本身保留，恢复原状态后会重新计入）。\n\n确认继续？',function(){applyChange();},'确认变更',null,null,true);
+      return;
+    }
+  }
+  applyChange();
 }
 /** 根据当前状态返回专属「下一步」按钮 HTML。未完结状态返回按钮；完成/异常/取消/未成交返回空。 */
 function nextStepButton(o){
@@ -898,13 +913,14 @@ function buildPriceMatchModalBody(idx,q){
       '<div class="smi-meta">联系人: '+escHtml(p.contact||'-')+' · 有效期: '+escHtml(p.validFrom)+'</div>'+
       '<div style="margin-top:4px;font-size:14px" class="'+(unitProfit>=0?'profit-pos':'profit-neg')+'">单位利润 '+fmt(unitProfit)+'</div>'+
       '<div style="margin-top:8px;display:flex;align-items:center;gap:8px">'+
-        '<input type="checkbox" id="pm_chk_'+p.id+'" value="'+p.id+'" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">'+
+        '<input type="checkbox" id="pm_chk_'+p.id+'" value="'+p.id+'" onchange="pmOnCheckChange('+idx+',\''+p.id+'\')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">'+
         '<span class="muted" style="font-size:12px;white-space:nowrap">分配数量(千支):</span>'+
-        '<input class="alloc-input" type="number" tabindex="31" id="alloc_'+p.id+'" data-val="'+Math.min(remain,it.qty)+'" value="'+Math.min(remain,it.qty)+'" min="1" max="'+remain+'" style="font-size:14px">'+
+        '<input class="alloc-input" type="number" tabindex="31" id="alloc_'+p.id+'" oninput="pmOnAllocInput('+idx+')" data-val="'+Math.min(remain,it.qty)+'" value="'+Math.min(remain,it.qty)+'" min="1" max="'+remain+'" style="font-size:14px">'+
       '</div>'+
     '</div>';
   }).join(''):'<div class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
-  return '<div class="search-box pm-search-box">'+
+  return '<div id="pmHint" style="margin:0 0 8px;font-size:13px;color:var(--gray)">已勾选 0 家 · 分配合计 0 / 剩余 '+remain+'</div>'+
+    '<div class="search-box pm-search-box">'+
     '<a href="javascript:void(0)" onclick="runPriceMatchFilter('+idx+')" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
     '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
     '<span class="clear-btn" onclick="clearPriceMatchFilter('+idx+')">×</span>'+
@@ -955,6 +971,13 @@ function submitPriceMatch(idx){
   });
   if(skipped.length)toast('⏭ 已跳过 '+skipped.length+' 个已添加供应商：'+skipped.slice(0,3).join('、')+(skipped.length>3?'...':''),'warning');
   if(!filtered.length){closeModal();return;}
+  // v1.0.56（审计 M1）：提交前校验分配合计不超剩余量——避免多选时第二个供应商提交后被守卫拒绝
+  const remainNow=it.qty-itemAllocSum(it);
+  const sumQ=filtered.reduce(function(a,e){return a+e.qty;},0);
+  if(sumQ>remainNow){
+    toast('勾选供应商分配合计 '+fmtN(sumQ)+' 超出剩余 '+fmtN(remainNow)+'，请调整各行分配数量后再提交','warning');
+    return;
+  }
   closeModal();
   filtered.forEach(e=>{
     addMatchSupplier(idx,e.priceId,e.qty);
@@ -2156,3 +2179,42 @@ function closeOrderDropdown(){
   const dd=document.getElementById('orderDropdown');
   if(dd)dd.style.display='none';
 }
+
+/* ---- 价格库匹配弹窗：勾选联动与分配合计提示（v1.0.56，审计 M1） ---- */
+/** 更新弹窗顶部的「已勾选/分配合计/剩余」实时提示（超量红色警示） */
+function pmUpdateHint(idx){
+  const it=_fItems[idx];
+  if(!it)return;
+  const remain=it.qty-itemAllocSum(it);
+  const boxes=Array.from(document.querySelectorAll('#pmList input[type="checkbox"]'));
+  const checked=boxes.filter(function(b){return b.checked;});
+  let sum=0;
+  checked.forEach(function(b){
+    const q=+(document.getElementById('alloc_'+b.value)||{value:0}).value||0;
+    sum+=q;
+  });
+  const hint=document.getElementById('pmHint');
+  if(hint)hint.innerHTML='已勾选 <b>'+checked.length+'</b> 家 · 分配合计 <b'+(sum>remain?' style="color:var(--red)"':'')+'>'+sum+'</b> / 剩余 '+remain+(sum>remain?'（超出，请调低分配量）':'');
+}
+/** 勾选/取消勾选供应商时：更新提示；新勾选行的默认分配量自动收窄为「剩余-其他已勾选行」（避免默认全量撞守卫） */
+function pmOnCheckChange(idx,priceId){
+  const it=_fItems[idx];
+  if(!it)return;
+  const remain=it.qty-itemAllocSum(it);
+  const boxes=Array.from(document.querySelectorAll('#pmList input[type="checkbox"]'));
+  const checked=boxes.filter(function(b){return b.checked;});
+  const inp=document.getElementById('alloc_'+priceId);
+  if(inp&&inp.checked===undefined){}
+  const el=document.getElementById('pm_chk_'+priceId);
+  const isNowChecked=el&&el.checked;
+  if(isNowChecked&&checked.length>1&&inp){
+    const others=checked.filter(function(b){return b.value!==priceId;}).reduce(function(a,b){
+      return a+((+(document.getElementById('alloc_'+b.value)||{value:0}).value)||0);
+    },0);
+    const rest=remain-others;
+    if(rest>=1&&+inp.value>rest)inp.value=rest;
+  }
+  pmUpdateHint(idx);
+}
+/** 分配数量输入时刷新合计提示 */
+function pmOnAllocInput(idx){pmUpdateHint(idx);}
