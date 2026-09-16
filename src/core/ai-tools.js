@@ -947,7 +947,7 @@ const AIT=(function(){
       const bomSku=String(args.bomSku||'');
       if(!specText&&!bomSku)return {ok:false,error:'至少提供 spec 或 bomSku 之一'};
       if(bomSku&&!DB.bom.some(b=>b.sku===bomSku))return {ok:false,error:'BOM SKU 不存在：'+bomSku};
-      if(typeof isPriceDuplicate==='function'&&isPriceDuplicate(args.unitId,bomSku,specText,attrs,null))return {ok:false,error:'已存在相同供应商+SKU+规格+属性的报价'};
+      if(typeof isPriceDuplicate==='function'&&isPriceDuplicate(args.unitId,bomSku,specText,attrs,null))return {ok:false,error:'已存在相同供应商 + BOM SKU 的报价'};
       const after={id:'(自动生成)',unitId:args.unitId,unitName:u.name,bomSku,spec:specText,...attrs,price,validFrom:args.validFrom||today(),contact:args.contact||'',remark:args.remark||''};
       return {ok:true,preview:{after}};
     },
@@ -970,7 +970,7 @@ const AIT=(function(){
       if(args.remark!==undefined)patch.remark=args.remark;
       if(!Object.keys(patch).length)return {ok:false,error:'未提供任何更新字段'};
       const attrs={type:patch.type!==undefined?patch.type:p.type,standard:patch.standard!==undefined?patch.standard:p.standard,diameter:patch.diameter!==undefined?patch.diameter:p.diameter,hardness:patch.hardness!==undefined?patch.hardness:p.hardness,surface:patch.surface!==undefined?patch.surface:p.surface,material:patch.material!==undefined?patch.material:p.material};
-      if(typeof isPriceDuplicate==='function'&&isPriceDuplicate(p.unitId,patch.bomSku!==undefined?patch.bomSku:p.bomSku,patch.spec!==undefined?patch.spec:p.spec,attrs,p.id))return {ok:false,error:'修改后将与已有报价重复'};
+      if(typeof isPriceDuplicate==='function'&&isPriceDuplicate(p.unitId,patch.bomSku!==undefined?patch.bomSku:p.bomSku,patch.spec!==undefined?patch.spec:p.spec,attrs,p.id))return {ok:false,error:'修改后将与已有报价重复（供应商 + BOM SKU 唯一）'};
       const after=Object.assign(_snap(before),patch);
       return {ok:true,preview:{before,after,patch}};
     },

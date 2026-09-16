@@ -158,7 +158,6 @@ function viewOrderDetail(){
   const markAbnormalBtnHTML=['报价中','签约完成','送货中'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+escJsStr(o.id)+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
-    '<button class="btn sm" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
     (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 订单完成</button>':'')+
@@ -174,7 +173,8 @@ function viewOrderDetail(){
   '</div>'+
   '<div class="card">'+
     '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+
-      (editLocked?'':'<button class="btn" style="margin-left:auto" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑</button>')+
+      '<button class="btn" style="margin-left:auto" title="导出当前订单明细为 Excel" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
+      (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑</button>')+
       '<button class="btn" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+escJsStr(o.id)+'\')">'+icon('copy','16')+' 复制</button>'+
     '</h2>'+
     flowHTML+
@@ -1694,7 +1694,7 @@ function submitSupplierQuote(){
   if(!o){toast('订单不存在','error');return;}
   const missing=data.filter(r=>!r.supplierId);
   if(missing.length){toast('有 '+missing.length+' 行未选择供应商','warning');return;}
-  let matched=0,unmatched=0,skipped=0;
+  let matched=0,unmatched=0,skipped=0,priceSynced=0;
   const unmatchedNames=[];
   for(const r of data){
     const idx=findQuoteItemIndex(o.items,r);
@@ -1714,6 +1714,18 @@ function submitSupplierQuote(){
     const contact=(u.contacts&&u.contacts.length)?(u.contacts[0].name||''):'';
     it.options=it.options||[];
     it.options.push({id:uid('Q'),supplierId:u.id,contact,price:r.price,allocQty:q,stockNote:'批量导入',source:'import',status:'已选'});
+    // v1.0.58：与手动录入供应商一致，批量导入报价同步写入签约报价（价格库 DB.prices）——
+    // 仅当报价>0 时写入，防重复规则与手动录入相同（供应商+SKU+规格+属性组合）
+    if(r.price>0&&!isPriceDuplicate(u.id,it.bomSku||'',it.spec||'',{type:it.type,standard:it.standard,diameter:it.diameter,hardness:it.hardness,surface:it.surface,material:it.material},null)){
+      DB.prices.push({
+        id:uid('PR'),unitId:u.id,contact:contact,
+        type:it.type,standard:it.standard,diameter:it.diameter,
+        hardness:it.hardness,surface:it.surface,material:it.material,
+        spec:it.spec||'',bomSku:it.bomSku||'',
+        price:r.price,validFrom:today(),remark:'订单寻货批量导入',source:'import',createdAt:today()
+      });
+      priceSynced++;
+    }
     matched++;
   }
   o.updatedAt=now();
@@ -1721,10 +1733,11 @@ function submitSupplierQuote(){
   saveDB();
   closeDrawer();
   render();
+  const priceMsg=priceSynced>0?'，同步签约报价 '+priceSynced+' 条':'';
   if(unmatched){
-    toast('已生成 '+matched+' 条寻货结果，'+unmatched+' 行未匹配到产品（'+unmatchedNames.join('、')+'等）'+(skipped?'，'+skipped+' 行跳过':''),'warning');
+    toast('已生成 '+matched+' 条寻货结果'+priceMsg+'，'+unmatched+' 行未匹配到产品（'+unmatchedNames.join('、')+'等）'+(skipped?'，'+skipped+' 行跳过':''),'warning');
   }else{
-    toast('已生成 '+matched+' 条寻货结果'+(skipped?'，'+skipped+' 行跳过':''),'success');
+    toast('已生成 '+matched+' 条寻货结果'+priceMsg+(skipped?'，'+skipped+' 行跳过':''),'success');
   }
 }
 /* ---- 采购订单生成报价 ---- */
@@ -1734,17 +1747,20 @@ function openGenerateQuote(){
   if(!o||!o.items.length){toast('暂无产品可生成报价','warning');return;}
   const rows=o.items.map((it,i)=>{
     const cost=itemOpts(it).reduce((s,x)=>s+(x.price||0)*(x.allocQty||0),0);
-    const def=it.quotePrice>0?it.quotePrice:(it.salePrice>0?it.salePrice:cost);
+    // v1.0.58：成本单价（元/千支）= 总采购成本 ÷ 数量，与意向价同单位便于对比
+    const costUnit=it.qty>0?cost/it.qty:0;
+    const def=it.quotePrice>0?it.quotePrice:(it.salePrice>0?it.salePrice:costUnit);
     return '<tr>'+
       '<td style="text-align:left">'+escHtml(it.sku||it.name||'')+'<div class="muted" style="font-size:11px">'+escHtml(it.spec||'')+'</div></td>'+
       '<td>'+fmtN(it.qty)+'</td>'+
       '<td>'+fmt(it.salePrice)+'</td>'+
+      '<td>'+fmt(costUnit)+'</td>'+
       '<td>'+fmt(cost)+'</td>'+
       '<td><input id="gq_'+i+'" type="number" step="0.01" min="0" value="'+escAttr(def)+'" style="width:120px"></td>'+
     '</tr>';
   }).join('');
-  const body='<div class="table-wrap" style="overflow:visible"><table><thead><tr><th>产品</th><th>数量(千支)</th><th>意向价</th><th>采购成本</th><th>报价(元/千支)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div class="muted" style="font-size:12px;margin-top:8px">报价为报给采购商的最终价格，默认取意向价、无意向价时取采购成本，可手动调整。</div>';
+  const body='<div class="table-wrap" style="overflow:visible"><table><thead><tr><th>产品</th><th>数量(千支)</th><th>意向价</th><th>采购单价</th><th>采购成本</th><th>报价(元/千支)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="muted" style="font-size:12px;margin-top:8px">报价为报给采购商的最终价格，默认取意向价、无意向价时取成本单价，可手动调整。</div>';
   modal('生成报价',body,'保存报价',saveGeneratedQuote,true);
 }
 /** 保存生成报价弹窗中填写的报价到各产品行 */

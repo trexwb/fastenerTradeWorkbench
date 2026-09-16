@@ -211,12 +211,21 @@ function newPrice(){
     if(panel)bindDraftSave(panel,collectPriceDraft,DRAFT_TYPES.price);
   },100);
 }
-/** 检查报价是否重复（同一供应商+BOM SKU+规格+属性组合） */
+/** 检查报价是否重复（同一供应商 + BOM(SKU) 唯一）
+ *  v1.0.58：唯一键收紧为「供应商BOM + SKU」（unitId + bomSku），同一供应商对同一 BOM SKU 仅允许一条报价；
+ *  均未绑定 BOM（bomSku 为空）的记录退回「规格+属性组合」判定，避免未关联 BOM 的报价被误拦截。 */
 function isPriceDuplicate(unitId,bomSku,spec,attrs,excludeId){
+  const b=(bomSku||'').trim();
   return DB.prices.some(p=>{
     if(excludeId&&p.id===excludeId)return false;
     if(p.unitId!==unitId)return false;
-    if((p.bomSku||'')!==(bomSku||''))return false;
+    const pb=(p.bomSku||'').trim();
+    if(b||pb){
+      // 已绑定 BOM：同一供应商 + 同一 BOM SKU 即判重复
+      if(b!==pb)return false;
+      return true;
+    }
+    // 均未绑定 BOM：退回原规格+属性组合判定
     if((p.spec||'')!==(spec||''))return false;
     for(const k of SPEC_FIELDS){if((p[k]||'')!==(attrs[k]||''))return false;}
     return true;
@@ -310,7 +319,7 @@ function savePriceDrawer(){
   const bomRefEl=document.getElementById('ps_bom_ref');
   const bomInput=bomRefEl.querySelector('input');if(bomInput&&bomInput.value.trim()==='')bomRefEl.dataset.val='';
   const bomSku=bomRefEl.dataset.val==='__manual__'?'':bomRefEl.dataset.val;
-  if(isPriceDuplicate(unitId,bomSku,specText,spec,editingPriceId)){toast('已存在相同供应商+SKU+规格+属性的报价，请勿重复添加','warning');return;}
+  if(isPriceDuplicate(unitId,bomSku,specText,spec,editingPriceId)){toast('已存在相同供应商 + BOM SKU 的报价，请勿重复添加','warning');return;}
   if(editingPriceId){
     const rec=DB.prices.find(x=>x.id===editingPriceId);
     Object.assign(rec,{unitId,contact,...spec,bomSku,price,validFrom,remark,spec:specText});
