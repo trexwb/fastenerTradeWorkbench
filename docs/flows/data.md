@@ -214,4 +214,3 @@ renderDangerZone()
           └── index.html → seed.js → utils.js → ui.js → store.js → ... → data.js → router.js → app.js
                 └── <script defer> 按序加载
 ```
-*（内容由AI生成，仅供参考）*

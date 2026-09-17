@@ -2407,4 +2407,3 @@ create_unit / update_unit / create_price / update_price / flow_order_status
 ## 四、变更文件
 
 - 完整项目初始化：src/（core/views/styles）、src-tauri/、docs/、.github/workflows/、scripts/
-*（内容由AI生成，仅供参考）*

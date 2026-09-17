@@ -213,4 +213,3 @@ openInvEdit(invId)
           │     └── receive: receiveStatus (未收票/已收票)
           └── 删除结算不自动删除对应发票（发票独立维护）
 ```
-*（内容由AI生成，仅供参考）*

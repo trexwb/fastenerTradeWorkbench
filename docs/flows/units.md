@@ -240,4 +240,3 @@ bindDraftSave(container, collectUnitDraft, 'unit') // 绑定 input/change 自动
 ```
 
 关联单位删除/修改时会触发下游模块的关联检查：订单、报价、结算、发票中引用该单位的数据会成为"失配"状态（不会自动清理），系统会提示用户但允许继续操作。
-*（内容由AI生成，仅供参考）*

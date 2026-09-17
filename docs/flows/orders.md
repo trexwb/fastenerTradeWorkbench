@@ -348,4 +348,3 @@ restoreOrderDraft(d)       // 恢复草稿到表单
           _fItems.map(it => ({...it, options: (it.options||[]).map(o => ({...o}))}))
           避免 DB 存储对象引用，保证 IndexedDB 结构化克隆后数据一致。
 ```
-*（内容由AI生成，仅供参考）*

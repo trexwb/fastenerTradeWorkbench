@@ -231,4 +231,3 @@ specMatch(price, item) — 来自 utils.js
           ├── BOM 变更 → fillSpecFromBOM 联动更新
           └── 供应商单位变更 → combo 下拉自动刷新
 ```
-*（内容由AI生成，仅供参考）*
