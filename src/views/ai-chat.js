@@ -427,7 +427,7 @@ function renderAIAttachments(){
     let cls='parsing',meta='解析中…';
     if(a.status==='error'){cls='error';meta=a.error||'解析失败';}
     else if(a.status==='ready'){cls='ready';meta=(a.chars||0)+' 字'+(a.truncated?' · 超长截断':'');}
-    return '<span class="ai-attach-chip '+cls+'" title="'+escAttr(a.name+' · '+meta)+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(a.name)+'</span><span class="mt">'+escHtml(meta)+'</span><button type="button" class="rm" title="移除该附件" onclick="aiAttachRemove('+i+')">'+icon('x','11')+'</button></span>';
+    return '<span class="ai-attach-chip '+cls+'" title="'+escAttr(a.name+' · '+meta)+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(a.name)+'</span><span class="mt">'+escHtml(meta)+'</span><button type="button" class="rm" title="移除该附件" aria-label="移除附件 '+escAttr(a.name)+'" onclick="aiAttachRemove('+i+')">'+icon('x','11')+'</button></span>';
   }).join('');
 }
 function aiAttachRemove(i){_aiAttachments.splice(i,1);renderAIAttachments();}

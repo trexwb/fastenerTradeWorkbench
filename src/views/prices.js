@@ -61,7 +61,7 @@ function viewPrices(){
   // 与 BOM管理 / 关联单位 / 采购订单工具栏统一；v1.0.51 的「筛选态才显示」条件渲染废弃
   const priceActions='<div class="btn-group">'+
       '<button class="btn primary" onclick="newPrice()">'+icon('plus')+'新增报价</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="priceDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closePriceDropdown();newPrice()">'+icon('plus')+'新增报价</button>'+
         '<button class="dropdown-item" onclick="closePriceDropdown();openPriceBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
@@ -69,7 +69,7 @@ function viewPrices(){
     '</div>';
 
   return '<div class="toolbar">'+
-    '<div class="search-box"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box"><button type="button" class="search-trigger" aria-label="搜索报价" data-search-fn="doPriceSearch" onclick="doPriceSearch()">'+icon('search','16')+'</button><input id="pf_sku" type="text" aria-label="搜索 SKU" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><button type="button" class="clear-btn" aria-label="清空搜索" onclick="clearPriceFilter()">×</button></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
     '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+

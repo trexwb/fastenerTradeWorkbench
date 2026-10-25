@@ -47,11 +47,11 @@ function viewOrders(){
   const pg=buildPaging(all.length,_orderPage,totalPages,'orderPage',{id:'orderPaging'});
   return '<div class="toolbar">'+
     '<div class="search-box'+(orderSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="orderSearchInput" type="text" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onOrderSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onOrderSearch(\'\')">×</span>'+
+      '<button type="button" class="search-trigger" aria-label="搜索订单" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)">'+icon('search','16')+'</button>'+
+      '<input id="orderSearchInput" type="text" aria-label="搜索单号、采购商、项目、对接人" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onOrderSearch(this.value)">'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onOrderSearch(\'\')">×</button>'+
     '</div>'+
-    '<select id="orderStatusFilter" style="width:130px" onchange="onOrderStatusFilter(this.value)" tabindex="2">'+
+    '<select id="orderStatusFilter" aria-label="按订单状态筛选" style="width:130px" onchange="onOrderStatusFilter(this.value)" tabindex="2">'+
       '<option value="">全部状态</option>'+
       ORDER_STATUSES.map(s=>'<option value="'+s+'"'+(orderStatusFilter===s?' selected':'')+'>'+s+'</option>').join('')+
     '</select>'+
@@ -60,14 +60,14 @@ function viewOrders(){
     '<button id="orderBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteOrders()">'+icon('trash')+'批量删除(<span id="orderBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
       '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建订单</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建订单</button>'+
         '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
       '</div>'+
     '</div>'+
   '</div>'+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th></th></tr></thead><tbody id="orderBody">'+
+  '<div class="card"><div class="table-wrap"><table class="orders-table"><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th aria-label="操作"></th></tr></thead><tbody id="orderBody">'+
   (rows||renderOrderEmptyRow())+
   '</tbody></table></div>'+pg+'</div>';
 }
@@ -652,7 +652,7 @@ function renderItemHTML(){
           ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
           ' · 总金额: '+fmt((o.price||0)*(o.allocQty||0))+
           (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-          '<span class="ir-src-del" onclick="removeOption('+i+',\''+escJsStr(o.id)+'\')">×</span>'+
+          '<button type="button" class="ir-src-del" aria-label="移除该供应商" onclick="removeOption('+i+',\''+escJsStr(o.id)+'\')">×</button>'+
         '</div>';
       }).join('')+
     '</div>':'<div class="ir-unsourced">尚未匹配供应商，点击「寻货」从价格库选择或手动录入</div>';
@@ -666,7 +666,7 @@ function renderItemHTML(){
           '<span class="tag '+srcCls+'" style="margin-right:4px">'+srcTxt+'</span>'+
           '<button class="btn sm" onclick="editItem('+i+')">'+icon('edit')+'编辑</button>'+
           '<button class="btn sm '+(opts.length&&remain<=0?'':'primary')+'" onclick="sourceItem('+i+')">'+(opts.length?(remain>0?icon('search')+'继续寻货':icon('building')+'管理供应商'):icon('search')+'寻货')+'</button>'+
-          '<button class="btn sm danger" onclick="delItem('+i+')">'+icon('trash')+'</button>'+
+          '<button class="btn sm danger" onclick="delItem('+i+')" title="删除产品" aria-label="删除产品">'+icon('trash')+'</button>'+
         '</div>'+
       '</div>'+
       sourcesHTML+srcBar+
@@ -689,7 +689,7 @@ function refreshProductList(){
       '<h2 style="margin:0">'+icon('tag','18')+'产品明细 <span class="tag info" id="itemCount">'+_fItems.length+'</span> 项</h2>'+
       '<div class="btn-group">'+
         '<button class="btn primary" onclick="addItem()">'+icon('plus')+'添加产品</button>'+
-        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
         '<div class="dropdown-menu" id="orderItemDropdown" style="display:none">'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();addItem()">'+icon('plus')+'添加产品</button>'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();openOrderBatchAdd()">'+icon('fileText')+'批量添加</button>'+
@@ -731,7 +731,7 @@ function viewOrderEdit(){
       '<h2 style="margin:0">'+icon('tag','18')+'产品明细 <span class="tag info" id="itemCount">'+_fItems.length+'</span> 项</h2>'+
       '<div class="btn-group">'+
         '<button class="btn primary" onclick="addItem()">'+icon('plus')+'添加产品</button>'+
-        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
         '<div class="dropdown-menu" id="orderItemDropdown" style="display:none">'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();addItem()">'+icon('plus')+'添加产品</button>'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();openOrderBatchAdd()">'+icon('fileText')+'批量添加</button>'+
@@ -873,7 +873,7 @@ function buildSourceDrawerBody(idx){
       ' · 采购价 '+fmt(o.price)+' · 分配 <b>'+fmtN(o.allocQty)+'千支</b>'+
       ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
       (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-      '<span class="sc-del" onclick="removeOption('+idx+',\''+escJsStr(o.id)+'\')">×</span>'+
+      '<button type="button" class="sc-del" aria-label="移除该供应商" onclick="removeOption('+idx+',\''+escJsStr(o.id)+'\')">×</button>'+
     '</div>';
   }).join('');
   return '<div style="margin-bottom:16px;padding:14px;background:var(--bg-tint);border-radius:8px;border:1px solid var(--line)">'+
@@ -921,9 +921,9 @@ function buildPriceMatchModalBody(idx,q){
   }).join(''):'<div class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
   return '<div id="pmHint" style="margin:0 0 8px;font-size:13px;color:var(--gray)">已勾选 0 家 · 分配合计 0 / 剩余 '+remain+'</div>'+
     '<div class="search-box pm-search-box">'+
-    '<a href="javascript:void(0)" onclick="runPriceMatchFilter('+idx+')" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-    '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
-    '<span class="clear-btn" onclick="clearPriceMatchFilter('+idx+')">×</span>'+
+    '<button type="button" class="search-trigger" aria-label="筛选供应商报价" onclick="runPriceMatchFilter('+idx+')">'+icon('search','16')+'</button>'+
+    '<input id="pmSearch" type="text" aria-label="搜索供应商名称或联系人" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
+    '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="clearPriceMatchFilter('+idx+')">×</button>'+
   '</div>'+
     '<div style="font-size:14px;color:var(--gray);margin-bottom:8px">共 '+availMatched.length+' 条匹配</div>'+
     '<div id="pmList">'+listHTML+'</div>'+

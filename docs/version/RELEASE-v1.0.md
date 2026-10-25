@@ -6,6 +6,65 @@
 
 ---
 
+## v1.0.57 · ♿ UI/UX 验收修复（不推进版本号）
+
+> **状态**: ♿ 无障碍/视觉验收整改（产品设计 QA 18 项偏差全量修复；**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-25
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 17 个文件针对性修复（styles 3 + core 4 + views 10），无新功能、无业务算法改动
+> **验收来源**: `spark-output/qa/fastener-trade-workbench-验收报告.md`（1 blocker + 9 major + 8 minor）
+
+---
+
+## UI/UX 验收整改
+
+### 一、主题对比度（qa-1 / qa-2 / qa-3）
+
+- 新增语义前景令牌 `--pri-ink` / `--accent-ink` / `--on-accent` / `--on-green` / `--on-amber` / `--on-red`，default / cream / dark 三主题分别取值；品牌底上的文字不再硬编码白色
+- cream 主题：正文灰 `#6b6862`、品牌蓝 `#3c6da2`、状态色同步加深，薄荷绿品牌底改深绿字 `#0f3d29`
+- dark 主题：亮色品牌底统一改深字，避免白字对比度不足
+- 全量替换 `.btn.primary`、`.tag.*-solid`、`.ftab.active`、`.filter-active-badge`、步骤条、搜索面板选中行等 20+ 处品牌底文字
+- 三主题关键组合实测对比度全部 ≥4.5:1（最低 default gray/bg 4.82，cream 5.28，dark 6.08）
+
+### 二、排版与设计令牌（qa-4 / qa-5 / qa-7）
+
+- `th` 与 `label.f` 字号统一为 14px，修正表头 12px 小于单元格 14px 的层级倒置
+- `variables.css` 新增 `--space-1..8`（4px 基准）间距刻度
+- 新增 `--dur-fast/base/slow` + `--ease-out/in-out`；`components.css` / `layout.css` 中 41 处裸写秒数过渡全部 token 化
+
+### 三、浮层语义与焦点（qa-10 / qa-11 / qa-6）
+
+- `modal()` / `confirmModal()` / `openDrawer()` 补 `role="dialog"`、`aria-modal="true"`、`aria-labelledby`（确认框另加 `aria-describedby`）
+- 弹窗/抽屉/搜索面板打开时保存触发元素并聚焦首个可操作控件；Tab/Shift+Tab 焦点圈定；Escape 关闭；关闭后焦点回到触发元素
+- 关闭控件由 `<span>` 改为 `<button type="button" aria-label="关闭">`
+- 搜索面板 `.cmd-input-box:focus-within` 恢复可见焦点环，`.cmd-close` 补 `:focus-visible` 样式
+
+### 四、表单、Toast 与控件语义（qa-12 / qa-13 / qa-14 / qa-15 / qa-18）
+
+- `toast()` 每条消息按语义输出 `role="status"`（错误为 `alert`）与 `aria-atomic="true"`
+- 新增 `associateFormLabels()`：渲染后自动补齐 `label[for]` 与 input/select/textarea 的 `aria-label`；`combo()` 在输入框动态创建时二次补关联
+- 全局搜索、各视图搜索图标、规格筛选/删除、供应商移除、错误横幅关闭等自定义可点击元素改为按钮或补 `role/tabindex/Enter·Space` 处理
+- 图标按钮（更多操作、展开折叠、删除行、移除附件）补 `aria-label` / `aria-haspopup`
+- `icon()` 生成的 SVG 统一加 `aria-hidden="true" focusable="false"`
+- `combo()` 选项生成稳定 id，方向键高亮时同步 `aria-activedescendant`，关闭时移除
+
+### 五、响应式与加载态（qa-9 / qa-8 / qa-16）
+
+- 订单表操作列改为 `position:sticky; right:0`，滚动时始终可见；`m-hide-s1` 断点提前到 1100px，1024/768 宽度下不再溢出；≤640 表格最小宽度 560px
+- 加载按钮 `.btn.loading` 增加旋转指示器；`importJSON` / `nowBackup` 同步加 `aria-busy="true"`
+- `.sb-dismiss` / `.cmd-close` / `.drawer-x` / `.shortcut-btn` / `.theme-tgl` / 搜索触发与清空按钮等触控目标统一提升到 ≥24×24（多数 32×32）
+
+### 六、验证
+
+- `npm run vite:build` 通过（仅既有 chunk 体积提示）
+- `file://dist/index.html` 双击启动正常，控制台零报错
+- CDP 实测 390/768/1024/1440 四档宽度：订单表操作列均可见，1024/768 无溢出
+- 实测弹窗 Escape 关闭后焦点回到「设置」按钮；抽屉关闭后回到「新建关联单位」；搜索面板 dialog 语义、初始焦点、Escape 关闭正常
+- 实测 combo：`label[for]` 正确关联、ArrowDown 写入 `aria-activedescendant`、Escape 移除；Toast `role="status"` + `aria-atomic="true"`
+- **不推进版本号**：本次为同日 UI/UX 验收整改（AGENTS.md §0），版本号维持 1.0.57
+
+---
+
 ## v1.0.57 · 🔧 事件与交互合规修复（不推进版本号）
 
 > **状态**: 🔧 修复（全量事件绑定审计：「所有操作/按钮/连接/事件必须有响应」+ 高频事件防抖/节流（§12.5/§8）+ 写按钮防重复触发；**不推进版本号**，版本号维持 1.0.57）

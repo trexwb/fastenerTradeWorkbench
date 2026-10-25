@@ -460,7 +460,7 @@ function importJSON(event){
   let file=event.target.files[0];
   if(!file)return;
   const _btn=document.getElementById('importBtn');
-  if(_btn)_btn.classList.add('loading');
+  if(_btn){_btn.classList.add('loading');_btn.setAttribute('aria-busy','true');}
   let reader=new FileReader();
   reader.onload=function(e){
     (async function(){
@@ -472,11 +472,11 @@ function importJSON(event){
         if(err&&err.code==='IMPORT_CANCELLED'){} // 用户取消导入
         else{toast('导入失败：'+(err&&err.message||err),'error');}
       }finally{
-        if(_btn)_btn.classList.remove('loading');
+        if(_btn){_btn.classList.remove('loading');_btn.removeAttribute('aria-busy');}
       }
     })();
   };
-  reader.onerror=function(){if(_btn)_btn.classList.remove('loading');toast('读取文件失败','error');};
+  reader.onerror=function(){if(_btn){_btn.classList.remove('loading');_btn.removeAttribute('aria-busy');}toast('读取文件失败','error');};
   reader.readAsText(file);
   event.target.value='';
 }
@@ -715,7 +715,7 @@ function renderOpsHistory(){
   if(f.batchId)ops=ops.filter(o=>o.batchId===f.batchId);
   const filterBar=renderOpsFilter();
   const statsHTML=renderOpsStats();
-  if(!ops.length)return statsHTML+filterBar+'<div class="card data-list-card"><div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div></div>';
+  if(!ops.length)return statsHTML+filterBar+'<div class="card data-list-card"><div class="empty-state">筛选后无匹配记录，<a href="javascript:void(0)" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div></div>';
   // P2 修复：batchUndoneCount 基于全量 allOps 统计，避免筛选后计数偏小与 undoBatchConfirm 不一致
   const batchUndoneCount={};
   allOps.forEach(function(op){

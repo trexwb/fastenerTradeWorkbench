@@ -264,18 +264,18 @@ function render(){
     '<div class="main">'+
       '<div class="topbar">'+
         '<div class="crumb">'+
-          '<span class="hamburger" onclick="toggleSidebar()">'+icon('menu','22')+'</span>'+
+          '<button type="button" class="hamburger" aria-label="打开导航菜单" aria-expanded="'+(sidebarOpen?'true':'false')+'" onclick="toggleSidebar()">'+icon('menu','22')+'</button>'+
           crumb+
         '</div>'+
         '<div class="right">'+
           (fileSync===true&&AI.state.runtime!=='tauri'?'<span class="tag ok" title="本地文件已同步">'+icon('fileText','12')+' 已同步</span>':
-           fileSync==='pending'&&AI.state.runtime!=='tauri'?'<span class="tag warn" title="点击数据管理重新授权" style="cursor:pointer" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</span>':'')+
+           fileSync==='pending'&&AI.state.runtime!=='tauri'?'<button type="button" class="tag warn" title="点击数据管理重新授权" style="cursor:pointer;font-family:inherit" onclick="go(\'data\')">'+icon('alert','12')+' 待授权</button>':'')+
           '<span class="tag info">'+fmtN(DB.orders.length)+' 订单</span>'+
-          '<button class="shortcut-btn" onclick="openSearchPanel()" title="全局搜索 (⌘K)">'+icon('search','16')+'</button>'+
-          '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接">'+icon('zap','16')+'</button>'+
-          '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)">'+icon('keyboard','14')+'</button>'+
-          '<button class="shortcut-btn" onclick="openSettingsModal()" title="设置">'+icon('gear','16')+'</button>'+
-          '<button class="theme-tgl" onclick="switchTheme()" id="themeBtn" title="切换主题">'+icon('palette','16')+'</button>'+
+          '<button class="shortcut-btn" onclick="openSearchPanel()" title="全局搜索 (⌘K)" aria-label="全局搜索">'+icon('search','16')+'</button>'+
+          '<button class="shortcut-btn" id="aiTopbarBtn" onclick="openAIAssistant()" title="AI 代理未连接" aria-label="打开 AI 助手">'+icon('zap','16')+'</button>'+
+          '<button class="shortcut-btn" onclick="showShortcutsModal()" title="快捷键 (?)" aria-label="快捷键说明">'+icon('keyboard','14')+'</button>'+
+          '<button class="shortcut-btn" onclick="openSettingsModal()" title="设置" aria-label="设置">'+icon('gear','16')+'</button>'+
+          '<button class="theme-tgl" onclick="switchTheme()" id="themeBtn" title="切换主题" aria-label="切换主题">'+icon('palette','16')+'</button>'+
         '</div>'+
       '</div>'+
       (function(){
@@ -286,7 +286,7 @@ function render(){
           let msg=fileSync==='pending'
             ?'本地文件同步待授权，<a href="javascript:void(0)" onclick="go(\'data\');let b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">立即重新授权</a>'
             :'数据未绑定本地文件，<a href="javascript:void(0)" onclick="go(\'data\');let b=document.getElementById(\x27_syncBanner\x27);if(b)b.remove()">前往绑定</a> 防止浏览器清除数据导致丢失';
-          return '<div id="_syncBanner" class="sync-banner">'+icon('alert','16')+'<span>'+msg+'</span><button class="sb-dismiss" onclick="let b=document.getElementById(\'_syncBanner\');if(b)b.remove();try{localStorage.setItem(\'fw_sync_banner_dismissed\',\'1\');}catch(e){}" title="关闭">×</button></div>';
+          return '<div id="_syncBanner" class="sync-banner">'+icon('alert','16')+'<span>'+msg+'</span><button type="button" class="sb-dismiss" aria-label="关闭提示" onclick="let b=document.getElementById(\'_syncBanner\');if(b)b.remove();try{localStorage.setItem(\'fw_sync_banner_dismissed\',\'1\');}catch(e){}" title="关闭">×</button></div>';
         }
         return '';
       })()+
@@ -295,6 +295,7 @@ function render(){
     '</div>'+
   '</div>';
   bindView();
+  if(typeof associateFormLabels==='function')associateFormLabels(app);
   if(typeof refreshAIStatus==='function')refreshAIStatus();
   // B6：渲染完成后检查 ⌘K 新手引导气泡（只在 dashboard 显示，localStorage 去重）
   if(typeof window.__showCmdKTipIfNeeded==='function'){try{window.__showCmdKTipIfNeeded();}catch(e){}}
@@ -305,7 +306,7 @@ function render(){
  * 切换侧栏展开/收起状态。
  * @returns {void} 无返回值
  */
-function toggleSidebar(){sidebarOpen=!sidebarOpen;let ov=document.querySelector('.menu-overlay'),sb=document.querySelector('.sidebar');if(ov)ov.classList.toggle('on',sidebarOpen);if(sb)sb.classList.toggle('open',sidebarOpen);}
+function toggleSidebar(){sidebarOpen=!sidebarOpen;let ov=document.querySelector('.menu-overlay'),sb=document.querySelector('.sidebar'),hb=document.querySelector('.topbar .hamburger');if(ov)ov.classList.toggle('on',sidebarOpen);if(sb)sb.classList.toggle('open',sidebarOpen);if(hb)hb.setAttribute('aria-expanded',sidebarOpen?'true':'false');}
 
 /**
  * 切换导航菜单的二级子菜单展开/收起。

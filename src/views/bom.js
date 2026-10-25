@@ -57,15 +57,15 @@ function viewBOM(){
   '</div>';
 
   // 激活筛选徽章（工具栏右侧）
-  const filterBadge=isFiltered?'<span id="bomFilterBadge" class="filter-active-badge" onclick="clearBOMFilter()" title="点击清除所有筛选">'+icon('filter','12')+' 已筛选 '+matched+' 条</span>':'';
+  const filterBadge=isFiltered?'<button type="button" id="bomFilterBadge" class="filter-active-badge" onclick="clearBOMFilter()" title="点击清除所有筛选" aria-label="清除所有筛选">'+icon('filter','12')+' 已筛选 '+matched+' 条</button>':'';
 
   const pg=buildPaging(filtered.length,_bomPage,totalPages,'bomPage',{id:'bomPaging'});
 
   return '<div class="toolbar">'+
     '<div class="search-box'+(bomSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" data-search-fn="onBOMSearch" onclick="onBOMSearch(document.getElementById(\'bomSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="bomSearchInput" type="text" tabindex="1" value="'+escAttr(bomSearch||'')+'" placeholder="搜索 SKU 或名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onBOMSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onBOMSearch(\'\')">×</span>'+
+      '<button type="button" class="search-trigger" aria-label="搜索 BOM" data-search-fn="onBOMSearch" onclick="onBOMSearch(document.getElementById(\'bomSearchInput\').value)">'+icon('search','16')+'</button>'+
+      '<input id="bomSearchInput" type="text" aria-label="搜索 SKU 或名称" tabindex="1" value="'+escAttr(bomSearch||'')+'" placeholder="搜索 SKU 或名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onBOMSearch(this.value)">'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onBOMSearch(\'\')">×</button>'+
     '</div>'+
     filterBadge+
     '<div class="spacer"></div>'+
@@ -73,7 +73,7 @@ function viewBOM(){
     '<button id="bomBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteBOM()">'+icon('trash')+'批量删除(<span id="bomBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
       '<button class="btn primary" onclick="openBOMForm(-1)">'+icon('plus')+' 新建BOM</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="toggleBOMDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleBOMDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="bomDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closeBOMDropdown();openBOMForm(-1)">'+icon('plus')+'新建BOM</button>'+
         '<button class="dropdown-item" onclick="closeBOMDropdown();openBOMBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
@@ -331,7 +331,7 @@ function _openBOMDrawer(b,idx){
       '<input id="bom_spec" class="bom-req" tabindex="12" value="'+escAttr(b.spec||'')+'" placeholder="如 M6×30mm · 描述尺寸规格" oninput="bomValidateFieldDebounced(\'spec\')">'+
     '</div>'+
     '<div class="bom-specs-section sec-collapsed">'+
-      '<div class="sec-hd" onclick="toggleBOMSpecsSection(this)">'+icon('chevronDown','13')+' 其他属性（点击展开）</div>'+
+      '<div class="sec-hd" role="button" tabindex="0" aria-label="展开或折叠其他属性" onclick="toggleBOMSpecsSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">'+icon('chevronDown','13')+' 其他属性（点击展开）</div>'+
       '<div class="sec-body" id="bom_specs_body">'+
         '<div class="grid3">'+
           '<div class="field"><label class="f">类型</label><div id="bom_type" class="combo" data-placeholder="选择类型..." data-val="'+escAttr(b.type||'')+'"></div></div>'+
@@ -423,7 +423,7 @@ function saveBOMForm(idx){
 
   if(errs.length){
     let errBanner=document.getElementById('bomFormErr');
-    if(errBanner){errBanner.style.display='';errBanner.innerHTML='<span>'+icon('alertCircle','14')+'</span> '+errs.join(' &nbsp;·&nbsp; ')+'&nbsp; &nbsp; <span class="fe-dismiss" onclick="this.closest(\'.form-err-banner\').style.display=\'none\'">×</span>';}
+    if(errBanner){errBanner.style.display='';errBanner.innerHTML='<span>'+icon('alertCircle','14')+'</span> '+errs.join(' &nbsp;·&nbsp; ')+'&nbsp; &nbsp; <button type="button" class="fe-dismiss" aria-label="关闭错误提示" onclick="this.closest(\'.form-err-banner\').style.display=\'none\'">×</button>';}
     // 光标跳到第一个错误
     let firstErr=document.querySelector('.bom-req.field-err');
     if(firstErr)firstErr.focus();
@@ -565,7 +565,7 @@ function renderBOMBatchPreview(rows){
   const keys_=['sku','name','spec','surface','standard','diameter','hardness','material'];
   const rowsHtml=rows.map(function(r,i){
     const tds=keys_.map(function(k){return'<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r[k]||'-')+'</td>';}).join('');
-    return'<tr><td>'+(i+1)+'</td>'+tds+'<td><button class="btn sm danger" onclick="removeBatchRow('+i+')">'+icon('x','12')+'</button></td></tr>';
+    return'<tr><td>'+(i+1)+'</td>'+tds+'<td><button class="btn sm danger" onclick="removeBatchRow('+i+')" title="删除该行" aria-label="删除该行">'+icon('x','12')+'</button></td></tr>';
   }).join('');
   preview.innerHTML=
     '<div style="margin-bottom:8px;font-size:13px;color:var(--gray)">解析完成，预览如下（可删除不需要的行）：</div>'+
