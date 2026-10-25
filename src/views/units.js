@@ -93,16 +93,16 @@ function viewUnits(){
   '</div>';
   return '<div class="toolbar">'+
     '<div class="search-box'+(unitSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" data-search-fn="onUnitSearch" onclick="onUnitSearch(document.getElementById(\'unitSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="unitSearchInput" type="text" tabindex="1" value="'+escAttr(unitSearch)+'" placeholder="搜索单位名称、联系人、电话..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onUnitSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onUnitSearch(\'\')">×</span>'+
+      '<button type="button" class="search-trigger" aria-label="搜索关联单位" data-search-fn="onUnitSearch" onclick="onUnitSearch(document.getElementById(\'unitSearchInput\').value)">'+icon('search','16')+'</button>'+
+      '<input id="unitSearchInput" type="text" aria-label="搜索单位名称、联系人、电话" tabindex="1" value="'+escAttr(unitSearch)+'" placeholder="搜索单位名称、联系人、电话..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onUnitSearch(this.value)">'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onUnitSearch(\'\')">×</button>'+
     '</div>'+
     '<div class="spacer"></div>'+
     countTag+
     '<button id="unitBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteUnits()">'+icon('trash')+'批量删除(<span id="unitBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
       '<button class="btn primary" onclick="newUnit()">'+icon('plus')+'新建关联单位</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="toggleUnitDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleUnitDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="unitDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closeUnitDropdown();newUnit()">'+icon('plus')+'新建关联单位</button>'+
         '<button class="dropdown-item" onclick="closeUnitDropdown();openUnitBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
@@ -248,7 +248,7 @@ function unitForm(p){
     '</div>'+
   '</div>'+
   '<div class="unit-section '+(isEdit&&!hasInvoice?'sec-collapsed':'sec-expanded')+'" id="invoiceSection">'+
-    '<div class="sec-hd" style="cursor:pointer" onclick="toggleInvoiceSection(this)">'+
+    '<div class="sec-hd" role="button" tabindex="0" aria-label="展开或折叠发票信息" aria-expanded="'+(isEdit&&!hasInvoice?'false':'true')+'" style="cursor:pointer" onclick="toggleInvoiceSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">'+
       '发票信息 <span style="font-size:12px;font-weight:400;color:var(--gray)">(选填)</span>'+
       '<span class="sec-arrow">'+icon('chevronDown','14')+'</span>'+
     '</div>'+
@@ -385,7 +385,7 @@ function contactRow(c,i){
     '<input placeholder="微信号（选填）" tabindex="22" value="'+escAttr(c.wechat||'')+'" data-c="wechat" data-i="'+i+'" style="flex:1 1 100px;min-width:80px">'+
     '<label style="white-space:nowrap;font-size:13px;display:flex;align-items:center;gap:3px;flex-shrink:0"><input type="checkbox" data-c="side" data-v="供应" data-i="'+i+'" '+(raw.includes('供应')?'checked':'')+' onchange="updateContactSides()">供应</label>'+
     '<label style="white-space:nowrap;font-size:14px;display:flex;align-items:center;gap:3px;flex-shrink:0"><input type="checkbox" data-c="side" data-v="采购" data-i="'+i+'" '+(raw.includes('采购')?'checked':'')+' onchange="updateContactSides()">采购</label>'+
-    '<button class="btn sm danger" type="button" onclick="delCRow(this)" title="删除该联系人" style="flex-shrink:0">'+icon('trash')+'</button>'+
+    '<button class="btn sm danger" type="button" onclick="delCRow(this)" title="删除该联系人" aria-label="删除该联系人" style="flex-shrink:0">'+icon('trash')+'</button>'+
   '</div>';
 }
 
@@ -640,7 +640,7 @@ function renderUnitBatchPreview(rows){
     const tds=[r.name,r.roles.join('+')+(r.defaultRole?'（默认）':''),r.contact||'-',r.phone||'-',r.rating||'-',r.term||'-'].map(function(v){
       return '<td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(v)+'</td>';
     }).join('');
-    return '<tr><td>'+(i+1)+'</td>'+tds+'<td><span class="tag '+(st.skip?'warn':'ok')+'">'+st.label+'</span></td><td><button class="btn sm danger" onclick="removeUnitBatchRow('+i+')">'+icon('x','12')+'</button></td></tr>';
+    return '<tr><td>'+(i+1)+'</td>'+tds+'<td><span class="tag '+(st.skip?'warn':'ok')+'">'+st.label+'</span></td><td><button class="btn sm danger" onclick="removeUnitBatchRow('+i+')" title="删除该行" aria-label="删除该行">'+icon('x','12')+'</button></td></tr>';
   }).join('');
   preview.innerHTML=
     '<div style="margin-bottom:8px;font-size:13px;color:var(--gray)">解析完成，预览如下（可删除不需要的行；重名行提交时自动跳过）：</div>'+

@@ -6,6 +6,151 @@
 
 ---
 
+## v1.0.57 · ♿ UI/UX 验收修复（不推进版本号）
+
+> **状态**: ♿ 无障碍/视觉验收整改（产品设计 QA 18 项偏差全量修复；**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-25
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 17 个文件针对性修复（styles 3 + core 4 + views 10），无新功能、无业务算法改动
+> **验收来源**: `spark-output/qa/fastener-trade-workbench-验收报告.md`（1 blocker + 9 major + 8 minor）
+
+---
+
+## UI/UX 验收整改
+
+### 一、主题对比度（qa-1 / qa-2 / qa-3）
+
+- 新增语义前景令牌 `--pri-ink` / `--accent-ink` / `--on-accent` / `--on-green` / `--on-amber` / `--on-red`，default / cream / dark 三主题分别取值；品牌底上的文字不再硬编码白色
+- cream 主题：正文灰 `#6b6862`、品牌蓝 `#3c6da2`、状态色同步加深，薄荷绿品牌底改深绿字 `#0f3d29`
+- dark 主题：亮色品牌底统一改深字，避免白字对比度不足
+- 全量替换 `.btn.primary`、`.tag.*-solid`、`.ftab.active`、`.filter-active-badge`、步骤条、搜索面板选中行等 20+ 处品牌底文字
+- 三主题关键组合实测对比度全部 ≥4.5:1（最低 default gray/bg 4.82，cream 5.28，dark 6.08）
+
+### 二、排版与设计令牌（qa-4 / qa-5 / qa-7）
+
+- `th` 与 `label.f` 字号统一为 14px，修正表头 12px 小于单元格 14px 的层级倒置
+- `variables.css` 新增 `--space-1..8`（4px 基准）间距刻度
+- 新增 `--dur-fast/base/slow` + `--ease-out/in-out`；`components.css` / `layout.css` 中 41 处裸写秒数过渡全部 token 化
+
+### 三、浮层语义与焦点（qa-10 / qa-11 / qa-6）
+
+- `modal()` / `confirmModal()` / `openDrawer()` 补 `role="dialog"`、`aria-modal="true"`、`aria-labelledby`（确认框另加 `aria-describedby`）
+- 弹窗/抽屉/搜索面板打开时保存触发元素并聚焦首个可操作控件；Tab/Shift+Tab 焦点圈定；Escape 关闭；关闭后焦点回到触发元素
+- 关闭控件由 `<span>` 改为 `<button type="button" aria-label="关闭">`
+- 搜索面板 `.cmd-input-box:focus-within` 恢复可见焦点环，`.cmd-close` 补 `:focus-visible` 样式
+
+### 四、表单、Toast 与控件语义（qa-12 / qa-13 / qa-14 / qa-15 / qa-18）
+
+- `toast()` 每条消息按语义输出 `role="status"`（错误为 `alert`）与 `aria-atomic="true"`
+- 新增 `associateFormLabels()`：渲染后自动补齐 `label[for]` 与 input/select/textarea 的 `aria-label`；`combo()` 在输入框动态创建时二次补关联
+- 全局搜索、各视图搜索图标、规格筛选/删除、供应商移除、错误横幅关闭等自定义可点击元素改为按钮或补 `role/tabindex/Enter·Space` 处理
+- 图标按钮（更多操作、展开折叠、删除行、移除附件）补 `aria-label` / `aria-haspopup`
+- `icon()` 生成的 SVG 统一加 `aria-hidden="true" focusable="false"`
+- `combo()` 选项生成稳定 id，方向键高亮时同步 `aria-activedescendant`，关闭时移除
+
+### 五、响应式与加载态（qa-9 / qa-8 / qa-16）
+
+- 订单表操作列改为 `position:sticky; right:0`，滚动时始终可见；`m-hide-s1` 断点提前到 1100px，1024/768 宽度下不再溢出；≤640 表格最小宽度 560px
+- 加载按钮 `.btn.loading` 增加旋转指示器；`importJSON` / `nowBackup` 同步加 `aria-busy="true"`
+- `.sb-dismiss` / `.cmd-close` / `.drawer-x` / `.shortcut-btn` / `.theme-tgl` / 搜索触发与清空按钮等触控目标统一提升到 ≥24×24（多数 32×32）
+
+### 六、验证
+
+- `npm run vite:build` 通过（仅既有 chunk 体积提示）
+- `file://dist/index.html` 双击启动正常，控制台零报错
+- CDP 实测 390/768/1024/1440 四档宽度：订单表操作列均可见，1024/768 无溢出
+- 实测弹窗 Escape 关闭后焦点回到「设置」按钮；抽屉关闭后回到「新建关联单位」；搜索面板 dialog 语义、初始焦点、Escape 关闭正常
+- 实测 combo：`label[for]` 正确关联、ArrowDown 写入 `aria-activedescendant`、Escape 移除；Toast `role="status"` + `aria-atomic="true"`
+- **不推进版本号**：本次为同日 UI/UX 验收整改（AGENTS.md §0），版本号维持 1.0.57
+
+---
+
+## v1.0.57 · 🔧 事件与交互合规修复（不推进版本号）
+
+> **状态**: 🔧 修复（全量事件绑定审计：「所有操作/按钮/连接/事件必须有响应」+ 高频事件防抖/节流（§12.5/§8）+ 写按钮防重复触发；**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-25
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 18 个文件针对性小修（core 6 + views 10 + public/sw.js），无新功能、无业务算法改动
+> **审计明细**: `docs/audit/2026-10-25-event-audit-*.md`（5 份分组明细 + README 汇总）
+
+---
+
+## 全量事件绑定审计与修复
+
+### 一、审计结论（约 240 处 onclick / 60 处 addEventListener 全量核查，5 组并行）
+
+- **P1 死交互 1 项**、**P2 缺防抖/防重 13 项**、**P3 建议 17 项**；其余全部合规：无空 onclick、无 href="#" 死链，搜索框全部 Enter+isComposing 触发， orders/units/prices/bom/settlements/invoices 的写提交均有既有防重锁或 confirmModal 门控， AI 流式渲染已节流、saveDBDebounced 用法正确
+
+### 二、P1 死交互（1/1 已修）
+
+- **invoices.js:343**：空态「新增发票」按钮 `openInvEdit('')` 传入空 ID 必命中「发票记录不存在」守卫，永远打不开表单 = 死交互（发票本就由结算记录自动生成，无手动建票链路）→ 按钮改为「前往结算管理」`go('settlements')`，承诺与行为一致
+
+### 三、P2 防抖/防重（13/13 已修）
+
+- **弹窗/抽屉异步确认防双击（ui.js）**：`modal()` / `confirmModal()` 的确定键在 async onOk 未决期间禁用（catch 时恢复可重试）；抽屉保存键新增 `id="_drawerOk"`，`drawerOk()` 同样在 async onOk 期间禁用——覆盖删除/导入/解绑/覆盖导入等破坏性确认入口
+- **表单草稿落盘防抖**：`bindDraftSave`（utils.js）每键整表收集+localStorage 同步写改为 300ms 防抖（markDrawerDirty 保持同步，关窗确认不漏判）；AI 输入草稿（ai-chat.js）同步写改为 300ms 防抖
+- **导出/同步防重复触发**：`exportOrder`（exporter.js）加 `_exportBusy` 重入锁 + finally 复位（连击不再并发两趟构建/两次下载）；`exportJSON`（data.js）与 `exportAllSpecs`（specs.js）加 1.5s 冷却；`syncNow`（store.js）加 `_fileSyncing` 进行中标志
+- **输入类 oninput 防抖**：BOM 表单必填校验（bom.js ×3，150ms）、规格过滤高亮（specs.js，120ms）、订单价格库匹配分配合计提示（orders.js `pmOnAllocInput`，120ms）——真实过滤/保存语义不变，仍由 Enter/图标/确定键触发
+- **键盘自动重复**：keyboard.js 全局 keydown 入口加 `if(e.repeat)return`，按住 ⌘S/⌥⇧E/⌥⇧S/⌥⇧I 等动作快捷键不再被系统连发
+
+### 四、P3 顺带修复（13 项全修 + 1 项部分修复）
+
+- **死代码/死引用清理**：删除 `filterPriceMatch`（orders.js，零调用）与 `_priceFilterDebounced`（prices.js，零调用）；`importJSON` 的 `.loading` 防护补上缺失的 `id="importBtn"`（data.js）使其真正生效
+- **dashboard 统计卡**：供应商/采购商卡片修复对不存在元素 `#unitRoleFilter` 的派发，改调既有全局 `setUnitRoleFilter`，点击后真正按角色过滤
+- **settlements.js**：`refreshSettleOrderList` 移除对不重建的 `#st_orderList` 的重复 change 绑定（openNewSettlement 已绑一次），勾选一次不再触发 N+1 次自动汇总与重复 toast
+- **AI 设置弹窗**：移除冗余的首次 `AI.setProvider` 双调（重入问题已由 ui.js 弹窗锁覆盖）；知识库「选择目录并索引/批量选择文件」按钮在索引中补 disabled 态（ai-chat.js）
+- **其他**：设置弹窗「下载并安装」点击即禁用（router.js）；`Updater.download()` 补 downloading 态重入守卫（updater.js）；sw.js 后台 cache.put 挂入 `event.waitUntil`（防止 SW 提前回收丢缓存）；⌘K 面板 `cmdInputChanged` 补 `isComposing` 守卫（search-panel.js）；`bindBatchPasteUX` 输入同步加 120ms 防抖（utils.js）；keyboard.js Enter 兜底分支废弃 `window.event` 改用处理器入参 `e`
+
+### 五、明确不改（记录为已接受风险）
+
+- `buildPaging` 的 `onPage||'page'` 潜在兜底（全 src 10 处调用均显式传名，不触发）
+- `AI.chat()` 核心层重入拒绝（视图层四重防护已覆盖，贸然 throw 可能影响内部合法链路）
+- sw.js 无缓存且网络失败的离线兜底 Response（行为变更收益低，本项目主场景为 file:// SW 不生效）
+- `submitPriceMatch` 勾选 N 家供应商的 N 次重渲（正确性无损，待该弹窗下次改动合并处理）
+
+### 六、验证
+
+- 18 个改动文件 `node --check` 全部通过；`npm run vite:build` 通过（仅既有 chunk 体积警告）
+- 浏览器实测（vite preview + http）：应用正常启动；specs 防抖高亮生效；invoices 空态按钮已为「前往结算管理」；dashboard 统计卡 onclick 已含 setUnitRoleFilter；`exportOrder` 无效 ID 正确 toast「未找到订单」；AI 设置弹窗连点 3 次保存仅执行 1 次（按钮立即禁用、结算后关窗一次）
+- **file:// 双击验证说明**：本验证环境浏览器窗格对 file:// 页面强制注入 CSP 禁止 eval（`dist/index.html` 本身无 meta CSP，见文件内注释），无法在窗格内完成 file:// 交互验证；本次改动未触碰 index.html/main.js/App.vue/vite.config.js，http 环境下全量功能验证通过
+- **不推进版本号**：本次为同日事件合规批量修复（AGENTS.md §0），版本号维持 1.0.57
+
+---
+
+## v1.0.57 · 📝 文档更新（不推进版本号）
+
+> **状态**: 📝 文档更新（全量文档对齐 v1.0.57 + 新增 GitHub Wiki 页面；**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-25
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 仅文档（`README.md` / `AGENTS.md` / `docs/**` / `wiki/**`），不含代码逻辑改动
+
+---
+
+## 全量文档更新与 GitHub Wiki 生成
+
+### 一、文档与代码事实性对齐
+
+- `README.md`：基准版本 v1.0.56 → **v1.0.57**，补充 v1.0.57 更新日志（供应商批量报价导入重构）；项目结构补齐 `core/` 全部 15 个模块；文件说明表补 `search-panel.js` / `keyboard.js` 与新增文档入口
+- `docs/version/README.md`：基准版本 v1.0.31 / v1.0.38 → **v1.0.57**；版本号同步口径统一为「核心三处 + 派生三处」
+- `docs/COVERAGE.md`：按当前代码重新扫描，27 个文件（补 `core/ai-files.js`），覆盖率 597/722（83%）；新增 `scripts/gen-coverage.mjs` 可复现生成
+- `docs/API.md`：补齐 `ai-files.js` / `validators.js` / `search-panel.js` / `guide.js` / `updater.js` 模块说明，版本基准升级 v1.0.57
+- `docs/操作手册.md`：版本基准 v1.0.14 → **v1.0.57**；修正快捷键与代码不符处（⌘K / ⌘S 仅判定 `metaKey`，Windows `Ctrl+K` 不生效）；删除虚构的「v2.0 重构」表述；补充批量导入、供应商报价导入新列、v1.0.56/57 新能力
+- `docs/flows/`：9 份流程文档内容对齐 v1.0.57；新增 `ai-chat.md` / `keyboard.md` / `search-panel.md` 三份流程说明
+- `AGENTS.md`：§5 文件结构补齐 6 个缺失模块；§6 关键函数清单补充 `viewData` / `viewSpecs` / `viewDashboard` / KB / AF 等入口
+
+### 二、新增 GitHub Wiki 页面
+
+- 新增 `wiki/` 目录，产出 12 个页面：`Home.md`、`_Sidebar.md`、`_Footer.md`、快速开始、功能模块总览、采购订单、寻货与分配、对账结算、发票管理、数据管理、AI 助手、快捷键、常见问题
+- 页面互相以相对链接串联，可直接推送到仓库的 GitHub Wiki（`git clone <repo>.wiki.git` 后覆盖）
+
+### 三、验证
+
+- `node scripts/gen-coverage.mjs` 通过；`node --check` 对新增脚本通过
+- 未改动任何业务代码，`npm run vite:build` 不受影响
+- **不推进版本号**：本次为纯文档更新，符合 AGENTS.md §0「仅更新 docs/ 不推进版本号」条款
+
+---
+
 ## v1.0.57 · ✅ 已发布
 
 > **状态**: ✅ 已发布（供应商批量报价导入重构：SKU 精确匹配 + 意向价/报价/供应商多供应商分配列对齐，移除名称列；版本号 5 处统一 1.0.57，构建已通过）
@@ -2407,4 +2552,3 @@ create_unit / update_unit / create_price / update_price / flow_order_status
 ## 四、变更文件
 
 - 完整项目初始化：src/（core/views/styles）、src-tauri/、docs/、.github/workflows/、scripts/
-*（内容由AI生成，仅供参考）*

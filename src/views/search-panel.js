@@ -6,6 +6,7 @@ let _cmdResults=[];
 let _cmdRendered=[];   // 实际渲染的扁平结果（键盘导航基准，与可见行一一对应）
 let _cmdQuery='';
 let _cmdTimer=0;
+let _cmdReturnFocus=null;
 
 const _CMD_TYPE_LABEL={order:'订单',unit:'客户',price:'报价',bom:'BOM',settle:'结算',invoice:'发票'};
 
@@ -134,6 +135,7 @@ function cmdInputKey(e){
   }
   if(k==='Tab'){
     e.preventDefault();
+    if(e.shiftKey){const c=document.querySelector('#cmdPanel .cmd-close');if(c)c.focus();return;}
     if(_cmdRendered.length&&_cmdSel>=0){askAIOnItem(_cmdSel);return;}
     return;
   }
@@ -170,26 +172,33 @@ function askAIOnItem(i){
 
 function openSearchPanel(){
   if(_cmdOpen)return;
+  _cmdReturnFocus=document.activeElement;
   _cmdOpen=true;_cmdQuery='';_cmdResults=[];_cmdSel=-1;
   if(document.querySelector('.drawer-wrap')&&typeof closeDrawer==='function'){try{closeDrawer();}catch(e){}}
   const wrap=document.createElement('div');
   wrap.id='cmdPanel';
   wrap.className='cmd-overlay';
   wrap.innerHTML=
-    '<div class="cmd-panel" role="dialog" aria-label="全局搜索">'+
+    '<div class="cmd-panel" role="dialog" aria-modal="true" aria-label="全局搜索">'+
       '<div class="cmd-input-wrap"><div class="cmd-input-box">'+icon('search','18')+
-        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索或直接提问…" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value)">'+
-        '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)">'+icon('x','15')+'</button>'+
+        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索或直接提问…" aria-label="全局搜索或直接提问" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value,event)">'+
+        '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)" aria-label="关闭">'+icon('x','15')+'</button>'+
       '</div></div>'+
       '<div id="cmdResults" class="cmd-results"></div>'+
       '<div class="cmd-footer"><span><kbd class="cmd-kbd">↑↓</kbd> 选择</span><span><kbd class="cmd-kbd">Enter</kbd> 打开</span><span><kbd class="cmd-kbd">Tab</kbd> 问 AI</span><span><kbd class="cmd-kbd">Esc</kbd> 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' <kbd class="cmd-kbd">?</kbd>开头强制问 AI · 无结果回车也问 AI</span></div>'+
     '</div>';
   wrap.addEventListener('mousedown',function(e){if(e.target===wrap)closeSearchPanel();});
+  wrap.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();closeSearchPanel();}});
   document.body.appendChild(wrap);
   const input=document.getElementById('cmdInput');
   if(input){input.focus();input.select();}
+  const closeBtn=wrap.querySelector('.cmd-close');
+  if(closeBtn)closeBtn.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){e.preventDefault();if(input){input.focus();input.select();}}
+  });
 }
-function cmdInputChanged(v){
+function cmdInputChanged(v,ev){
+  if(ev&&ev.isComposing)return; // 输入法组合中不重渲结果（与 Enter 路径守卫一致）
   _cmdQuery=(v||'').toLowerCase();
   clearTimeout(_cmdTimer);
   _cmdTimer=setTimeout(cmdRender,150);
@@ -199,4 +208,7 @@ function closeSearchPanel(){
   _cmdOpen=false;
   const w=document.getElementById('cmdPanel');
   if(w)w.remove();
+  const target=_cmdReturnFocus;
+  _cmdReturnFocus=null;
+  if(target&&target.isConnected&&typeof target.focus==='function'){try{target.focus();}catch(e){}}
 }

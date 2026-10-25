@@ -77,14 +77,14 @@ function renderSpecGroup(k){
       '<span class="sg-used-badge'+(totalUsed>0?'':' sg-zero')+'" title="被引用的次数（报价+BOM+订单）" id="sgub_'+k+'">'+totalUsed+' 次引用</span>'+
       '<span style="flex:1"></span>'+
       batchBtn+
-      '<button class="sg-toggle-btn" id="sgt_'+k+'" onclick="toggleSpecGroup(\''+k+'\')" title="展开/折叠">'+icon('chevronDown','14')+'</button>'+
+      '<button class="sg-toggle-btn" id="sgt_'+k+'" onclick="toggleSpecGroup(\''+k+'\')" title="展开/折叠" aria-label="展开或折叠属性组">'+icon('chevronDown','14')+'</button>'+
     '</div>'+
     '<div class="sg-body" id="sgb_'+k+'">'+
-      // 搜索过滤行（§8 交互约定：回车或点击🔍图标触发；oninput 仅做防抖高亮，不触发真实"搜索过滤"语义动作）
+      // 搜索过滤行（§8 交互约定：回车或点击🔍图标触发；oninput 经 highlightSpecValsDebounced 防抖 120ms 做高亮，不触发真实"搜索过滤"语义动作）
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
         '<div class="spec-filter-box">'+
-          '<a href="javascript:void(0)" class="spec-filter-icon" onclick="runSpecFilter(\''+k+'\')">'+icon('search','12')+'</a>'+
-          '<input id="'+filterId+'" type="text" placeholder="搜索已有值（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runSpecFilter(\''+k+'\')" oninput="highlightSpecVals(\''+k+'\',this.value)" class="spec-filter-input">'+
+          '<button type="button" class="spec-filter-icon" aria-label="筛选该属性值" onclick="runSpecFilter(\''+k+'\')">'+icon('search','12')+'</button>'+
+          '<input id="'+filterId+'" type="text" placeholder="搜索已有值（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runSpecFilter(\''+k+'\')" oninput="highlightSpecValsDebounced(\''+k+'\',this.value)" class="spec-filter-input">'+
         '</div>'+
         '<button class="btn sm ghost" onclick="clearSpecFilter(\''+k+'\')" id="sfcl_'+k+'" style="display:none;font-size:12px;padding:2px 10px">清除</button>'+
       '</div>'+
@@ -96,7 +96,7 @@ function renderSpecGroup(k){
           return '<span class="spec-val-tag'+(unused?' unused':'')+'" id="svt_'+k+'_'+i+'" data-idx="'+i+'">'+
             '<span class="sv-text">'+escHtml(v)+'</span>'+
             /* v1.0.28：未使用标签去掉"(未使用)"文字——.unused class 灰色样式已表达语义，文字冗余 */
-            '<span class="sv-del" onclick="event.stopPropagation();delSpecVal(\''+k+'\','+i+')" title="删除">×</span>'+
+            '<button type="button" class="sv-del" aria-label="删除属性值 '+escAttr(v)+'" onclick="event.stopPropagation();delSpecVal(\''+k+'\','+i+')" title="删除">×</button>'+
           '</span>';
         }).join('')+
         (isEmpty?'<span class="muted" style="font-size:13px">暂无选项，输入新值直接添加</span>':'')+
@@ -176,6 +176,9 @@ function highlightSpecVals(k,v){
     span.style.opacity=hit?'':'0.45';
   });
 }
+/** oninput 防抖包装（§12.5）：逐键 O(n) 高亮改经 120ms 防抖；真实过滤仍仅由 Enter/🔍 触发（§8） */
+const _highlightSpecValsDebounced=debounce(highlightSpecVals,120);
+function highlightSpecValsDebounced(k,v){_highlightSpecValsDebounced(k,v);}
 /**
  * 执行规格值过滤（§8 合规入口：Enter 键 或 🔍 图标点击触发）。
  * 不匹配的标签设置 display:none；同时重置高亮样式。
@@ -327,11 +330,17 @@ function csvCell(v){
   return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 }
 
+/** 导出防连点冷却时长（ms）：下载为写操作，双击会重复下载 CSV */
+const SPEC_EXPORT_COOLDOWN_MS=1500;
+let _specExportAt=0;
 /**
  * 导出全部属性选项为 CSV 文件。
  * @returns {void} 无返回值
  */
 function exportAllSpecs(){
+  const _nowTs=Date.now();
+  if(_nowTs-_specExportAt<SPEC_EXPORT_COOLDOWN_MS){toast('正在导出，请稍候…','info');return;}
+  _specExportAt=_nowTs;
   let lines=['属性维度,选项值,引用次数'];
   SPEC_FIELDS.forEach(function(k){
     let vals=DB.specs[k]||[];

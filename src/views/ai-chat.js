@@ -33,6 +33,14 @@ function syncAIGenerateProtection(){
 }
 // AI 输入框草稿持久化：关闭抽屉不销毁会话，输入内容实时写 localStorage，重开自动恢复；发送成功/主动清空时同步清除
 const AI_DRAFT_KEY='wb_fastener_ai_draft';
+/** AI 输入草稿落盘防抖时长（ms，§12.5 高频输入） */
+const AI_DRAFT_PERSIST_DELAY=300;
+/** 草稿落盘（防抖包装：合并连续按键，避免逐键同步写 localStorage） */
+const aiDraftPersist=debounce(function(){
+  const inp=document.getElementById('aiInput');
+  if(!inp)return;
+  try{localStorage.setItem(AI_DRAFT_KEY,inp.value);}catch(e){}
+},AI_DRAFT_PERSIST_DELAY);
 /* ===== AI 消息 Markdown 渲染：markdown-it + DOMPurify + highlight.js =====
  * npm 依赖由 src/main.js 顶层挂到 window.__MD_DEPS（raw-eval 全局脚本无法直接 import）。
  * 终态（renderAIMarkdown）与流式（renderAIMarkdownStream）两条路径：
@@ -336,15 +344,13 @@ function openAIAssistant(){
     '<div class="ai-composer"><div id="aiAttachBar" class="ai-attach-bar"></div><div class="ai-input-box"><textarea id="aiInput" rows="1" aria-label="向 AI 助手提问" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea></div><div class="ai-actions-row"><button type="button" id="aiAttachBtn" class="ai-attach-pill" title="添加附件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf · 本地直读解析，不上传、不产生临时文件）" aria-label="添加附件" onclick="aiAttachPick()">'+icon('plus','14')+'<span>附件</span></button><div class="ai-actions-right"><span class="ai-context" title="发送前可审阅：AI 基于当前页面脱敏快照回答">'+icon('link','12')+'当前上下文：'+escHtml(aiContextName())+'</span><button type="button" id="aiSendBtn" class="ai-send-btn" aria-label="发送消息" title="发送消息" onclick="requestAISend()">'+icon('chevronUp','18')+'</button></div></div><div class="ai-input-hint"><span class="ai-hint-main">Enter 发送 · Ctrl / Shift + Enter 换行</span><span class="ai-hint-note">可上传/拖拽附件，桌面版还可在正文直接写文件路径：txt/md/csv/xls/xlsx/docx/pdf（本地直读，不上传）</span></div><input type="file" id="aiFileInput" class="ai-file-input" multiple accept="'+(typeof AF!=='undefined'&&AF.ACCEPT?AF.ACCEPT:'')+'" onchange="aiAttachFromInput(this)"></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
   syncAIGenerateProtection(); // 重开抽屉时若正处于生成中，立即将删除/清空按钮置为禁用态
-  // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，并实时写 localStorage（关闭/重开均不丢）
+  // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，输入防抖 300ms 后写 localStorage（关闭/重开不丢）
   const draftInput=document.getElementById('aiInput');
   if(draftInput){
     let draft='';
     try{draft=localStorage.getItem(AI_DRAFT_KEY)||'';}catch(e){}
     if(draft)draftInput.value=draft;
-    draftInput.addEventListener('input',function(){
-      try{localStorage.setItem(AI_DRAFT_KEY,this.value);}catch(e){}
-    });
+    draftInput.addEventListener('input',aiDraftPersist);
   }
   // 附件（v1.0.40）：恢复附件条渲染 + 绑定拖拽（浏览器 File 直读 / Tauri 路径直读，双通道）
   renderAIAttachments();
@@ -421,7 +427,7 @@ function renderAIAttachments(){
     let cls='parsing',meta='解析中…';
     if(a.status==='error'){cls='error';meta=a.error||'解析失败';}
     else if(a.status==='ready'){cls='ready';meta=(a.chars||0)+' 字'+(a.truncated?' · 超长截断':'');}
-    return '<span class="ai-attach-chip '+cls+'" title="'+escAttr(a.name+' · '+meta)+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(a.name)+'</span><span class="mt">'+escHtml(meta)+'</span><button type="button" class="rm" title="移除该附件" onclick="aiAttachRemove('+i+')">'+icon('x','11')+'</button></span>';
+    return '<span class="ai-attach-chip '+cls+'" title="'+escAttr(a.name+' · '+meta)+'">'+icon('fileText','12')+'<span class="nm">'+escHtml(a.name)+'</span><span class="mt">'+escHtml(meta)+'</span><button type="button" class="rm" title="移除该附件" aria-label="移除附件 '+escAttr(a.name)+'" onclick="aiAttachRemove('+i+')">'+icon('x','11')+'</button></span>';
   }).join('');
 }
 function aiAttachRemove(i){_aiAttachments.splice(i,1);renderAIAttachments();}
@@ -1052,7 +1058,7 @@ function kbrenderZone(stat){
   }
   const actions=s.bound
     ?'<button type="button" class="btn sm" onclick="kbRescan()"'+(s.indexing?' disabled':'')+'>重新索引</button> <button type="button" class="btn sm" onclick="kbPickFiles()"'+(s.indexing?' disabled':'')+'>批量选择文件</button> <button type="button" class="btn sm" onclick="kbUnbind()"'+(s.indexing?' disabled':'')+'>断开</button>'
-    :'<button type="button" class="btn sm primary" onclick="kbBindDir()">选择目录并索引</button> <button type="button" class="btn sm" onclick="kbPickFiles()">批量选择文件</button>';
+    :'<button type="button" class="btn sm primary" onclick="kbBindDir()"'+(s.indexing?' disabled':'')+'>选择目录并索引</button> <button type="button" class="btn sm" onclick="kbPickFiles()"'+(s.indexing?' disabled':'')+'>批量选择文件</button>';
   const dis=(s.bound?'':' disabled');
   const enableRow='<div class="ai-kb-opts">'+
     '<label class="ai-opt"><input type="checkbox" id="kbEnabled" '+(s.enabled?'checked':'')+dis+' onchange="kbSetEnabled(this.checked)"><span>提问时检索知识库</span></label>'+
@@ -1157,7 +1163,6 @@ async function openAISettings(){
   catch(e){toast('打开 AI 设置失败：'+(e&&e.message?e.message:e),'error');return;}
   modal('AI 设置',body,'保存设置',async ()=>{
     const baseEl=document.getElementById('aiBaseUrl');const modelEl=document.getElementById('aiModel');
-    if(baseEl&&modelEl){try{AI.setProvider(baseEl.value,modelEl.value);}catch(e){toast('保存端点失败：'+(e&&e.message?e.message:e),'error');}}
     const tokenEl=document.getElementById('aiDeepseekToken');
     const tokenVal=tokenEl?(tokenEl.value||'').trim():'';
     try{

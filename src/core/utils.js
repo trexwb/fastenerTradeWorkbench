@@ -106,7 +106,36 @@ let _iconCache={};
  * @param {number} [size=18] - 图标尺寸(px)
  * @returns {string} SVG 图标 HTML 字符串
  */
-function icon(name,size){let k=name+'|'+(size||18);if(_iconCache[k])return _iconCache[k];let s='<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(SVG[name]||'')+'</svg>';_iconCache[k]=s;return s;}
+function icon(name,size){let k=name+'|'+(size||18);if(_iconCache[k])return _iconCache[k];let s='<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(SVG[name]||'')+'</svg>';_iconCache[k]=s;return s;}
+
+let _fieldSeq=0;
+/**
+ * 为渲染后的表单补齐 label/for 关联与无名称控件的兜底 aria-label。
+ * 仅做声明式补全，不改变现有 DOM 结构与视觉。
+ * @param {Element|Document} [root=document] - 扫描范围
+ * @returns {void} 无返回值
+ */
+function associateFormLabels(root){
+  const scope=root||document;
+  scope.querySelectorAll('label.f').forEach(label=>{
+    if(label.htmlFor)return;
+    const next=label.nextElementSibling;
+    if(!next)return;
+    let ctrl=null;
+    if(/^(INPUT|SELECT|TEXTAREA)$/.test(next.tagName))ctrl=next;
+    else ctrl=next.querySelector('input:not([type="hidden"]),select,textarea');
+    if(!ctrl||ctrl.disabled)return;
+    if(!ctrl.id)ctrl.id='fld_'+(++_fieldSeq);
+    label.htmlFor=ctrl.id;
+  });
+  scope.querySelectorAll('input,select,textarea').forEach(ctrl=>{
+    if(ctrl.type==='hidden')return;
+    if(ctrl.hasAttribute('aria-label')||ctrl.hasAttribute('aria-labelledby')||ctrl.closest('label'))return;
+    if(ctrl.id&&scope.querySelector('label[for="'+ctrl.id+'"]'))return;
+    const ph=(ctrl.getAttribute('placeholder')||'').trim();
+    if(ph)ctrl.setAttribute('aria-label',ph);
+  });
+}
 
 
 /* =========================================================
@@ -249,10 +278,15 @@ function restoreOrderDraft(d){
  */
 function bindDraftSave(container,collectFn,type){
   if(!container)return;
+  /* 草稿落盘防抖（§12.5）：collectFn 整表收集 + localStorage 同步写属高频输入事件，300ms 合并；
+     markDrawerDirty 为 O(1) 布尔标记，保持同步以保证关窗确认不漏判 */
+  const persist=debounce(function(){
+    const d=collectFn();if(d)saveDraft(type,d);
+  },300);
   const handler=function(e){
     // 有未保存表单数据时标记 dirty，关闭时弹出确认防止误关丢失输入
     if(typeof markDrawerDirty==='function')markDrawerDirty();
-    const d=collectFn();if(d)saveDraft(type,d);
+    persist();
   };
   container.addEventListener('input',handler);
   container.addEventListener('change',handler);
@@ -622,10 +656,12 @@ function toast(text,type){
   const icons={success:'✓',error:'✕',warning:'!',info:'i'};
   const d=document.createElement('div');
   d.className='msg '+type;
-  d.innerHTML='<i class="mi">'+icons[type]+'</i><span>'+escHtml(text)+'</span>';
+  d.setAttribute('role',type==='error'?'alert':'status');
+  d.setAttribute('aria-atomic','true');
+  d.innerHTML='<i class="mi" aria-hidden="true">'+icons[type]+'</i><span>'+escHtml(text)+'</span>';
   w.appendChild(d);
   _TOAST_SHOWN.set(_k,d);
-  setTimeout(()=>{d.style.transition='opacity .3s';d.style.opacity='0';setTimeout(()=>{d.remove();_TOAST_SHOWN.delete(_k);},TOAST_FADE);},TOAST_DURATION);
+  setTimeout(()=>{d.style.transition='opacity var(--dur-slow) var(--ease-out)';d.style.opacity='0';setTimeout(()=>{d.remove();_TOAST_SHOWN.delete(_k);},TOAST_FADE);},TOAST_DURATION);
 }
 
 
@@ -645,7 +681,8 @@ function bindBatchPasteUX(taId,btn){
   const b=(typeof btn==='string')?document.getElementById(btn):btn;
   if(!ta||!b)return;
   const sync=()=>{b.disabled=!ta.value.trim();b.style.opacity=ta.value.trim()?'':'0.5';b.style.cursor=ta.value.trim()?'':'not-allowed';};
-  ta.addEventListener('input',sync);
+  const syncDebounced=debounce(sync,120); // 输入高频事件防抖（§12.5）；初始化仍同步执行一次
+  ta.addEventListener('input',syncDebounced);
   sync();
 }
 /** 批量解析成功后的通用收尾（v1.0.53）：
@@ -710,6 +747,14 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   '</div>';
   const inp=el.querySelector('input');
   const drop=el.querySelector('.combo-drop');
+  // combo 输入框在渲染后才创建，需在此补做 label 关联/可访问名称（render 时的 associateFormLabels 扫不到空容器）
+  if(!inp.id)inp.id='fld_'+(++_fieldSeq);
+  const hostField=el.closest?el.closest('.field'):null;
+  const hostLabel=hostField?hostField.querySelector('label.f'):null;
+  if(hostLabel&&!hostLabel.htmlFor)hostLabel.htmlFor=inp.id;
+  if(!hostLabel&&!inp.getAttribute('aria-label')&&!inp.getAttribute('aria-labelledby')){
+    inp.setAttribute('aria-label',el.dataset.placeholder||placeholder);
+  }
   let activeIdx=-1;
   // 选中流程中的 input 事件是 select() 内部派发的，需跳过 show() 防止下拉被重新打开
   let _selecting=false;
@@ -721,18 +766,19 @@ function combo(el,options,onSelect,placeholder,allowCreate){
     const hits=comboFilter(inp,options);
     activeIdx=keepIdx===undefined?-1:Math.min(keepIdx,hits.length-1);
     if(!hits.length&&q2&&allowCreate){
-      drop.innerHTML='<li class="combo-item" role="option" style="color:var(--blue);cursor:pointer;padding:8px 12px">按「<b>'+escHtml(q)+'</b>」新建 <span style="margin-left:auto;font-size:12px;color:var(--gray)">回车确认</span></li>';
+      drop.innerHTML='<li class="combo-item" role="option" id="'+listId+'-opt-0" style="color:var(--blue);cursor:pointer;padding:8px 12px">按「<b>'+escHtml(q)+'</b>」新建 <span style="margin-left:auto;font-size:12px;color:var(--gray)">回车确认</span></li>';
       drop.querySelector('.combo-item').addEventListener('mousedown',e=>{e.preventDefault();select({id:q,label:q,isCustom:true});});
     }else if(!hits.length){
       drop.innerHTML='<li class="no-res" style="padding:8px 12px;color:var(--gray);font-size:14px">无匹配结果，可直接输入新值后回车</li>';
     }else{
-      drop.innerHTML=hits.map((h,i)=>'<li class="combo-item" role="option" data-id="'+escAttr(h.id)+'" data-idx="'+i+'" style="padding:8px 12px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:6px"'+(i===activeIdx?' aria-selected="true"':'')+'>'+escHtml(h.label)+(h.tag?'<span class="ci-tag tag '+h.tag.cls+'" style="margin-left:auto;font-size:12px">'+escHtml(h.tag.text)+'</span>':'')+'</li>').join('');
+      drop.innerHTML=hits.map((h,i)=>'<li class="combo-item" role="option" id="'+listId+'-opt-'+i+'" data-id="'+escAttr(h.id)+'" data-idx="'+i+'" style="padding:8px 12px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:6px"'+(i===activeIdx?' aria-selected="true"':'')+'>'+escHtml(h.label)+(h.tag?'<span class="ci-tag tag '+h.tag.cls+'" style="margin-left:auto;font-size:12px">'+escHtml(h.tag.text)+'</span>':'')+'</li>').join('');
       drop.querySelectorAll('.combo-item').forEach(item=>{
         item.addEventListener('mousedown',e=>{e.preventDefault();select(hits[+item.dataset.idx]);});
         item.addEventListener('mouseenter',()=>{activeIdx=+item.dataset.idx;syncActive();});
       });
     }
     drop.style.display='block';setExpanded(true);el.classList.add('open');
+    syncActive();
     fitDrop();
   }
 /** 同步 combo 下拉列表中的高亮激活项样式和滚动位置 */
@@ -743,8 +789,11 @@ function combo(el,options,onSelect,placeholder,allowCreate){
     });
     if(activeIdx>=0){
       const el2=drop.querySelector('[data-idx="'+activeIdx+'"]');
-      if(el2)el2.scrollIntoView({block:'nearest'});
-    }
+      if(el2){
+        if(el2.id)inp.setAttribute('aria-activedescendant',el2.id);
+        el2.scrollIntoView({block:'nearest'});
+      }else{inp.removeAttribute('aria-activedescendant');}
+    }else{inp.removeAttribute('aria-activedescendant');}
   }
   // 输入防抖（100ms）避免每敲一个字符就重建整个下拉列表
   const showDebounced=debounce(function(v){show(v);},100);
@@ -767,7 +816,7 @@ function combo(el,options,onSelect,placeholder,allowCreate){
   });
   inp.addEventListener('blur',()=>setTimeout(closeDrop,150));
 /** 关闭 combo 下拉列表，重置激活索引和展开状态 */
-  function closeDrop(){drop.style.display='none';setExpanded(false);el.classList.remove('open');activeIdx=-1;}
+  function closeDrop(){drop.style.display='none';setExpanded(false);el.classList.remove('open');activeIdx=-1;inp.removeAttribute('aria-activedescendant');}
   /** P1修复：抽屉/滚动容器内空间不足时向上展开，避免下拉选项被容器裁剪点不到 */
   function fitDrop(){
     const r=drop.getBoundingClientRect();

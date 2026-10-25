@@ -18,7 +18,8 @@
 
 > **🔴 强制硬规则（2026-08-28 起生效，所有 Agent 必须遵守）**：
 > - **版本号单一来源**：`package.json` 的 `version` 字段，构建时由 Vite define 注入全局 `__APP_VERSION__`。
-> - **版本号同步三处**：1) `package.json` 的 `version` 字段；2) `src-tauri/tauri.conf.json` 的 `version` 字段（Tauri 桌面版）；3) `AGENTS.md` 中的「当前基准版本」。
+> - **版本号同步三处（核心）**：1) `package.json` 的 `version` 字段；2) `src-tauri/tauri.conf.json` 的 `version` 字段（Tauri 桌面版）；3) `AGENTS.md` 中的「当前基准版本」。
+> - **派生同步项（`npm run version:set` 一并刷新，无需手工改）**：`package-lock.json`、`src-tauri/Cargo.toml`、`src/core/store.js` 兜底值、`dist/sw.js` 缓存名。发布日志里出现的「5 处 / 6 处统一」即「核心三处 + 派生项」的合计口径，与本节不冲突。
 > - **末位 +1 的唯一场景**：仅当新增了与现有问题**不同类、不同根因**的新功能 / 新修复，且用户明确允许推进版本号时，才将末位（x）加 1。
 > - **🟥 以下情形绝对禁止推进版本号（写死不 +1）**：
 >   1. 上一轮同一用户反馈的问题 / 同类问题**持续修复、多次往返排查、再次验证修复**（如"引导弹两次修完用户仍反馈弹两次"的多轮跟进）
@@ -66,7 +67,7 @@
 
 ### 4. 架构约定
 
-- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,keyboard,ai-chat} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor` 原样复制到 dist/
+- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → ai-files → kb → validators → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,keyboard,ai-chat,search-panel} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor` 原样复制到 dist/
 - **存储体系**：IndexedDB（主存储，`DB` 对象） + localStorage（表单草稿，`DRAFT_PREFIX='wb_fastener_draft_'`） + 本地 JSON 文件（File System Access API 备份）
 - **状态管理**：全局变量控制视图（`view`、`curOrder`、`curOrderView`、`_fMode`、`_fOrderId`、`_fItems`）
 - **渲染函数**：`render()` 统一调度，`orders` 分支路由：`curOrder ? viewOrderEdit() : curOrderView ? viewOrderDetail() : viewOrders()`
@@ -94,6 +95,11 @@ FastenerTradeWorkbench/
 │   │   ├── ai.js           ← AI 可选增强（Tauri 走 Rust 命令；浏览器版前端直连 DeepSeek API，支持流式与 tool_calls）
 │   │   ├── help-knowledge.js ← 系统使用知识库（HELP_KNOWLEDGE 数组，供 query_help 工具按需检索）
 │   │   ├── ai-tools.js     ← AI Function Calling 工具协议（AIT：schema 定义 + 校验/预览/执行/审计适配层，写入工具均生成提案需用户逐条确认）
+│   │   ├── ai-files.js     ← AI 对话附件解析（window.AF：txt/md/csv/xls/xlsx/docx/pdf 本地直读 + 正文路径提取）
+│   │   ├── kb.js           ← 本地目录知识库（window.KB：目录绑定 + 增量索引 + BM25 检索 + 引用块构造）
+│   │   ├── validators.js   ← 共享校验（canFlowOrderStatus / validateStartSourcing 等，视图层与 AI 工具层统一引用）
+│   │   ├── guide.js        ← 新功能引导（Coach）
+│   │   ├── updater.js      ← 桌面版自动更新（window.Updater）
 │   │   ├── router.js       ← view 路由 + AppState + render 入口
 │   │   └── app.js           ← bootApp() 启动入口（theme + 全局 handler + initApp）
 │   ├── views/              ← 视图层（原 src/js/views/*.js，业务零改动 → window.* 全局）
@@ -105,8 +111,9 @@ FastenerTradeWorkbench/
 │   │   ├── orders.js        ← 采购订单（列表 / 详情 / 编辑）
 │   │   ├── settlements.js   ← 结算管理
 │   │   ├── invoices.js      ← 发票管理
-│   │   ├── keyboard.js      ← 快捷键
-│   │   ├── ai-chat.js       ← AI 助手
+│   │   ├── keyboard.js      ← 快捷键（⌘K/⌘S/Esc/?/⌥ 导航，见 docs/flows/keyboard.md）
+│   │   ├── ai-chat.js       ← AI 助手（对话 / 提案确认 / 附件，见 docs/flows/ai-chat.md）
+│   │   ├── search-panel.js  ← 全局搜索与命令面板（六源检索 + AI 联动，见 docs/flows/search-panel.md）
 │   │   └── data.js          ← 数据管理
 │   └── public/             ← 静态资源（Vite 原样复制到 dist/ 根目录）
 │       ├── images/          ← 图标 / favicon 等
@@ -117,7 +124,8 @@ FastenerTradeWorkbench/
 ├── package.json            ← 版本号单一来源（vue ^3.5 / vite ^8 + @vitejs/plugin-vue ^6）
 ├── README.md               ← 项目说明（浏览器版使用指引，版本信息以 package.json 为准）
 ├── docs/                    ← 项目文档（API.md / COVERAGE.md / 操作手册.md / flows 各模块流程 / version 发布记录 / screenshots 截图与历史单文件版）
-├── scripts/                 ← 构建 / 版本脚本（bump-version / check-version / copy-frontend / serve / make-dmg）
+├── wiki/                    ← GitHub Wiki 页面 Markdown 源（Home / _Sidebar / 各模块页，推送到仓库 Wiki）
+├── scripts/                 ← 构建 / 版本 / 文档脚本（bump-version / check-version / copy-frontend / serve / make-dmg / gen-coverage）
 ├── src-tauri/               ← Tauri 桌面封装（Rust 源码 + tauri.conf.json，frontendDist=../dist）
 └── dist/                    ← Vite 构建产物（双击 dist/index.html 可运行；结构：index.html + assets/js|css + vendor + images）
 ```
@@ -126,6 +134,9 @@ FastenerTradeWorkbench/
 
 | 函数 | 所在文件 | 用途 |
 |------|---------|------|
+| `viewDashboard()` | dashboard.js | 概览看板（统计卡 + 待办） |
+| `viewSpecs()` | specs.js | 属性规格管理（六维枚举） |
+| `viewData()` | data.js | 数据管理（备份/同步/操作历史/回收站/知识库） |
 | `viewOrders()` | orders.js | 采购订单列表页 |
 | `viewOrderEdit()` | orders.js | 编辑/新建订单（表单 + 产品明细） |
 | `viewOrderDetail()` | orders.js | 订单详情只读页（含寻货入口） |
@@ -152,6 +163,13 @@ FastenerTradeWorkbench/
 | `escAttr(str)` | utils.js | 属性转义 |
 | `saveDB()` | store.js | IndexedDB 落盘 |
 | `uid(pref)` | utils.js | 唯一 ID 生成 |
+| `KB.*`（`window.KB`） | kb.js | 本地知识库：init / chooseDir / rescan / search / listFiles / buildPromptBlock |
+| `AF.*`（`window.AF`） | ai-files.js | AI 附件解析：isSupported / parseEntry / extractPaths |
+| `canFlowOrderStatus(from,to)` | validators.js | 订单状态机校验（视图与 AI 共用） |
+| `validateStartSourcing(order)` | validators.js | 开始寻货前置校验（v1.0.47 起不校验意向价） |
+| `openSearchPanel()` | search-panel.js | 全局搜索命令面板（⌘K） |
+| `showShortcutsModal()` | keyboard.js | 快捷键说明弹窗（?） |
+| `exportOrder(orderId)` | exporter.js | 按订单状态分发的 Excel 导出 |
 
 ### 7. CSS 约定
 

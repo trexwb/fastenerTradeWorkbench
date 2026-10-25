@@ -6,8 +6,6 @@
 let _priceFormSaving=false;
 /** 报价批量导入提交防重锁 */
 let _priceBatchSaving=false;
-/** 报价筛选刷新防抖（150ms） */
-const _priceFilterDebounced=debounce(refreshPricesTable,150);
 
 /**
  * 渲染单条报价表格行 HTML（列表页与局部刷新共用，避免两份模板漏改）。
@@ -63,7 +61,7 @@ function viewPrices(){
   // 与 BOM管理 / 关联单位 / 采购订单工具栏统一；v1.0.51 的「筛选态才显示」条件渲染废弃
   const priceActions='<div class="btn-group">'+
       '<button class="btn primary" onclick="newPrice()">'+icon('plus')+'新增报价</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="togglePriceDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="priceDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closePriceDropdown();newPrice()">'+icon('plus')+'新增报价</button>'+
         '<button class="dropdown-item" onclick="closePriceDropdown();openPriceBatchAdd()">'+icon('upload','14')+'批量导入</button>'+
@@ -71,7 +69,7 @@ function viewPrices(){
     '</div>';
 
   return '<div class="toolbar">'+
-    '<div class="search-box"><a href="javascript:void(0)" data-search-fn="doPriceSearch" onclick="doPriceSearch()" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a><input id="pf_sku" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><span class="clear-btn" onclick="clearPriceFilter()">×</span></div>'+
+    '<div class="search-box"><button type="button" class="search-trigger" aria-label="搜索报价" data-search-fn="doPriceSearch" onclick="doPriceSearch()">'+icon('search','16')+'</button><input id="pf_sku" type="text" aria-label="搜索 SKU" placeholder="搜索 SKU..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)doPriceSearch()"><button type="button" class="clear-btn" aria-label="清空搜索" onclick="clearPriceFilter()">×</button></div>'+
     '<div id="pf_unit" class="combo filt-combo" data-placeholder="全部供应商" data-val=""></div>'+
     '<div class="spacer"></div>'+
     '<span id="priceCountTag" class="tag gray"'+(hasPriceFilter()?'':' style="display:none"')+'>'+filtered.length+' / '+DB.prices.length+'</span>'+
@@ -211,12 +209,21 @@ function newPrice(){
     if(panel)bindDraftSave(panel,collectPriceDraft,DRAFT_TYPES.price);
   },100);
 }
-/** 检查报价是否重复（同一供应商+BOM SKU+规格+属性组合） */
+/** 检查报价是否重复（同一供应商 + BOM(SKU) 唯一）
+ *  v1.0.58：唯一键收紧为「供应商BOM + SKU」（unitId + bomSku），同一供应商对同一 BOM SKU 仅允许一条报价；
+ *  均未绑定 BOM（bomSku 为空）的记录退回「规格+属性组合」判定，避免未关联 BOM 的报价被误拦截。 */
 function isPriceDuplicate(unitId,bomSku,spec,attrs,excludeId){
+  const b=(bomSku||'').trim();
   return DB.prices.some(p=>{
     if(excludeId&&p.id===excludeId)return false;
     if(p.unitId!==unitId)return false;
-    if((p.bomSku||'')!==(bomSku||''))return false;
+    const pb=(p.bomSku||'').trim();
+    if(b||pb){
+      // 已绑定 BOM：同一供应商 + 同一 BOM SKU 即判重复
+      if(b!==pb)return false;
+      return true;
+    }
+    // 均未绑定 BOM：退回原规格+属性组合判定
     if((p.spec||'')!==(spec||''))return false;
     for(const k of SPEC_FIELDS){if((p[k]||'')!==(attrs[k]||''))return false;}
     return true;
@@ -310,7 +317,7 @@ function savePriceDrawer(){
   const bomRefEl=document.getElementById('ps_bom_ref');
   const bomInput=bomRefEl.querySelector('input');if(bomInput&&bomInput.value.trim()==='')bomRefEl.dataset.val='';
   const bomSku=bomRefEl.dataset.val==='__manual__'?'':bomRefEl.dataset.val;
-  if(isPriceDuplicate(unitId,bomSku,specText,spec,editingPriceId)){toast('已存在相同供应商+SKU+规格+属性的报价，请勿重复添加','warning');return;}
+  if(isPriceDuplicate(unitId,bomSku,specText,spec,editingPriceId)){toast('已存在相同供应商 + BOM SKU 的报价，请勿重复添加','warning');return;}
   if(editingPriceId){
     const rec=DB.prices.find(x=>x.id===editingPriceId);
     Object.assign(rec,{unitId,contact,...spec,bomSku,price,validFrom,remark,spec:specText});

@@ -1,6 +1,8 @@
 # 紧固件贸易工作台 API 文档
 
-> 本文档为 **v1.1.174** 版本的代码 API 参考手册，基于 `src/js/` 目录下各模块的实际代码生成。
+> 本文档为 **v1.0.57** 版本的代码 API 参考手册，基于 `src/core/` + `src/views/` 目录下各模块的实际代码整理。
+>
+> 配套文档：使用说明见 [操作手册.md](操作手册.md)，模块流程见 [flows/](flows/)，迭代记录见 [version/RELEASE-v1.0.md](version/RELEASE-v1.0.md)，注释覆盖率见 [COVERAGE.md](COVERAGE.md)。
 
 ---
 
@@ -8,23 +10,34 @@
 
 ### 1.1 架构说明
 
-紧固件贸易工作台是一个**零依赖单页应用（SPA）**，下载后双击 `src/index.html` 即可在浏览器中运行，无需 HTTP 服务器、Node.js、npm 或任何构建步骤。
+紧固件贸易工作台是**纯前端离线单页应用（SPA）**：
 
-- **入口**：`src/index.html`（HTML 骨架 + `<script defer>` 加载）
-- **无 ES Module / import/export**：所有 JS 文件通过 `<script defer src="js/xxx.js">` 加载，挂载到 `window` 全局作用域
-- **无外部依赖**：纯原生 JavaScript，本地化后零网络依赖（SheetJS 导出库本地优先、CDN 兜底）
+- **开发态**：Vue3 + Vite（`npm run dev`），Vite root = `src`，入口 `src/index.html` → `src/main.js`（样式 + `createApp`）→ `src/App.vue`
+- **交付态**：`npm run vite:build` 产出 `dist/index.html`——**iife 单 chunk + 相对路径 + module script 降级**，双击即可用 `file://` 打开，无需 HTTP 服务器 / Node.js / nginx
+- **业务层零算法改动**：`src/core/` 与 `src/views/` 下的业务 JS 由 `App.vue` 用 `import.meta.glob('?raw')` 读取后**间接 eval 全局执行**，保持 `window.*` 全局挂载语义，不使用 ES module import/export
+- **无运行时外部依赖**：不引入 React / jQuery / lodash；Excel 导出（xlsx-js-style）、PDF（pdfjs-dist）、docx（mammoth）为按需加载或打包进 bundle 的本地资源，离线可用
 
 ### 1.2 模块依赖顺序
 
+由 `src/App.vue` 按序间接 eval 执行：
+
 ```
-seed.js    → 预置示例数据（DB 初始化）
-utils.js   → 工具函数（escHtml/icon/fmt/uid 等）
-ui.js      → UI 组件（modal/drawer/combo/toast）
-store.js   → IndexedDB 数据层 + File System Access API
-exporter.js → Excel 导出引擎（SheetJS，基于 xlsx-js-style fork）
-views/     → 各视图页面（dashboard/units/specs/bom/prices/orders/settlements/invoices/data）
-router.js  → 路由 + render() + 状态变量
-app.js     → initApp() 初始化入口
+seed.js           → 预置示例数据（DB 初始化）
+utils.js          → 工具函数（escHtml/icon/fmt/fmtN/uid 等）
+ui.js             → UI 组件（modal/drawer/combo/toast/confirmModal）
+store.js          → DB 模型 + IndexedDB / data.json + 文件同步 + 备份
+exporter.js       → Excel 导出引擎（xlsx-js-style 本地 vendor + CDN 兜底）
+ai.js             → AI 服务层（多端点 / 流式 / 工作流 / 上下文压缩）
+help-knowledge.js → 系统使用知识库（query_help 检索源）
+ai-tools.js       → AI Function Calling 工具协议（47 个工具）
+ai-files.js       → AI 对话附件解析（window.AF）
+kb.js             → 本地目录知识库（索引 / BM25）
+validators.js     → 共享校验（视图层与 AI 工具层统一引用）
+views/            → 各视图页面（dashboard/units/specs/bom/prices/orders/
+                    settlements/invoices/data/keyboard/ai-chat/search-panel）
+router.js         → 路由 + render() + AppState
+app.js            → bootApp() 启动入口
+guide.js/updater.js → 新功能引导 / 桌面版自动更新
 ```
 
 ### 1.3 存储体系
@@ -45,16 +58,22 @@ app.js     → initApp() 初始化入口
 let DB = {
   units:       [],       // 关联单位数组
   specs:       {},       // 属性选项字典 {type:[...], standard:[...], ...}
-  bom:         [],       // BOM 物料数组
+  bom:         [],       // BOM 物料数组（`ensureDBFields` 补建并补发 id）
   prices:      [],       // 报价记录数组
   orders:      [],       // 采购订单数组
   settlements: [],       // 结算记录数组
   invoices:    [],       // 发票记录数组
+  aiChats:     [],       // AI 会话记录（含附件解析全文）
+  trash:       [],       // 回收站（软删除，90 天保留期后自动清理）
+  aiOps:       [],       // 操作审计日志（2000 条 FIFO，可回滚）
+  aiWorkflows: [],       // AI 工作流记录
   seq:         100,      // ID 自增序号计数器
   orderSeq:    1,        // 订单序号计数器（独立于 seq，不受删除影响）
   _savedAt:    Date.now() // 最后保存时间戳（用于文件同步时间戳对比）
 };
 ```
+
+> `ensureDBFields()` 在启动与导入后统一补齐上述字段，缺失集合（如旧备份无 `trash`/`aiOps`/`aiChats`/`aiWorkflows`/`bom`）自动建空数组，避免首次删除等操作报错。导入链路另有 `sanitizeImportedIds()` 清洗 6 类集合的非法 id。
 
 ### 2.2 关键实体结构
 
@@ -836,6 +855,83 @@ importJSON(event)           // JSON 导入
 clearAllData()              // 清空所有数据
 ```
 
+#### AI 助手（ai-chat.js）
+```javascript
+openAIAssistant()           // 打开 AI 助手抽屉
+openAIWithMessage(text)     // 以预填内容打开助手
+renderAIMarkdown(text)      // Markdown → HTML（markdown-it + DOMPurify + highlight.js）
+renderAIMarkdownStream(text)// 流式渲染（自适应节流 + 近底智能跟随）
+renderAIAttachments(list)   // 渲染附件芯片
+renderOpsItem(op)           // 渲染单条 AI 提案（写入类工具）
+renderOpsDiff(op)           // 渲染提案字段 diff
+```
+
+#### 全局搜索与命令面板（search-panel.js）
+```javascript
+openSearchPanel()           // 打开命令面板（⌘K）
+closeSearchPanel()          // 关闭
+cmdSearch(q)                // 检索（单位/订单/BOM/报价/命令混排）
+cmdRender(rows)             // 渲染结果列表
+cmdInputChanged(v)          // 输入变更（防抖，输入法 isComposing 防护）
+cmdInputKey(e)              // 键盘导航（上下/回车/关闭）
+askAISearch(q)              // 结果为空时转问 AI
+askAIOnItem(item)           // 对单条结果问 AI
+```
+
+#### 键盘快捷键（keyboard.js）
+```javascript
+getShortcutsHTML()   // 快捷键说明表 HTML
+showShortcutsModal() // 打开说明弹窗（? 键）
+isInInput()          // 焦点是否在输入框（屏蔽字母类快捷键）
+hasOverlay()         // 是否存在弹层（决定 Esc 行为）
+getSearchInput()     // 当前视图搜索框
+kbdNav(target)       // 快捷键路由分发
+```
+
+---
+
+### 3.7 其他核心模块
+
+#### AI 附件解析（ai-files.js，`window.AF`）
+```javascript
+AF.ACCEPT                 // 支持的扩展名集合（txt/md/markdown/log/csv/xls/xlsx/docx/pdf）
+AF.isSupported(fileName)  // 是否支持解析
+AF.extOf(fileName)        // 取扩展名（小写）
+AF.parseEntry(entry)      // 解析单个文件/目录项 → {name, text, chars, ...}
+AF.extractPaths(text)     // 从对话正文提取本地文件路径（桌面版直读）
+AF.MAX_FILE_CHARS / AF.MAX_FILE_BYTES  // 单文件体积上限
+```
+> 限制：单文件 ≤20MB；PDF ≤200 页；Excel ≤20 sheet；文本 UTF-8 优先、GBK 兜底；浏览器走 File 直读、桌面版走 `kb_read_*` 命令，全程不上传。
+
+#### 本地知识库（kb.js，`window.KB`）
+```javascript
+KB.init()            // 启动时恢复已绑定目录与索引
+KB.state             // 索引状态（文件数/块数/字符数/索引时间）
+KB.chooseDir()       // 绑定本地目录（FSA / webkitdirectory 降级 / Tauri kb_pick_dir）
+KB.chooseFiles()     // 批量选择文件建立索引
+KB.rescan() / KB.ensureFresh()  // 重新扫描 / 静默增量更新
+KB.search(q)         // BM25 检索
+KB.listFiles()       // 已索引文件清单
+KB.getFileBlocks(rel)// 取指定文件的分块
+KB.buildPromptBlock(hits) // 构造带【依据：文件名】的注入块
+KB.setEnabled/setTopN/setCite/setActiveRetrieval/setAutoInjectFallback  // 检索参数
+KB.unbind()          // 解除绑定
+```
+
+#### 共享校验（validators.js）
+```javascript
+canFlowOrderStatus(from, to)       // 订单状态机校验（视图与 AI 工具 flow_order_status 共用）
+validateOrderInput(input, opts)    // 订单表单校验（requireDelivery 可关）
+validateStartSourcing(order)       // 开始寻货前置校验（v1.0.47 起不再校验意向价）
+isPositiveNumber(v)                // 正数判定
+```
+
+#### 引导与更新（guide.js / updater.js）
+```javascript
+// guide.js：新功能引导（Coach）——按版本登记引导步骤，高亮孔透传点击，已完成步骤持久化
+// updater.js：window.Updater = { check, download, relaunch, state, autoEnabled, setAutoEnabled }
+```
+
 ---
 
 ## 4. 存储体系详解
@@ -957,12 +1053,24 @@ syncNow()        // 手动触发同步
 
 ## 6. 版本变更记录
 
+> 早期版本号（v1.1.x）为旧命名体系，仅供追溯；当前版本体系为 v1.0.x（单一来源 `package.json`）。
+
 | 版本 | 日期 | 更新内容 | 编辑人 |
 |------|------|---------|--------|
 | v1.1.1 | — | 项目初始化 | — |
 | v1.1.100 | — | 持续迭代 | — |
 | v1.1.124 | 2026-08-12 | 批量补充 JSDoc 注释（core 模块） | Agent |
-| **v1.1.174** | **2026-08-16** | **全面更新文档**：新增 exporter.js / data.js 模块；orders.js 扩展至 72 函数（供应商报价导入/收货管理/验货）；prices.js 扩展至 18 函数；更新所有 flow 文档；API.md 全面重写 | Agent |
+| v1.1.174 | 2026-08-16 | 全面更新文档：新增 exporter.js / data.js 模块；更新所有 flow 文档；API.md 全面重写 | Agent |
+| v1.0.30 – v1.0.39 | 2026-08 ~ 09 | 样式遮挡与可达性修复、安全审计（CSP/SSRF/XSS）、送货信息白名单权限、AI 消息复制/刷新、运算符优先级修复 | Agent |
+| v1.0.40 / v1.0.41 | 2026-09 | AI 对话附件（本地直读解析）；桌面版支持正文写路径直读 | Agent |
+| v1.0.42 – v1.0.45 | 2026-09 | Windows 导出空文件修复、BOM 导入丢数据修复、字段级审计收口、BOM 关联仅按 SKU | Agent |
+| v1.0.46 / v1.0.47 | 2026-09 | AI 输入区气泡化改版；寻货放开意向价限制（validateStartSourcing 同步） | Agent |
+| v1.0.48 / v1.0.49 | 2026-09 | 关联单位批量导入；采购订单批量导入（相邻同采购商+项目+交期行自动合并） | Agent |
+| v1.0.50 – v1.0.53 | 2026-09 | 批量导入入口统一为分体下拉；toast 同屏去重；六处批量粘贴导入交互统一（空文本禁用解析、解析后清空、可累加） | Agent |
+| v1.0.54 / v1.0.55 | 2026-09 | 价格库匹配改为 SKU 优先 + 属性兜底防噪；恢复选 BOM 自动填充六维属性 | Agent |
+| v1.0.56 | 2026-09-16 | 业务逻辑深度审计修复：结算口径确认、匹配分配合计校验、发票孤儿标记、未定价标注 | Agent |
+| **v1.0.57** | **2026-09-16** | **供应商批量报价导入重构**：列结构 `序号\|SKU\|数量\|意向价\|报价\|供应商\|规格`，SKU 精确匹配、多供应商分配 | Agent |
+| — | 2026-10-25 | 全量文档对齐 v1.0.57（本文件补 ai-files/kb/validators/guide/updater/search-panel/keyboard 模块）；新增 `wiki/` GitHub Wiki 页面 | Agent |
 
 ---
 
@@ -983,8 +1091,14 @@ const SPEC_LABELS = {
 ## 附录：ORDER_STATUSES
 
 ```javascript
-['待确认','寻货中','待签约','签约完成','送货中','异常','完成','取消']
+// store.js
+const ORDER_STATUSES = ['待确认','寻货中','报价中','未成交','签约完成','送货中','异常','完成','取消'];
+// 正向流转（不含终态分支）
+const STATUS_FLOW = ['待确认','寻货中','报价中','签约完成','送货中','完成'];
+// 分支规则：报价中 ⇄ 未成交；非终态可转 异常 / 取消；完成可回退 送货中 或转 异常；异常 / 取消为终态
 ```
+> v1.0 迁移：旧状态「待签约」统一迁移为「报价中」。
+> 流转校验收口于 `validators.js canFlowOrderStatus`，视图按钮与 AI 工具 `flow_order_status` 共用同一套规则。
 
 
 ---
@@ -1022,7 +1136,9 @@ API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，
 | `ai_deepseek_token_write` | `token: string` | — | 保存 Token（空串 = 删除）；原子写入 + 600 权限；超 4000 字符拒绝 |
 | `ai_deepseek_chat` | `messages`、`model`、`stream`、`temperature`、`max_tokens`、`stream_event` | `string` | 代理调用 `https://api.deepseek.com/v1/chat/completions`；流式时按 SSE 逐行解析并经 `stream_event`（默认 `ai:deepseek:chunk`）emit 增量文本，结束返回完整文本供前端兜底 |
 
-**AI 命令约束**：模型白名单 `deepseek-v4-flash` / `deepseek-v4-pro`；消息数 ≤ 20 条、单条 ≤ 30KB；`max_tokens` 上限 4096；请求超时 180s；响应体上限 2MB。Token 缺失、消息超限、非白名单模型、上游 HTTP 非 2xx 均返回错误字符串。
+**AI 命令约束**：模型白名单 `deepseek-v4-flash` / `deepseek-v4-pro`（Rust 侧强校验）；消息数 ≤ 20 条、单条 ≤ 30KB；`max_tokens` 上限 4096；请求超时 180s；响应体上限 2MB。Token 缺失、消息超限、非白名单模型、上游 HTTP 非 2xx 均返回错误字符串。
+
+> **端点与模型**：预设端点 `https://api.deepseek.com/v1`（默认模型 `deepseek-v4-flash`）。AI 设置中除预设端点外还可自定义任意 OpenAI 兼容端点（本地 Ollama 可留空 Key）；浏览器版（含 `file://`）前端直连，桌面版经本命令代理。
 
 ### 7.4 前端 AI 工具协议（ai.js / ai-tools.js）
 
@@ -1031,7 +1147,7 @@ API Key 存于应用数据目录 `deepseek_token` 文件（Unix 下权限 600，
 - 功能层 `flow`（4 个，`AIT.FLOW_TOOL_NAMES`）：**自动执行**（`AIT.runFlow`，纯系统动作）——纯 UI 动作（导航/打开抽屉）不确认不审计；导出（生成文件）记 `op:'export'` 审计（操作历史可追溯，不可回滚）
 - 写入/删除/流转（25 个）：`confirmOpsModal` 确认弹窗（字段 diff + 敏感字段待补 + 删除提示）→ `AIT.executeOps` 批量执行（单条失败不中断）→ 结果回填 → 继续多轮（上限 8 轮）
 
-**工具清单**（`AIT.TOOLS_DEFS`，47 个，v1.0.31）：
+**工具清单**（`AIT.TOOLS_DEFS`，47 个，对齐 v1.0.57）：
 - 查询 7：query_units / query_specs / query_bom / query_prices / query_orders / query_settlements / query_invoices
 - 写入 21：create/update_unit、create/update_price、create/update_bom、set_spec_value、create_order、update_order_meta、add/update_order_item、assign_supplier、add_manual_supplier、remove_sourcing_option、create/update_settlement、create/update_invoice、flow_order_status
 - 软删除 8：delete_unit/bom/price/order/spec_value/settlement/invoice + remove_order_item（均进回收站）

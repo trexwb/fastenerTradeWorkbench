@@ -316,9 +316,9 @@ function viewInvoices(type){
 
   return '<div class="toolbar">'+
     '<div class="search-box' + (_invSearch ? ' has-val' : '') + '">'+
-      '<a href="javascript:void(0)" data-search-fn="onInvSearch" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="invSearchInput" type="text" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onInvSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onInvSearch(\'\')">×</span>'+
+      '<button type="button" class="search-trigger" aria-label="搜索发票单位" data-search-fn="onInvSearch" onclick="onInvSearch(document.getElementById(\'invSearchInput\').value)">'+icon('search','16')+'</button>'+
+      '<input id="invSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onInvSearch(this.value)">'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onInvSearch(\'\')">×</button>'+
     '</div>'+
     '<div class="spacer"></div>'+
   '</div>'+
@@ -340,7 +340,7 @@ function viewInvoices(type){
         '<div class="es-desc">'+(_invSearch?'试试调整搜索关键词或清除筛选条件':(_invTab==='issue'?'从结算记录生成开票记录，管理开票状态':'从结算记录生成收票记录，跟踪收到的发票'))+'</div>'+
         '<div class="es-action">'+
           ((_invSearch||_invUnitFilter)?'<button class="btn ghost" onclick="onInvSearch(\'\');onInvUnitFilter(\'\')">'+icon('x','14')+'清除筛选</button>':'')+
-          '<button class="btn primary" onclick="openInvEdit(\'\')" style="margin-left:'+((_invSearch||_invUnitFilter)?'8px':'0')+'">'+icon('plus')+'新增发票</button>'+
+          '<button class="btn primary" onclick="go(\'settlements\')" style="margin-left:'+((_invSearch||_invUnitFilter)?'8px':'0')+'">'+icon('zap')+'前往结算管理</button>'+
         '</div>'+
       '</div>'+
     '</td></tr>')+

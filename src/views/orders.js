@@ -47,11 +47,11 @@ function viewOrders(){
   const pg=buildPaging(all.length,_orderPage,totalPages,'orderPage',{id:'orderPaging'});
   return '<div class="toolbar">'+
     '<div class="search-box'+(orderSearch?' has-val':'')+'">'+
-      '<a href="javascript:void(0)" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-      '<input id="orderSearchInput" type="text" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onOrderSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onOrderSearch(\'\')">×</span>'+
+      '<button type="button" class="search-trigger" aria-label="搜索订单" data-search-fn="onOrderSearch" onclick="onOrderSearch(document.getElementById(\'orderSearchInput\').value)">'+icon('search','16')+'</button>'+
+      '<input id="orderSearchInput" type="text" aria-label="搜索单号、采购商、项目、对接人" value="'+escAttr(orderSearch)+'" placeholder="搜索单号、采购商、项目、对接人..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onOrderSearch(this.value)">'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onOrderSearch(\'\')">×</button>'+
     '</div>'+
-    '<select id="orderStatusFilter" style="width:130px" onchange="onOrderStatusFilter(this.value)" tabindex="2">'+
+    '<select id="orderStatusFilter" aria-label="按订单状态筛选" style="width:130px" onchange="onOrderStatusFilter(this.value)" tabindex="2">'+
       '<option value="">全部状态</option>'+
       ORDER_STATUSES.map(s=>'<option value="'+s+'"'+(orderStatusFilter===s?' selected':'')+'>'+s+'</option>').join('')+
     '</select>'+
@@ -60,14 +60,14 @@ function viewOrders(){
     '<button id="orderBatchDelBtn" class="btn sm" style="display:none" onclick="batchDeleteOrders()">'+icon('trash')+'批量删除(<span id="orderBatchCount">0</span>)</button>'+
     '<div class="btn-group">'+
       '<button class="btn primary" onclick="newOrder()">'+icon('plus')+'新建订单</button>'+
-      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+      '<button class="btn primary dropdown-toggle" onclick="toggleOrderDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
       '<div class="dropdown-menu" id="orderDropdown" style="display:none">'+
         '<button class="dropdown-item" onclick="closeOrderDropdown();newOrder()">'+icon('plus')+'新建订单</button>'+
         '<button class="dropdown-item" onclick="closeOrderDropdown();openOrderImport()">'+icon('upload','14')+'批量导入</button>'+
       '</div>'+
     '</div>'+
   '</div>'+
-  '<div class="card"><div class="table-wrap"><table><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th></th></tr></thead><tbody id="orderBody">'+
+  '<div class="card"><div class="table-wrap"><table class="orders-table"><thead><tr><th style="width:40px"><input type="checkbox" onchange="toggleAllOrders(this)" title="全选"></th><th>单号</th><th>采购商</th><th class="m-hide-s1">对接人</th><th class="m-hide-s2">项目</th><th class="m-hide-s2">产品项</th><th>交期</th><th>状态</th><th aria-label="操作"></th></tr></thead><tbody id="orderBody">'+
   (rows||renderOrderEmptyRow())+
   '</tbody></table></div>'+pg+'</div>';
 }
@@ -158,7 +158,6 @@ function viewOrderDetail(){
   const markAbnormalBtnHTML=['报价中','签约完成','送货中'].includes(o.status)?'<button class="btn" title="将订单标记为「异常」状态，需重点关注处理（终态，不可恢复）" onclick="markOrderAbnormal(\''+escJsStr(o.id)+'\')">'+icon('alertTriangle','16')+' 标记异常</button>':'';
   return '<div class="toolbar">'+
     '<button class="btn sm" onclick="go(\'orders\')">'+icon('arrowLeft')+'返回列表</button>'+
-    '<button class="btn sm" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
     '<div class="spacer"></div>'+
     (locked?'':prevBtnHTML)+
     (o.status==='送货中'?'<button class="btn primary" title="确认订单完成；完成后仍可随时编辑或回退修改" onclick="confirmOrderComplete(\''+escJsStr(o.id)+'\')">'+icon('check','16')+' 订单完成</button>':'')+
@@ -174,7 +173,8 @@ function viewOrderDetail(){
   '</div>'+
   '<div class="card">'+
     '<h2>'+icon('doc','18')+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+
-      (editLocked?'':'<button class="btn" style="margin-left:auto" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑</button>')+
+      '<button class="btn" style="margin-left:auto" title="导出当前订单明细为 Excel" onclick="exportOrder(\''+escJsStr(o.id)+'\')">'+icon('download','16')+'导出Excel</button>'+
+      (editLocked?'':'<button class="btn" onclick="goOrderEdit(\''+escJsStr(o.id)+'\')">'+icon('edit')+'编辑</button>')+
       '<button class="btn" title="复制为新的待确认订单，保留客户/产品/供应商分配与报价，可按需删除" onclick="copyOrder(\''+escJsStr(o.id)+'\')">'+icon('copy','16')+' 复制</button>'+
     '</h2>'+
     flowHTML+
@@ -652,7 +652,7 @@ function renderItemHTML(){
           ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
           ' · 总金额: '+fmt((o.price||0)*(o.allocQty||0))+
           (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-          '<span class="ir-src-del" onclick="removeOption('+i+',\''+escJsStr(o.id)+'\')">×</span>'+
+          '<button type="button" class="ir-src-del" aria-label="移除该供应商" onclick="removeOption('+i+',\''+escJsStr(o.id)+'\')">×</button>'+
         '</div>';
       }).join('')+
     '</div>':'<div class="ir-unsourced">尚未匹配供应商，点击「寻货」从价格库选择或手动录入</div>';
@@ -666,7 +666,7 @@ function renderItemHTML(){
           '<span class="tag '+srcCls+'" style="margin-right:4px">'+srcTxt+'</span>'+
           '<button class="btn sm" onclick="editItem('+i+')">'+icon('edit')+'编辑</button>'+
           '<button class="btn sm '+(opts.length&&remain<=0?'':'primary')+'" onclick="sourceItem('+i+')">'+(opts.length?(remain>0?icon('search')+'继续寻货':icon('building')+'管理供应商'):icon('search')+'寻货')+'</button>'+
-          '<button class="btn sm danger" onclick="delItem('+i+')">'+icon('trash')+'</button>'+
+          '<button class="btn sm danger" onclick="delItem('+i+')" title="删除产品" aria-label="删除产品">'+icon('trash')+'</button>'+
         '</div>'+
       '</div>'+
       sourcesHTML+srcBar+
@@ -689,7 +689,7 @@ function refreshProductList(){
       '<h2 style="margin:0">'+icon('tag','18')+'产品明细 <span class="tag info" id="itemCount">'+_fItems.length+'</span> 项</h2>'+
       '<div class="btn-group">'+
         '<button class="btn primary" onclick="addItem()">'+icon('plus')+'添加产品</button>'+
-        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
         '<div class="dropdown-menu" id="orderItemDropdown" style="display:none">'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();addItem()">'+icon('plus')+'添加产品</button>'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();openOrderBatchAdd()">'+icon('fileText')+'批量添加</button>'+
@@ -731,7 +731,7 @@ function viewOrderEdit(){
       '<h2 style="margin:0">'+icon('tag','18')+'产品明细 <span class="tag info" id="itemCount">'+_fItems.length+'</span> 项</h2>'+
       '<div class="btn-group">'+
         '<button class="btn primary" onclick="addItem()">'+icon('plus')+'添加产品</button>'+
-        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作">'+icon('chevronDown','14')+'</button>'+
+        '<button class="btn primary dropdown-toggle" onclick="toggleOrderItemDropdown(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true">'+icon('chevronDown','14')+'</button>'+
         '<div class="dropdown-menu" id="orderItemDropdown" style="display:none">'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();addItem()">'+icon('plus')+'添加产品</button>'+
           '<button class="dropdown-item" onclick="closeOrderItemDropdown();openOrderBatchAdd()">'+icon('fileText')+'批量添加</button>'+
@@ -873,7 +873,7 @@ function buildSourceDrawerBody(idx){
       ' · 采购价 '+fmt(o.price)+' · 分配 <b>'+fmtN(o.allocQty)+'千支</b>'+
       ' · 利润 <span class="'+(lp>=0?'profit-pos':'profit-neg')+'">'+fmt(lp)+'</span>'+
       (o.source==='manual'?' <span class="tag purple">手动</span>':(o.source==='import'?' <span class="tag info">导入</span>':' <span class="tag info">价格库</span>'))+
-      '<span class="sc-del" onclick="removeOption('+idx+',\''+escJsStr(o.id)+'\')">×</span>'+
+      '<button type="button" class="sc-del" aria-label="移除该供应商" onclick="removeOption('+idx+',\''+escJsStr(o.id)+'\')">×</button>'+
     '</div>';
   }).join('');
   return '<div style="margin-bottom:16px;padding:14px;background:var(--bg-tint);border-radius:8px;border:1px solid var(--line)">'+
@@ -921,9 +921,9 @@ function buildPriceMatchModalBody(idx,q){
   }).join(''):'<div class="empty" style="padding:20px">价格库中暂无匹配属性的报价（或已全部添加）</div>';
   return '<div id="pmHint" style="margin:0 0 8px;font-size:13px;color:var(--gray)">已勾选 0 家 · 分配合计 0 / 剩余 '+remain+'</div>'+
     '<div class="search-box pm-search-box">'+
-    '<a href="javascript:void(0)" onclick="runPriceMatchFilter('+idx+')" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
-    '<input id="pmSearch" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
-    '<span class="clear-btn" onclick="clearPriceMatchFilter('+idx+')">×</span>'+
+    '<button type="button" class="search-trigger" aria-label="筛选供应商报价" onclick="runPriceMatchFilter('+idx+')">'+icon('search','16')+'</button>'+
+    '<input id="pmSearch" type="text" aria-label="搜索供应商名称或联系人" tabindex="30" placeholder="搜索供应商名称或联系人（Enter 触发）..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)runPriceMatchFilter('+idx+')" autocomplete="off">'+
+    '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="clearPriceMatchFilter('+idx+')">×</button>'+
   '</div>'+
     '<div style="font-size:14px;color:var(--gray);margin-bottom:8px">共 '+availMatched.length+' 条匹配</div>'+
     '<div id="pmList">'+listHTML+'</div>'+
@@ -997,8 +997,6 @@ function filterPriceMatchNow(idx,q){
     if(cb)cb.checked=true;
   });
 }
-/** 价格库匹配搜索防抖入口（对输入做 150ms 防抖，勾选状态保留由 filterPriceMatchNow 内部处理） */
-const filterPriceMatch=debounce(filterPriceMatchNow,150);
 /** 构建手动录入供应商弹窗的 HTML 内容 */
 function buildManualSupplierModalBody(idx){
   const it=_fItems[idx];
@@ -1694,7 +1692,7 @@ function submitSupplierQuote(){
   if(!o){toast('订单不存在','error');return;}
   const missing=data.filter(r=>!r.supplierId);
   if(missing.length){toast('有 '+missing.length+' 行未选择供应商','warning');return;}
-  let matched=0,unmatched=0,skipped=0;
+  let matched=0,unmatched=0,skipped=0,priceSynced=0;
   const unmatchedNames=[];
   for(const r of data){
     const idx=findQuoteItemIndex(o.items,r);
@@ -1714,6 +1712,18 @@ function submitSupplierQuote(){
     const contact=(u.contacts&&u.contacts.length)?(u.contacts[0].name||''):'';
     it.options=it.options||[];
     it.options.push({id:uid('Q'),supplierId:u.id,contact,price:r.price,allocQty:q,stockNote:'批量导入',source:'import',status:'已选'});
+    // v1.0.58：与手动录入供应商一致，批量导入报价同步写入签约报价（价格库 DB.prices）——
+    // 仅当报价>0 时写入，防重复规则与手动录入相同（供应商+SKU+规格+属性组合）
+    if(r.price>0&&!isPriceDuplicate(u.id,it.bomSku||'',it.spec||'',{type:it.type,standard:it.standard,diameter:it.diameter,hardness:it.hardness,surface:it.surface,material:it.material},null)){
+      DB.prices.push({
+        id:uid('PR'),unitId:u.id,contact:contact,
+        type:it.type,standard:it.standard,diameter:it.diameter,
+        hardness:it.hardness,surface:it.surface,material:it.material,
+        spec:it.spec||'',bomSku:it.bomSku||'',
+        price:r.price,validFrom:today(),remark:'订单寻货批量导入',source:'import',createdAt:today()
+      });
+      priceSynced++;
+    }
     matched++;
   }
   o.updatedAt=now();
@@ -1721,10 +1731,11 @@ function submitSupplierQuote(){
   saveDB();
   closeDrawer();
   render();
+  const priceMsg=priceSynced>0?'，同步签约报价 '+priceSynced+' 条':'';
   if(unmatched){
-    toast('已生成 '+matched+' 条寻货结果，'+unmatched+' 行未匹配到产品（'+unmatchedNames.join('、')+'等）'+(skipped?'，'+skipped+' 行跳过':''),'warning');
+    toast('已生成 '+matched+' 条寻货结果'+priceMsg+'，'+unmatched+' 行未匹配到产品（'+unmatchedNames.join('、')+'等）'+(skipped?'，'+skipped+' 行跳过':''),'warning');
   }else{
-    toast('已生成 '+matched+' 条寻货结果'+(skipped?'，'+skipped+' 行跳过':''),'success');
+    toast('已生成 '+matched+' 条寻货结果'+priceMsg+(skipped?'，'+skipped+' 行跳过':''),'success');
   }
 }
 /* ---- 采购订单生成报价 ---- */
@@ -1734,17 +1745,20 @@ function openGenerateQuote(){
   if(!o||!o.items.length){toast('暂无产品可生成报价','warning');return;}
   const rows=o.items.map((it,i)=>{
     const cost=itemOpts(it).reduce((s,x)=>s+(x.price||0)*(x.allocQty||0),0);
-    const def=it.quotePrice>0?it.quotePrice:(it.salePrice>0?it.salePrice:cost);
+    // v1.0.58：成本单价（元/千支）= 总采购成本 ÷ 数量，与意向价同单位便于对比
+    const costUnit=it.qty>0?cost/it.qty:0;
+    const def=it.quotePrice>0?it.quotePrice:(it.salePrice>0?it.salePrice:costUnit);
     return '<tr>'+
       '<td style="text-align:left">'+escHtml(it.sku||it.name||'')+'<div class="muted" style="font-size:11px">'+escHtml(it.spec||'')+'</div></td>'+
       '<td>'+fmtN(it.qty)+'</td>'+
       '<td>'+fmt(it.salePrice)+'</td>'+
+      '<td>'+fmt(costUnit)+'</td>'+
       '<td>'+fmt(cost)+'</td>'+
       '<td><input id="gq_'+i+'" type="number" step="0.01" min="0" value="'+escAttr(def)+'" style="width:120px"></td>'+
     '</tr>';
   }).join('');
-  const body='<div class="table-wrap" style="overflow:visible"><table><thead><tr><th>产品</th><th>数量(千支)</th><th>意向价</th><th>采购成本</th><th>报价(元/千支)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div class="muted" style="font-size:12px;margin-top:8px">报价为报给采购商的最终价格，默认取意向价、无意向价时取采购成本，可手动调整。</div>';
+  const body='<div class="table-wrap" style="overflow:visible"><table><thead><tr><th>产品</th><th>数量(千支)</th><th>意向价</th><th>采购单价</th><th>采购成本</th><th>报价(元/千支)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="muted" style="font-size:12px;margin-top:8px">报价为报给采购商的最终价格，默认取意向价、无意向价时取成本单价，可手动调整。</div>';
   modal('生成报价',body,'保存报价',saveGeneratedQuote,true);
 }
 /** 保存生成报价弹窗中填写的报价到各产品行 */
@@ -2207,5 +2221,8 @@ function pmOnCheckChange(idx,priceId){
   }
   pmUpdateHint(idx);
 }
-/** 分配数量输入时刷新合计提示 */
-function pmOnAllocInput(idx){pmUpdateHint(idx);}
+/** 价格库匹配弹窗分配数量提示防抖时长（ms，§12.5 输入高频事件） */
+const PM_HINT_DEBOUNCE_MS=120;
+const _pmUpdateHintDebounced=debounce(pmUpdateHint,PM_HINT_DEBOUNCE_MS);
+/** 分配数量输入时刷新合计提示（经防抖；勾选联动 pmOnCheckChange 仍同步刷新不走此包装） */
+function pmOnAllocInput(idx){_pmUpdateHintDebounced(idx);}

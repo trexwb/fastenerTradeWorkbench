@@ -3,15 +3,19 @@
   --accent:#b45309;--accent-d:#92400e;--accent-l:#fff7ed;--accent-p:#fed7aa;
   --pri:#3b5998;--pri-d:#2d4578;--pri-l:#eff2f8;--pri-p:#d0dbf2;
   --green:#5d7a3a;--green-l:#f4f8ef;--amber:#b45309;--amber-l:#fef9f1;
-  --red:#c44e3d;--red-l:#fdf6f5;--gray:#78716c;--ink:#2c2826;
+  --red:#b23f2f;--red-l:#fdf6f5;--gray:#6f6862;--ink:#2c2826;
   --line:#e7e3dd;--bg:#f3f0eb;--card:#fefdfb;--side:#1c1b1a;--side2:#2d2a26;
+  /* 语义前景色：品牌色底上的文字统一取用，三主题各自覆盖以保证 WCAG AA */
+  --pri-ink:#fff;--accent-ink:#a34a08;--on-accent:#fff;--on-green:#fff;--on-amber:#fff;--on-red:#fff;
   --radius:6px;--radius-sm:4px;--radius-md:8px;--radius-lg:10px;--content-max:1400px;
+  /* 间距刻度（4px 基准，新增样式统一引用） */
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;
   --shadow:0 0 0 1px rgba(0,0,0,.04),0 1px 4px rgba(0,0,0,.05);
   --shadow-md:0 0 0 1px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.08);
   --shadow-lg:0 12px 32px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.08);
   --side-ink:#c8d3e0;--side-ink-dim:#a8b8cc;--side-brand:#fff;
   --side-brand-sub:#8b8178;--side-hover-bg:rgba(255,255,255,.05);
-  --side-hover-ink:#dde6f0;--side-active-bg:var(--pri);--side-active-ink:#fff;
+  --side-hover-ink:#dde6f0;--side-active-bg:var(--pri);--side-active-ink:var(--pri-ink);
   --side-border:rgba(255,255,255,.1);--side-ft-border:rgba(255,255,255,.07);
   --side-ft-btn-bg:rgba(255,255,255,.06);--side-ft-btn-border:rgba(255,255,255,.08);
   --side-ft-btn-ink:#c8d3e0;--side-ft-btn-hover:rgba(255,255,255,.1);
@@ -45,9 +49,11 @@
 /* ===== THEME: 奶油白（薄荷绿·浅蓝） ===== */
 [data-theme="cream"]{
   --accent:#7ec8a0;--accent-d:#5da880;--accent-l:#f2faf6;--accent-p:#d4f0e2;
-  --pri:#6a9dd4;--pri-d:#4d82b8;--pri-l:#f1f6fc;--pri-p:#d4e4f6;
-  --green:#7ec8a0;--green-l:#f2faf6;--amber:#e8a860;--amber-l:#fef9f2;
-  --red:#e09085;--red-l:#fef6f5;--gray:#9e9b95;--ink:#423f3a;
+  --pri:#3c6da2;--pri-d:#2f5a8a;--pri-l:#f1f6fc;--pri-p:#d4e4f6;
+  --green:#2f6b4f;--green-l:#f2faf6;--amber:#8a5210;--amber-l:#fef9f2;
+  --red:#a23b32;--red-l:#fef6f5;--gray:#6b6862;--ink:#423f3a;
+  /* 薄荷绿品牌底改用深字，品牌色正文改用深绿，保证 AA */
+  --pri-ink:#fff;--accent-ink:#2f6b4f;--on-accent:#0f3d29;--on-green:#fff;--on-amber:#fff;--on-red:#fff;
   --line:#ebe7df;--bg:#fbf9f4;--card:#fffefc;--side:#edf2f8;--side2:#e0e8f2;
   --radius:10px;--radius-sm:6px;--radius-md:12px;--radius-lg:14px;--content-max:1400px;
   --shadow:0 0 0 1px rgba(0,0,0,.025),0 2px 4px rgba(0,0,0,.03);
@@ -68,8 +74,8 @@
   --purple:#8b5cf6;--purple-l:#f3f0ff;--purple-line:#ddd6fe;
   --tooltip-bg:#334155;
   /* ===== AI 助手专属令牌（奶油白：薄荷绿品牌泡 + 浅蓝身份色） ===== */
-  --ai-accent:#6a9dd4;--ai-accent-d:#4d82b8;
-  --ai-soft:#f1f6fc;--ai-line:#e4ecf6;--ai-glow:rgba(106,157,212,.14);
+  --ai-accent:#3c6da2;--ai-accent-d:#2f5a8a;
+  --ai-soft:#f1f6fc;--ai-line:#e4ecf6;--ai-glow:rgba(60,109,162,.14);
   --ai-surface:#fffefc;
   --ai-user-bg:#7ec8a0;--ai-user-bg-2:#5da880;
   --ai-user-ink:#0f3d29;
@@ -87,6 +93,8 @@
   --pri:#60a5fa;--pri-d:#3b82f6;--pri-l:#1e293b;--pri-p:#334155;
   --green:#84cc16;--green-l:#1a2e05;--amber:#f59e0b;--amber-l:#422006;
   --red:#f87171;--red-l:#3b0d0d;--gray:#9ca3af;--ink:#e5e7eb;
+  /* 亮色品牌底改用深字，保证暗色主题 AA */
+  --pri-ink:#0b1220;--accent-ink:var(--accent);--on-accent:#241703;--on-green:#14200a;--on-amber:#2a1a02;--on-red:#3b0d0d;
   --line:#2d2d33;--bg:#161618;--card:#1f1f23;--side:#0f0f10;--side2:#1a1a1c;
   --radius:6px;--radius-sm:4px;--radius-md:8px;--radius-lg:10px;--content-max:1400px;
   --shadow:0 0 0 1px rgba(0,0,0,.3),0 1px 4px rgba(0,0,0,.4);
@@ -94,7 +102,7 @@
   --shadow-lg:0 12px 32px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.4);
   --side-ink:#e5e7eb;--side-ink-dim:#9ca3af;--side-brand:#f59e0b;
   --side-brand-sub:#6b7280;--side-hover-bg:rgba(255,255,255,.06);
-  --side-hover-ink:#f3f4f6;--side-active-bg:var(--pri);--side-active-ink:#fff;
+  --side-hover-ink:#f3f4f6;--side-active-bg:var(--pri);--side-active-ink:var(--pri-ink);
   --side-border:rgba(255,255,255,.08);--side-ft-border:rgba(255,255,255,.06);
   --side-ft-btn-bg:rgba(255,255,255,.06);--side-ft-btn-border:rgba(255,255,255,.08);
   --side-ft-btn-ink:#e5e7eb;--side-ft-btn-hover:rgba(255,255,255,.1);

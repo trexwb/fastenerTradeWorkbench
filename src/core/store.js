@@ -628,9 +628,17 @@ async function initFileHandle(){
  * 手动触发立即同步到本地文件。
  * @returns {Promise<void>} 完成（无返回值）
  */
+/** 手动同步进行中标志：防止双击并发重复写本地文件 */
+let _fileSyncing=false;
 async function syncNow(){
   if(!fileHandle||fileSync!==true)return;
-  await saveToFile();
+  if(_fileSyncing){toast('正在同步中，请稍候…','info');return;}
+  _fileSyncing=true;
+  try{
+    await saveToFile();
+  }finally{
+    _fileSyncing=false;
+  }
   render();
   toast('已手动同步到本地文件','success');
 }
@@ -1258,7 +1266,7 @@ async function performBackup(){
 /** 立即备份（UI 按钮触发） */
 async function nowBackup(btn){
   let _btn=btn||null;
-  if(_btn)_btn.classList.add('loading');
+  if(_btn){_btn.classList.add('loading');_btn.setAttribute('aria-busy','true');}
   try{
     const name=await performBackup();
     const c=backupCfgGet();c.lastBackupAt=Date.now();backupCfgSet(c);
@@ -1268,7 +1276,7 @@ async function nowBackup(btn){
     if(e.code==='NO_BACKUP_DIR'){toast('请先设置备份目录','error');}
     else{toast('备份失败：'+e.message,'error');}
   }finally{
-    if(_btn)_btn.classList.remove('loading');
+    if(_btn){_btn.classList.remove('loading');_btn.removeAttribute('aria-busy');}
   }
   render();
 }

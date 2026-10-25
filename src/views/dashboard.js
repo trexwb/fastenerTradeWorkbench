@@ -55,7 +55,7 @@ function viewDashboard(){
           if(od){const d=daysUntil(o.delivery);badge='逾期'+Math.abs(d)+'天';}
           else if(ap){badge='距交期'+daysUntil(o.delivery)+'天';}
           else{badge=o.status;}
-          return '<div class="today-item'+(od?' overdue':(ap?' approaching':''))+'" onclick="goOrder(\''+escJsStr(o.id)+'\')" style="cursor:pointer">'+
+          return '<div class="today-item'+(od?' overdue':(ap?' approaching':''))+'" role="button" tabindex="0" aria-label="查看订单 '+escAttr(o.id)+' 详情" onclick="goOrder(\''+escJsStr(o.id)+'\')" onkeydown="if((event.key===\'Enter\'||event.key===\' \')&&event.target===this){event.preventDefault();goOrder(\''+escJsStr(o.id)+'\');}" style="cursor:pointer">'+
             '<div class="ti-info">'+
               '<div class="ti-title">'+escHtml(o.id)+' · '+escHtml(pName(o.buyerId))+' · '+escHtml(o.project||'')+' <span class="badge-'+(od?'red':(ap?'amber':''))+'">'+escHtml(badge)+'</span></div>'+
               '<div class="ti-meta">交期 '+escHtml(fmtDelivery(o.delivery))+' · '+o.items.length+' 项产品 · 状态：'+escHtml(o.status)+'</div>'+
@@ -111,11 +111,11 @@ function viewDashboard(){
         '<div class="k">待处理 <span style="float:right;font-size:12px;opacity:.6">待跟进</span></div>'+
         '<div class="v" style="color:var(--amber)">'+pendingCount+'<small> 条</small></div>'+
       '</div>'+
-      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'供应商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看供应商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{if(typeof setUnitRoleFilter===\'function\')setUnitRoleFilter(\'供应商\');},100)" title="查看供应商列表">'+
         '<div class="k">供应商</div>'+
         '<div class="v" style="color:var(--green)">'+suppliers+'<small> 家</small></div>'+
       '</div>'+
-      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'采购商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看采购商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{if(typeof setUnitRoleFilter===\'function\')setUnitRoleFilter(\'采购商\');},100)" title="查看采购商列表">'+
         '<div class="k">采购商</div>'+
         '<div class="v" style="color:var(--pri)">'+buyers+'<small> 家</small></div>'+
       '</div>'+

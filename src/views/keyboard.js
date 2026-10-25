@@ -115,6 +115,7 @@ function kbdNav(target){
 
 /* ---- 全局键盘事件处理 ---- */
 document.addEventListener('keydown',function(e){
+  if(e.repeat)return; // 按住自动重复不触发（防止 ⌘S/⌥⇧E 等动作快捷键被系统重复连发）
   const meta=e.metaKey;    // ⌘
   const alt=e.altKey;      // ⌥
   const shift=e.shiftKey;  // ⇧
@@ -293,7 +294,7 @@ document.addEventListener('keydown',function(e){
   /* 搜索框内 Enter 兜底触发搜索：优先读 data-search-fn（显式声明，函数改名不失效），
      无属性时退回解析 onclick 字符串的旧逻辑（兼容未标注的搜索框）。
      输入法组合中不触发（选词确认时避免误搜索） */
-  if(key==='Enter'&&!event.isComposing){
+  if(key==='Enter'&&!e.isComposing){
     const inp2=document.activeElement;
     if(inp2&&inp2.closest&&inp2.closest('.search-box')){
       const sb=inp2.closest('.search-box');

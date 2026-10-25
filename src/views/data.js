@@ -94,7 +94,7 @@ function renderBackupSection(){
         '<div class="data-section-hd">'+icon('download','16')+' 备份与恢复</div>'+
         '<div style="display:flex;gap:10px;flex-wrap:wrap;padding:14px 14px 16px">'+
           '<button class="btn primary" onclick="exportJSON()">'+icon('download')+'导出 JSON 备份</button>'+
-          '<button class="btn" onclick="document.getElementById(\'importFile\').click()">'+icon('upload')+'导入 JSON 恢复</button>'+
+          '<button class="btn" id="importBtn" onclick="document.getElementById(\'importFile\').click()">'+icon('upload')+'导入 JSON 恢复</button>'+
           '<input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">'+
         '</div>'+
         '<div style="background:var(--bg-tint)">'+
@@ -427,8 +427,14 @@ function viewData(){
 }
 function _switchDataTab(name){window._dataTab=name;render();}
 
+/** 导出防连点冷却时长（ms）：下载为写操作，双击会重复下载同名文件 */
+const EXPORT_JSON_COOLDOWN_MS=1500;
+let _exportJSONAt=0;
 /** 导出全部数据为 JSON 备份文件并触发下载 */
 function exportJSON(){
+  const _nowTs=Date.now();
+  if(_nowTs-_exportJSONAt<EXPORT_JSON_COOLDOWN_MS){toast('正在导出，请稍候…','info');return;}
+  _exportJSONAt=_nowTs;
   // 导出不含回收站与操作历史（用户明确约束）
   let exportData={...DB};delete exportData.trash;delete exportData.aiOps;
   let data=JSON.stringify(exportData,null,2);
@@ -454,7 +460,7 @@ function importJSON(event){
   let file=event.target.files[0];
   if(!file)return;
   const _btn=document.getElementById('importBtn');
-  if(_btn)_btn.classList.add('loading');
+  if(_btn){_btn.classList.add('loading');_btn.setAttribute('aria-busy','true');}
   let reader=new FileReader();
   reader.onload=function(e){
     (async function(){
@@ -466,11 +472,11 @@ function importJSON(event){
         if(err&&err.code==='IMPORT_CANCELLED'){} // 用户取消导入
         else{toast('导入失败：'+(err&&err.message||err),'error');}
       }finally{
-        if(_btn)_btn.classList.remove('loading');
+        if(_btn){_btn.classList.remove('loading');_btn.removeAttribute('aria-busy');}
       }
     })();
   };
-  reader.onerror=function(){if(_btn)_btn.classList.remove('loading');toast('读取文件失败','error');};
+  reader.onerror=function(){if(_btn){_btn.classList.remove('loading');_btn.removeAttribute('aria-busy');}toast('读取文件失败','error');};
   reader.readAsText(file);
   event.target.value='';
 }
@@ -709,7 +715,7 @@ function renderOpsHistory(){
   if(f.batchId)ops=ops.filter(o=>o.batchId===f.batchId);
   const filterBar=renderOpsFilter();
   const statsHTML=renderOpsStats();
-  if(!ops.length)return statsHTML+filterBar+'<div class="card data-list-card"><div class="empty-state">筛选后无匹配记录，<a onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div></div>';
+  if(!ops.length)return statsHTML+filterBar+'<div class="card data-list-card"><div class="empty-state">筛选后无匹配记录，<a href="javascript:void(0)" onclick="_setAiOpsFilter(\'op\',\'\');_setAiOpsFilter(\'operator\',\'\');_setAiOpsFilter(\'batchId\',\'\');" style="cursor:pointer;color:var(--pri)">重置筛选</a></div></div>';
   // P2 修复：batchUndoneCount 基于全量 allOps 统计，避免筛选后计数偏小与 undoBatchConfirm 不一致
   const batchUndoneCount={};
   allOps.forEach(function(op){

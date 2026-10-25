@@ -258,9 +258,9 @@ function viewSettlements(type){
 
   return '<div class="toolbar">'+
     '<div class="search-box' + (_settleSearch ? ' has-val' : '') + '">'+
-      '<a href="javascript:void(0)" data-search-fn="onSettleSearch" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)" style="text-decoration:none;color:inherit;cursor:pointer;display:flex;align-items:center">'+icon('search','16')+'</a>'+
+      '<button type="button" class="search-trigger" aria-label="搜索结算单位" data-search-fn="onSettleSearch" onclick="onSettleSearch(document.getElementById(\'settleSearchInput\').value)">'+icon('search','16')+'</button>'+
       '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onSettleSearch(this.value)">'+
-      '<span class="clear-btn" onclick="onSettleSearch(\'\')">×</span>'+
+      '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onSettleSearch(\'\')">×</button>'+
     '</div>'+
     '<div class="spacer"></div>'+
     '<button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')">'+icon('plus')+'新增结算记录</button>'+
@@ -483,19 +483,19 @@ function openSettleDetail(unitId, tabType){
   '</div>'+
 
   '<div class="drawer-section">'+
-    '<div class="drawer-section-hd" onclick="toggleDrawerSection(this)" style="cursor:pointer">'+icon('fileText','14')+' 关联订单 <span class="tag gray" style="margin-left:6px">'+orderDetails.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
+    '<div class="drawer-section-hd" role="button" tabindex="0" aria-label="展开或折叠关联订单" onclick="toggleDrawerSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" style="cursor:pointer">'+icon('fileText','14')+' 关联订单 <span class="tag gray" style="margin-left:6px">'+orderDetails.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
     '<div class="drawer-section-body"><div class="table-wrap" style="margin-bottom:0"><table><thead><tr><th>订单号</th><th>状态</th><th>'+(isReceipt?'应收':'应付')+'</th><th>'+(isReceipt?'已收':'已付')+'</th><th>'+(isReceipt?'未收':'未付')+'</th><th>结算状态</th></tr></thead><tbody>'+
     (orderRows||'<tr><td colspan="6"><div class="no-data">无关联订单</div></td></tr>')+
   '</tbody></table></div></div></div>'+
 
   '<div class="drawer-section">'+
-    '<div class="drawer-section-hd" onclick="toggleDrawerSection(this)" style="cursor:pointer">'+icon('package','14')+' 产品明细 <span class="tag gray" style="margin-left:6px">'+productRows.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
+    '<div class="drawer-section-hd" role="button" tabindex="0" aria-label="展开或折叠产品明细" onclick="toggleDrawerSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" style="cursor:pointer">'+icon('package','14')+' 产品明细 <span class="tag gray" style="margin-left:6px">'+productRows.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
     '<div class="drawer-section-body"><div class="table-wrap" style="margin-bottom:0"><table><thead><tr><th>订单号</th><th>SKU</th><th>规格</th><th>属性</th><th>单价</th><th>数量</th><th>总额</th></tr></thead><tbody>'+
     (productHTML||'<tr><td colspan="7"><div class="no-data">暂无产品数据</div></td></tr>')+
   '</tbody></table></div></div></div>'+
 
   '<div class="drawer-section" style="margin-bottom:0">'+
-    '<div class="drawer-section-hd" onclick="toggleDrawerSection(this)" style="cursor:pointer">'+icon('wallet','14')+' 结算记录 <span class="tag gray" style="margin-left:6px">'+records.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
+    '<div class="drawer-section-hd" role="button" tabindex="0" aria-label="展开或折叠结算记录" onclick="toggleDrawerSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" style="cursor:pointer">'+icon('wallet','14')+' 结算记录 <span class="tag gray" style="margin-left:6px">'+records.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
     '<div class="drawer-section-body"><div class="table-wrap" style="margin-bottom:0"><table><thead><tr><th>日期</th><th>金额</th><th>'+
     (isReceipt?'付款人':'收款人')+
     '</th><th>关联订单</th><th>备注</th></tr></thead><tbody>'+
@@ -766,12 +766,8 @@ function refreshSettleOrderList(){
 
   ol.innerHTML=orderOptsHTML||'<div class="muted" style="padding:10px 0">该单位暂无待结算订单（所有订单已结清）</div>';
 
-  // 重新绑定change事件
-  ol.addEventListener('change',function(e){
-    if(e.target.classList.contains('settle-order-chk')){
-      autoSumSettleAmount();
-    }
-  });
+  /* change 事件监听由 openNewSettlement 打开抽屉时绑定一次（#st_orderList 元素在抽屉生命周期内不重建，
+     仅 innerHTML 替换），此处不再重复绑定，避免每次刷新叠加监听器导致勾选一次触发 N+1 次 autoSumSettleAmount */
 }
 
 /* ---- 自动汇总勾选订单的未结金额 ---- */

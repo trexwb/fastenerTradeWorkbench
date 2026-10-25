@@ -64,6 +64,7 @@
   }
 
   async function download(update) {
+    if(state.status==='downloading')return state
     const u = update || updateRef
     if (!u) return
     state.status = 'downloading'

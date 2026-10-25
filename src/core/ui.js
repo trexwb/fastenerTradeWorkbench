@@ -7,6 +7,39 @@ const DRAWER_CLOSE_DELAY=320;
 /* =========================================================
    Modal / Drawer
    ========================================================= */
+let _modalReturnFocus=null;
+let _drawerReturnFocus=null;
+let _dialogSeq=0;
+/** 收集容器内可聚焦元素（排除隐藏/禁用） */
+function _dialogFocusables(root){
+  return Array.from(root.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')).filter(el=>
+    !el.disabled&&el.tabIndex!==-1&&el.getClientRects().length>0
+  );
+}
+/** Tab / Shift+Tab 在对话框内循环，防止焦点进入背景页面 */
+function _trapDialogFocus(e,root){
+  if(e.key!=='Tab')return;
+  const list=_dialogFocusables(root);
+  if(!list.length){e.preventDefault();return;}
+  const first=list[0],last=list[list.length-1],active=document.activeElement;
+  if(!root.contains(active)){e.preventDefault();first.focus();return;}
+  if(e.shiftKey&&active===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
+}
+/** 打开对话框后优先聚焦首个表单控件，否则聚焦第一个可交互元素 */
+function _focusDialog(root,fallback){
+  const field=Array.from(root.querySelectorAll('input:not([type="hidden"]):not([disabled]),select:not([disabled]),textarea:not([disabled])')).find(el=>el.getClientRects().length>0);
+  const list=_dialogFocusables(root);
+  const target=field||(fallback&&fallback.getClientRects().length?fallback:list[0]);
+  if(target&&typeof target.focus==='function')target.focus();
+}
+/** 关闭后归还焦点；目标已随抽屉关闭而隐藏时跳过 */
+function _restoreFocus(el){
+  if(!el||!el.isConnected||typeof el.focus!=='function')return;
+  const closing=el.closest&&el.closest('.drawer-panel');
+  if(closing&&!closing.classList.contains('open'))return;
+  try{el.focus();}catch(e){}
+}
 /**
  * 弹出通用模态对话框（标题 + 内容 + 底部按钮）。
  * 支持最多 3 个按钮：取消（次）+ 确定（主）+ 额外按钮（extra，位于确定按钮左侧，用于"第三选择"如导入/重置）。
@@ -32,6 +65,7 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
   const w=wide?'wide':'';
   /* 先移除已存在的旧弹窗，避免重复打开时 getElementById 命中旧元素 */
   const oldMask=document.getElementById('_mask');
+  if(!oldMask)_modalReturnFocus=document.activeElement;
   if(oldMask)oldMask.remove();
   const m=document.createElement('div');
   m.className='mask';m.id='_mask';
@@ -39,17 +73,27 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
   const extraHtml=(extraBtn&&extraOnOk)?'<button type="button" class="btn extra" id="_modalExtra">'+escHtml(extraBtn)+'</button>':'';
   /* v1.0.28：主按钮为「关闭」语义时（纯关弹窗无副作用，如设置弹窗、知识库原文）不渲染取消按钮，避免冗余双按钮 */
   const cancelHtml=(okText==='关闭')?'':'<button type="button" class="btn" id="_modalCancel">取消</button>';
-  m.innerHTML='<div class="modal '+w+'"><div class="mh">'+escHtml(title||'')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"></div><div class="mf">'+cancelHtml+extraHtml+'<button type="button" class="btn primary" id="_modalOk">'+escHtml(okText||'确定')+'</button></div></div>';
+  const titleId='_dlgTitle'+(++_dialogSeq);
+  m.innerHTML='<div class="modal '+w+'" role="dialog" aria-modal="true" aria-labelledby="'+titleId+'"><div class="mh"><span class="mt" id="'+titleId+'">'+escHtml(title||'')+'</span><button type="button" class="x" aria-label="关闭" onclick="closeModal()">×</button></div><div class="mb"></div><div class="mf">'+cancelHtml+extraHtml+'<button type="button" class="btn primary" id="_modalOk">'+escHtml(okText||'确定')+'</button></div></div>';
   const mb=m.querySelector('.mb');
   if(body instanceof Element){mb.appendChild(body);}
   else{mb.innerHTML=body||'';}
   document.getElementById('app').appendChild(m);
+  if(typeof associateFormLabels==='function')associateFormLabels(m);
+  m.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeModal();return;}
+    _trapDialogFocus(e,m.querySelector('.modal'));
+  });
+  requestAnimationFrame(function(){_focusDialog(mb,m.querySelector('.mh .x'));});
   // 2026-08-29 关键修复：先执行 onOk 回调（它里面要读 modal body 里的 DOM），
   // 再关闭弹窗。旧写法 closeModal() 在 onOk() 前面，导致 AI 设置弹窗里
   // document.getElementById('aiDeepseekToken') 拿到 null → 永远保存不到 Key。
   // 各 modal 的 onOk 内部已经会自行调 closeModal()，这里的 closeModal 只是兜底。
   document.getElementById('_modalOk').onclick=()=>{
-    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}}catch(e){}}
+    /* 防双击：async onOk 未决期间禁用确定键，避免重复执行写回调（§12.5 重复触发防护） */
+    const okBtn=document.getElementById('_modalOk');
+    if(okBtn&&okBtn.disabled)return;
+    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}}catch(e){}}
     closeModal();
   };
   /* v1.0.28 修复：取消按钮未绑 onclick，导致设置等弹窗点"取消"无反应。modal() 无 onCancel 形参，取消即关闭弹窗（与 confirmModal 行为一致） */
@@ -63,7 +107,13 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
  * 关闭并移除当前模态对话框。
  * @returns {void} 无返回值
  */
-function closeModal(){const m=document.getElementById('_mask');if(m)m.remove();}
+function closeModal(){
+  const m=document.getElementById('_mask');
+  if(m)m.remove();
+  const target=_modalReturnFocus;
+  _modalReturnFocus=null;
+  _restoreFocus(target);
+}
 /**
  * 弹出确认对话框（含确认/取消按钮，自动清理旧弹窗避免嵌套冲突）。
  * @param {string} msg - 确认提示文案
@@ -77,18 +127,30 @@ function closeModal(){const m=document.getElementById('_mask');if(m)m.remove();}
 function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
   /* 先移除已有的同 ID 弹窗，避免嵌套确认时 getElementById 拿到旧元素 */
   const old=document.getElementById('_mask');
+  if(!old)_modalReturnFocus=document.activeElement;
   if(old)old.remove();
   /* msg 默认按纯文本转义渲染（white-space:pre-line 保证纯文本调用里的 \n 正确换行）；
      仅调用方显式传入 html=true 且内容已自行 escHtml 或为可信静态模板时，才按 HTML 渲染 */
   const safeMsg=html?String(msg):escHtml(String(msg));
-  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask"><div class="modal"><div class="mh">'+escHtml(okText||'确认操作')+'<span class="x" onclick="closeModal()">×</span></div><div class="mb"><p style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  const titleId='_dlgTitle'+(++_dialogSeq);
+  const msgId='_dlgMsg'+_dialogSeq;
+  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="'+titleId+'" aria-describedby="'+msgId+'"><div class="mh"><span class="mt" id="'+titleId+'">'+escHtml(okText||'确认操作')+'</span><button type="button" class="x" aria-label="关闭" onclick="closeModal()">×</button></div><div class="mb"><p id="'+msgId+'" style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  const mask=document.getElementById('_mask');
+  mask.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();const c=document.getElementById('_modalCancel');if(c)c.click();else closeModal();return;}
+    _trapDialogFocus(e,mask.querySelector('.modal'));
+  });
+  requestAnimationFrame(function(){const c=document.getElementById('_modalCancel')||document.getElementById('_modalOk');if(c)c.focus();});
   document.getElementById('_modalOk').onclick=()=>{
     // confirmModal 的 onOk 也可能需要读 DOM 或 async，与 modal() 同样处理
     if(onOk){
       try{
+        /* 防双击：async onOk 未决期间禁用确定键，删除/导入/解绑等破坏性确认不重复执行 */
+        const okBtn=document.getElementById('_modalOk');
+        if(okBtn&&okBtn.disabled)return;
         const before=document.getElementById('_mask');
         const r=onOk();
-        if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}
+        if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}
         // 嵌套确认：onOk 内部又弹了新的 confirmModal（_mask 已被重建）时，保持新弹窗，不再执行收尾关闭
         const after=document.getElementById('_mask');
         if(after&&after!==before){return;}
@@ -133,19 +195,29 @@ function openDrawer(title,html,onOk,wide,noFooter){
   const w=wide?'wide':'';
   /* 先移除旧的抽屉实例，避免多次打开时抽屉叠加/状态错乱 */
   const oldWrap=document.querySelector('.drawer-wrap');
+  if(!oldWrap)_drawerReturnFocus=document.activeElement;
   if(oldWrap)oldWrap.remove();
   const overlay=document.createElement('div');
   overlay.className='drawer-overlay';
   overlay.onclick=function(){safeCloseDrawer();};
   const panel=document.createElement('div');
   panel.className='drawer-panel '+w;
-  panel.innerHTML='<div class="drawer-hd"><span class="drawer-ttl">'+escHtml(title||'')+'</span><span class="drawer-x" onclick="safeCloseDrawer()">×</span></div><div class="drawer-bd">'+html+'</div>'+(noFooter?'':'<div class="drawer-ft"><button type="button" class="btn" onclick="safeCloseDrawer()" tabindex="998">取消</button><button type="button" class="btn primary" onclick="drawerOk()" tabindex="999">保存</button></div>');
+  const titleId='_dlgTitle'+(++_dialogSeq);
+  panel.setAttribute('role','dialog');
+  panel.setAttribute('aria-modal','true');
+  panel.setAttribute('aria-labelledby',titleId);
+  panel.innerHTML='<div class="drawer-hd"><span class="drawer-ttl" id="'+titleId+'">'+escHtml(title||'')+'</span><button type="button" class="drawer-x" aria-label="关闭" onclick="safeCloseDrawer()">×</button></div><div class="drawer-bd">'+html+'</div>'+(noFooter?'':'<div class="drawer-ft"><button type="button" class="btn" onclick="safeCloseDrawer()" tabindex="998">取消</button><button type="button" class="btn primary" id="_drawerOk" onclick="drawerOk()" tabindex="999">保存</button></div>');
   const wrap=document.createElement('div');
   wrap.className='drawer-wrap';
   wrap.appendChild(overlay);
   wrap.appendChild(panel);
   document.getElementById('app').appendChild(wrap);
-  requestAnimationFrame(()=>{overlay.classList.add('on');panel.classList.add('open');});
+  if(typeof associateFormLabels==='function')associateFormLabels(panel);
+  panel.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();safeCloseDrawer();return;}
+    _trapDialogFocus(e,panel);
+  });
+  requestAnimationFrame(()=>{overlay.classList.add('on');panel.classList.add('open');_focusDialog(panel,panel.querySelector('.drawer-x'));});
   document.body.style.overflow='hidden';
 }
 /**
@@ -161,13 +233,26 @@ function closeDrawer(){
   setTimeout(()=>wrap.remove(),DRAWER_CLOSE_DELAY);
   document.body.style.overflow='';
   _drawerOnOk=null;
+  const target=_drawerReturnFocus;
+  _drawerReturnFocus=null;
+  _restoreFocus(target);
 }
 /**
  * 触发抽屉面板的保存回调。
  * @returns {void} 无返回值
  */
 function drawerOk(){
+  const okBtn=document.getElementById('_drawerOk');
+  if(okBtn&&okBtn.disabled)return; // 防双击：async onOk 未决期间忽略重复点击
   _drawerDirty=false; // 保存前标记为干净，避免保存成功后 closeDrawer 触发二次确认
-  if(_drawerOnOk)_drawerOnOk();
+  if(!_drawerOnOk)return;
+  const r=_drawerOnOk();
+  /* async onOk：未决期间禁用保存键防重复提交；关闭抽屉仍由 onOk 自行负责，
+     Promise settle 后恢复按钮（抽屉已关则按钮已随 DOM 移除，为空操作） */
+  if(r&&typeof r.then==='function'&&okBtn){
+    okBtn.disabled=true;
+    const _releaseDrawerOk=function(){const b=document.getElementById('_drawerOk');if(b)b.disabled=false;};
+    r.then(_releaseDrawerOk,_releaseDrawerOk);
+  }
 }
 
