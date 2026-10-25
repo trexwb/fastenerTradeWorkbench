@@ -111,11 +111,11 @@ function viewDashboard(){
         '<div class="k">待处理 <span style="float:right;font-size:12px;opacity:.6">待跟进</span></div>'+
         '<div class="v" style="color:var(--amber)">'+pendingCount+'<small> 条</small></div>'+
       '</div>'+
-      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'供应商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看供应商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{if(typeof setUnitRoleFilter===\'function\')setUnitRoleFilter(\'供应商\');},100)" title="查看供应商列表">'+
         '<div class="k">供应商</div>'+
         '<div class="v" style="color:var(--green)">'+suppliers+'<small> 家</small></div>'+
       '</div>'+
-      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{const f=document.getElementById(\'unitRoleFilter\');if(f){f.value=\'采购商\';f.dispatchEvent(new Event(\'change\'));}},100)" title="查看采购商列表">'+
+      '<div class="stat" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" onclick="go(\'units\');setTimeout(()=>{if(typeof setUnitRoleFilter===\'function\')setUnitRoleFilter(\'采购商\');},100)" title="查看采购商列表">'+
         '<div class="k">采购商</div>'+
         '<div class="v" style="color:var(--pri)">'+buyers+'<small> 家</small></div>'+
       '</div>'+

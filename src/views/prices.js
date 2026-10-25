@@ -6,8 +6,6 @@
 let _priceFormSaving=false;
 /** 报价批量导入提交防重锁 */
 let _priceBatchSaving=false;
-/** 报价筛选刷新防抖（150ms） */
-const _priceFilterDebounced=debounce(refreshPricesTable,150);
 
 /**
  * 渲染单条报价表格行 HTML（列表页与局部刷新共用，避免两份模板漏改）。

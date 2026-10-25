@@ -2,10 +2,13 @@
 
 面向紧固件贸易场景的离线工作台：关联单位、属性管理、BOM 管理、签约报价、采购订单（多供应商分配寻源）、对账结算、发票管理，内置 AI 助手（多端点接入 + 对话附件 + 本地知识库 + Function Calling 提案确认）。
 
-> **当前版本：v1.0.56** — 业务逻辑深度审计修复：结算口径确认/匹配分配合计校验/发票孤儿标记/未定价标注
+> **当前版本：v1.0.57** — 供应商批量报价导入重构：SKU 精确匹配 + 多供应商分配列对齐
+>
+> 完整迭代记录见 [docs/version/RELEASE-v1.0.md](docs/version/RELEASE-v1.0.md)；使用说明见 [docs/操作手册.md](docs/操作手册.md)；接口说明见 [docs/API.md](docs/API.md)。
 
 ## 更新日志
 
+- **v1.0.57** — 供应商批量报价导入重构：粘贴列结构改为 `序号 | SKU（必填）| 数量（千支，必填>0）| 意向价 | 报价（元/千支）| 供应商 | 规格（可选）`，移除无意义的名称列；匹配改为 `it.sku` 精确相等（不再按名称猜测）；意向价 >0 回填订单产品行，报价/数量写入寻货结果；同一 SKU 多行不同供应商自然生成多供应商分配；`docs/导入数据Demo.xlsx` 同步为新 7 列
 - **v1.0.56** — 业务逻辑深度审计四项修复：① 订单离开结算聚合状态集（签约完成/送货中/完成→异常等）且有关联结算时弹确认提示口径影响；② 价格库匹配弹窗勾选联动——新勾选行默认量自动收窄、顶部实时显示「分配合计/剩余」、提交前合计校验不关弹窗；③ 删除结算记录可勾选级联删除关联发票，syncInvoices 对来源已删的发票标记「来源已删」；④ 结算明细对意向价未填的订单标注「未定价」
 - **v1.0.55** — 恢复选中 BOM 引用时自动填充六维属性（类型/标准/直径/材质/硬度/表面处理）：v1.0.45 解耦时误删该填充逻辑导致选 BOM 后属性全空；本次恢复为「空字段才填充、不锁定、可覆盖」——用户已填值不受影响，字段全程可编辑；订单产品编辑与签约报价编辑两条链路同步生效
 - **v1.0.54** — 修复采购订单寻货「价格库匹配」未按 SKU 过滤：`specMatch` 匹配逻辑改为「SKU 优先，属性兜底防噪」——行与报价都有 SKU 时必须完全一致（此前只按六维属性宽松匹配、订单行属性大多留空导致全量报价命中）；报价无 SKU 时仅当行有属性可核验且一致才兜底显示；行无 SKU 保持旧属性匹配兼容
@@ -96,9 +99,10 @@ xattr -dr com.apple.quarantine "/Applications/FastenerTradeWorkbench.app"
   - 寻源状态：待寻源 → 部分寻源 → 已确认
   - 分配进度条可视化（绿=满量，黄=部分）
 - **状态流转**：待确认 → 寻货中 → 报价中 → 签约完成 → 送货中 → 完成（「未成交」从报价中分出可恢复；异常/取消为终态）
-- 寻货弹窗：价格库自动匹配 + 手动录入（自动建供应商和报价）；「开始寻货」意向价可为 0 或空
+- 寻货弹窗：价格库自动匹配（按 SKU 精确匹配、属性兜底防噪）+ 手动录入（自动建供应商和报价）；「开始寻货」意向价可为 0 或空
+- **批量导入**：采购订单（相邻「采购商+项目+交货日期」相同的行自动合并为一单）、订单产品明细、供应商报价（按 SKU 精确匹配，支持多供应商分配）
 - 订单详情页 / 编辑页，支持产品明细增删改
-- 送货信息与收货管理仅「送货中」状态可编辑
+- 送货信息与收货管理仅「送货中」状态可编辑（其它状态只读并显示 🔒）
 
 ### 7. 对账结算 / 发票管理
 - 收款 / 付款记录，关联订单自动汇总金额
@@ -198,16 +202,23 @@ FastenerTradeWorkbench/
 │   ├── main.js             ← Vue 入口（样式引入 + AI/Markdown 依赖挂载）
 │   ├── App.vue             ← 壳组件（core/views 业务 JS 间接 eval 加载）
 │   ├── styles/             ← variables / layout / components 三层样式
-│   ├── core/               ← 数据 / 工具 / UI / 路由层
+│   ├── core/               ← 数据 / 工具 / UI / 路由层（15 个模块）
 │   │   ├── store.js        ← DB 模型 + IndexedDB / data.json 双通道存储
-│   │   ├── ai.js           ← AI 服务层（多端点、流式、上下文压缩）
+│   │   ├── router.js       ← 视图路由 + AppState + render 调度
+│   │   ├── utils.js        ← escHtml / fmt / icon / uid 等工具
+│   │   ├── ui.js           ← combo / modal / drawer / toast / confirmModal
+│   │   ├── exporter.js     ← Excel 导出（xlsx-js-style 本地 vendor + CDN 兜底）
+│   │   ├── ai.js           ← AI 服务层（多端点、流式、工作流、上下文压缩）
 │   │   ├── ai-files.js     ← AI 对话附件解析（txt/md/csv/xls/xlsx/docx/pdf）
-│   │   ├── ai-tools.js     ← AI Function Calling 工具协议（提案/校验/审计）
-│   │   ├── kb.js           ← 本地知识库（索引 / BM25 / 引用）
+│   │   ├── ai-tools.js     ← AI Function Calling 工具协议（47 个工具 / 提案/校验/审计）
+│   │   ├── help-knowledge.js ← 系统使用知识库（query_help 检索源）
+│   │   ├── kb.js           ← 本地知识库（目录绑定 / 索引 / BM25 检索）
 │   │   ├── validators.js   ← 共享校验（视图层与 AI 工具层统一引用）
-│   │   ├── exporter.js     ← Excel 导出（xlsx-js-style 本地 vendor）
-│   │   └── ...
-│   ├── views/              ← 各业务模块视图（dashboard / units / specs / bom / prices / orders / settlements / invoices / data / ai-chat 等）
+│   │   ├── guide.js        ← 新功能引导（Coach）
+│   │   ├── updater.js      ← 桌面版自动更新检查
+│   │   ├── seed.js         ← 预置示例数据
+│   │   └── app.js          ← bootApp() 启动入口
+│   ├── views/              ← 各业务模块视图（dashboard / units / specs / bom / prices / orders / settlements / invoices / data / ai-chat / keyboard / search-panel）
 │   └── public/             ← 静态资源（images / vendor，构建原样复制到 dist/）
 ├── docs/                   ← 项目文档（操作手册 / API / 发布日志 / 流程）
 ├── scripts/                ← 构建 / 版本 / 打包脚本
@@ -228,10 +239,17 @@ FastenerTradeWorkbench/
 | `src/core/ai-tools.js` | AI Function Calling 工具协议（提案 / 校验 / 执行 / 审计） |
 | `src/core/kb.js` | 本地知识库（目录绑定 / 索引 / BM25 检索） |
 | `src/core/validators.js` | 共享校验模块（视图层与 AI 工具层统一引用） |
-| `src/views/*.js` | 各业务模块视图 |
+| `src/views/orders.js` | 采购订单：列表 / 详情 / 编辑 + 寻货分配 + 批量导入 |
+| `src/views/search-panel.js` | 全局搜索与命令面板（⌘K） |
+| `src/views/keyboard.js` | 键盘快捷键注册与说明弹窗 |
+| `src/views/*.js` | 其余业务模块视图 |
 | `src/styles/*.css` | 主题变量 / 布局 / 组件样式 |
 | `src-tauri/` | Tauri 桌面封装（Rust 命令 + 打包配置） |
+| `docs/操作手册.md` | 面向使用者的完整操作说明 |
+| `docs/API.md` | 数据模型 / 全局 API / Tauri 命令说明 |
+| `docs/flows/` | 各模块流程说明（9 份） |
 | `docs/version/` | 发布日志（每次迭代的完整变更记录） |
+| `wiki/` | GitHub Wiki 页面 Markdown 源文件 |
 | `README.md` | 本说明文档 |
 
 ## 浏览器兼容性

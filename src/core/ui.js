@@ -49,7 +49,10 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
   // document.getElementById('aiDeepseekToken') 拿到 null → 永远保存不到 Key。
   // 各 modal 的 onOk 内部已经会自行调 closeModal()，这里的 closeModal 只是兜底。
   document.getElementById('_modalOk').onclick=()=>{
-    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}}catch(e){}}
+    /* 防双击：async onOk 未决期间禁用确定键，避免重复执行写回调（§12.5 重复触发防护） */
+    const okBtn=document.getElementById('_modalOk');
+    if(okBtn&&okBtn.disabled)return;
+    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}}catch(e){}}
     closeModal();
   };
   /* v1.0.28 修复：取消按钮未绑 onclick，导致设置等弹窗点"取消"无反应。modal() 无 onCancel 形参，取消即关闭弹窗（与 confirmModal 行为一致） */
@@ -86,9 +89,12 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
     // confirmModal 的 onOk 也可能需要读 DOM 或 async，与 modal() 同样处理
     if(onOk){
       try{
+        /* 防双击：async onOk 未决期间禁用确定键，删除/导入/解绑等破坏性确认不重复执行 */
+        const okBtn=document.getElementById('_modalOk');
+        if(okBtn&&okBtn.disabled)return;
         const before=document.getElementById('_mask');
         const r=onOk();
-        if(r&&typeof r.then==='function'){r.then(()=>{closeModal();}).catch(()=>{});return;}
+        if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}
         // 嵌套确认：onOk 内部又弹了新的 confirmModal（_mask 已被重建）时，保持新弹窗，不再执行收尾关闭
         const after=document.getElementById('_mask');
         if(after&&after!==before){return;}
@@ -139,7 +145,7 @@ function openDrawer(title,html,onOk,wide,noFooter){
   overlay.onclick=function(){safeCloseDrawer();};
   const panel=document.createElement('div');
   panel.className='drawer-panel '+w;
-  panel.innerHTML='<div class="drawer-hd"><span class="drawer-ttl">'+escHtml(title||'')+'</span><span class="drawer-x" onclick="safeCloseDrawer()">×</span></div><div class="drawer-bd">'+html+'</div>'+(noFooter?'':'<div class="drawer-ft"><button type="button" class="btn" onclick="safeCloseDrawer()" tabindex="998">取消</button><button type="button" class="btn primary" onclick="drawerOk()" tabindex="999">保存</button></div>');
+  panel.innerHTML='<div class="drawer-hd"><span class="drawer-ttl">'+escHtml(title||'')+'</span><span class="drawer-x" onclick="safeCloseDrawer()">×</span></div><div class="drawer-bd">'+html+'</div>'+(noFooter?'':'<div class="drawer-ft"><button type="button" class="btn" onclick="safeCloseDrawer()" tabindex="998">取消</button><button type="button" class="btn primary" id="_drawerOk" onclick="drawerOk()" tabindex="999">保存</button></div>');
   const wrap=document.createElement('div');
   wrap.className='drawer-wrap';
   wrap.appendChild(overlay);
@@ -167,7 +173,17 @@ function closeDrawer(){
  * @returns {void} 无返回值
  */
 function drawerOk(){
+  const okBtn=document.getElementById('_drawerOk');
+  if(okBtn&&okBtn.disabled)return; // 防双击：async onOk 未决期间忽略重复点击
   _drawerDirty=false; // 保存前标记为干净，避免保存成功后 closeDrawer 触发二次确认
-  if(_drawerOnOk)_drawerOnOk();
+  if(!_drawerOnOk)return;
+  const r=_drawerOnOk();
+  /* async onOk：未决期间禁用保存键防重复提交；关闭抽屉仍由 onOk 自行负责，
+     Promise settle 后恢复按钮（抽屉已关则按钮已随 DOM 移除，为空操作） */
+  if(r&&typeof r.then==='function'&&okBtn){
+    okBtn.disabled=true;
+    const _releaseDrawerOk=function(){const b=document.getElementById('_drawerOk');if(b)b.disabled=false;};
+    r.then(_releaseDrawerOk,_releaseDrawerOk);
+  }
 }
 

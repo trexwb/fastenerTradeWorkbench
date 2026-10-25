@@ -178,7 +178,7 @@ function openSearchPanel(){
   wrap.innerHTML=
     '<div class="cmd-panel" role="dialog" aria-label="全局搜索">'+
       '<div class="cmd-input-wrap"><div class="cmd-input-box">'+icon('search','18')+
-        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索或直接提问…" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value)">'+
+        '<input id="cmdInput" class="cmd-input" type="text" placeholder="搜索或直接提问…" autocomplete="off" spellcheck="false" onkeydown="cmdInputKey(event)" oninput="cmdInputChanged(this.value,event)">'+
         '<button type="button" class="cmd-close" onclick="closeSearchPanel()" title="关闭 (Esc)">'+icon('x','15')+'</button>'+
       '</div></div>'+
       '<div id="cmdResults" class="cmd-results"></div>'+
@@ -189,7 +189,8 @@ function openSearchPanel(){
   const input=document.getElementById('cmdInput');
   if(input){input.focus();input.select();}
 }
-function cmdInputChanged(v){
+function cmdInputChanged(v,ev){
+  if(ev&&ev.isComposing)return; // 输入法组合中不重渲结果（与 Enter 路径守卫一致）
   _cmdQuery=(v||'').toLowerCase();
   clearTimeout(_cmdTimer);
   _cmdTimer=setTimeout(cmdRender,150);

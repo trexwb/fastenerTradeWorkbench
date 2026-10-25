@@ -766,12 +766,8 @@ function refreshSettleOrderList(){
 
   ol.innerHTML=orderOptsHTML||'<div class="muted" style="padding:10px 0">该单位暂无待结算订单（所有订单已结清）</div>';
 
-  // 重新绑定change事件
-  ol.addEventListener('change',function(e){
-    if(e.target.classList.contains('settle-order-chk')){
-      autoSumSettleAmount();
-    }
-  });
+  /* change 事件监听由 openNewSettlement 打开抽屉时绑定一次（#st_orderList 元素在抽屉生命周期内不重建，
+     仅 innerHTML 替换），此处不再重复绑定，避免每次刷新叠加监听器导致勾选一次触发 N+1 次 autoSumSettleAmount */
 }
 
 /* ---- 自动汇总勾选订单的未结金额 ---- */

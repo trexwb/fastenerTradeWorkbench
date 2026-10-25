@@ -321,14 +321,14 @@ function _openBOMDrawer(b,idx){
   const bodyHTML=
     '<div id="bomFormErr" class="form-err-banner" style="display:none;margin-bottom:14px"></div>'+
     '<div class="field"><label class="f">SKU <span style="color:var(--red)">*</span></label>'+
-      '<input id="bom_sku" class="bom-req" tabindex="10" value="'+escAttr(b.sku)+'" placeholder="输入 SKU，如 SCR-M6-316 · SKU 唯一不可重复" oninput="bomValidateField(\'sku\')">'+
+      '<input id="bom_sku" class="bom-req" tabindex="10" value="'+escAttr(b.sku)+'" placeholder="输入 SKU，如 SCR-M6-316 · SKU 唯一不可重复" oninput="bomValidateFieldDebounced(\'sku\')">'+
       '<div class="field-hint">全系统唯一，建议包含规格或材质信息</div>'+
     '</div>'+
     '<div class="field"><label class="f">名称 <span style="color:var(--red)">*</span></label>'+
-      '<input id="bom_name" class="bom-req" tabindex="11" value="'+escAttr(b.name)+'" placeholder="如 六角螺栓 · 简洁明确的商品名称" oninput="bomValidateField(\'name\')">'+
+      '<input id="bom_name" class="bom-req" tabindex="11" value="'+escAttr(b.name)+'" placeholder="如 六角螺栓 · 简洁明确的商品名称" oninput="bomValidateFieldDebounced(\'name\')">'+
     '</div>'+
     '<div class="field"><label class="f">规格 <span style="color:var(--red)">*</span></label>'+
-      '<input id="bom_spec" class="bom-req" tabindex="12" value="'+escAttr(b.spec||'')+'" placeholder="如 M6×30mm · 描述尺寸规格" oninput="bomValidateField(\'spec\')">'+
+      '<input id="bom_spec" class="bom-req" tabindex="12" value="'+escAttr(b.spec||'')+'" placeholder="如 M6×30mm · 描述尺寸规格" oninput="bomValidateFieldDebounced(\'spec\')">'+
     '</div>'+
     '<div class="bom-specs-section sec-collapsed">'+
       '<div class="sec-hd" onclick="toggleBOMSpecsSection(this)">'+icon('chevronDown','13')+' 其他属性（点击展开）</div>'+
@@ -373,6 +373,9 @@ function bomValidateField(fld){
   let hasErr=el.classList.contains('bom-req')&&!val;
   el.classList.toggle('field-err',hasErr);
 }
+/** oninput 防抖包装（§12.5）：必填校验为逐键高频事件，经 150ms 防抖后再高亮 */
+const _bomValidateFieldDebounced=debounce(bomValidateField,150);
+function bomValidateFieldDebounced(fld){_bomValidateFieldDebounced(fld);}
 
 /* 折叠区域 */
 /** 切换BOM表单「其他属性」折叠区域展开/收起

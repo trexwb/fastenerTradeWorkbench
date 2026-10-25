@@ -997,8 +997,6 @@ function filterPriceMatchNow(idx,q){
     if(cb)cb.checked=true;
   });
 }
-/** 价格库匹配搜索防抖入口（对输入做 150ms 防抖，勾选状态保留由 filterPriceMatchNow 内部处理） */
-const filterPriceMatch=debounce(filterPriceMatchNow,150);
 /** 构建手动录入供应商弹窗的 HTML 内容 */
 function buildManualSupplierModalBody(idx){
   const it=_fItems[idx];
@@ -2223,5 +2221,8 @@ function pmOnCheckChange(idx,priceId){
   }
   pmUpdateHint(idx);
 }
-/** 分配数量输入时刷新合计提示 */
-function pmOnAllocInput(idx){pmUpdateHint(idx);}
+/** 价格库匹配弹窗分配数量提示防抖时长（ms，§12.5 输入高频事件） */
+const PM_HINT_DEBOUNCE_MS=120;
+const _pmUpdateHintDebounced=debounce(pmUpdateHint,PM_HINT_DEBOUNCE_MS);
+/** 分配数量输入时刷新合计提示（经防抖；勾选联动 pmOnCheckChange 仍同步刷新不走此包装） */
+function pmOnAllocInput(idx){_pmUpdateHintDebounced(idx);}

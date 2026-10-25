@@ -628,9 +628,17 @@ async function initFileHandle(){
  * 手动触发立即同步到本地文件。
  * @returns {Promise<void>} 完成（无返回值）
  */
+/** 手动同步进行中标志：防止双击并发重复写本地文件 */
+let _fileSyncing=false;
 async function syncNow(){
   if(!fileHandle||fileSync!==true)return;
-  await saveToFile();
+  if(_fileSyncing){toast('正在同步中，请稍候…','info');return;}
+  _fileSyncing=true;
+  try{
+    await saveToFile();
+  }finally{
+    _fileSyncing=false;
+  }
   render();
   toast('已手动同步到本地文件','success');
 }

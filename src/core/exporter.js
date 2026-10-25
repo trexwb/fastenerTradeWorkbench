@@ -174,9 +174,13 @@ function downloadWorkbook(wb, fname) {
  * @param {string} orderId - 订单 ID
  * @returns {Promise<void>} 导出完成后 resolve，失败 toast 提示
  */
+/** 导出防重入标志：导出进行中禁止重复触发（连击/双击会并发两趟构建+两次下载） */
+let _exportBusy=false;
 async function exportOrder(orderId) {
+  if(_exportBusy){toast('正在导出，请稍候…','info');return;}
   let o = DB.orders.find(function (x) { return x.id === orderId; });
   if (!o) { toast('未找到订单', 'error'); return; }
+  _exportBusy=true;
   try {
     await loadXLSX();
     switch (o.status) {
@@ -192,6 +196,8 @@ async function exportOrder(orderId) {
   } catch (err) {
     console.error('[exporter] 导出异常:', err);
     toast('导出失败：' + err.message, 'error');
+  } finally {
+    _exportBusy=false;
   }
 }
 

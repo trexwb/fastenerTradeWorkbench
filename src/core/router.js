@@ -464,7 +464,7 @@ function renderSetStatus(){
   const cb=document.getElementById('setCheckBtn');
   if(cb)cb.onclick=function(){window.Updater.check(false);renderSetStatus();};
   const db=document.getElementById('setDownloadBtn');
-  if(db)db.onclick=function(){window.Updater.download();renderSetStatus();};
+  if(db)db.onclick=function(){db.disabled=true;window.Updater.download();renderSetStatus();};
   const rb=document.getElementById('setRelaunchBtn');
   if(rb)rb.onclick=function(){window.Updater.relaunch();};
 }

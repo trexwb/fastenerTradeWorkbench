@@ -249,10 +249,15 @@ function restoreOrderDraft(d){
  */
 function bindDraftSave(container,collectFn,type){
   if(!container)return;
+  /* 草稿落盘防抖（§12.5）：collectFn 整表收集 + localStorage 同步写属高频输入事件，300ms 合并；
+     markDrawerDirty 为 O(1) 布尔标记，保持同步以保证关窗确认不漏判 */
+  const persist=debounce(function(){
+    const d=collectFn();if(d)saveDraft(type,d);
+  },300);
   const handler=function(e){
     // 有未保存表单数据时标记 dirty，关闭时弹出确认防止误关丢失输入
     if(typeof markDrawerDirty==='function')markDrawerDirty();
-    const d=collectFn();if(d)saveDraft(type,d);
+    persist();
   };
   container.addEventListener('input',handler);
   container.addEventListener('change',handler);
@@ -645,7 +650,8 @@ function bindBatchPasteUX(taId,btn){
   const b=(typeof btn==='string')?document.getElementById(btn):btn;
   if(!ta||!b)return;
   const sync=()=>{b.disabled=!ta.value.trim();b.style.opacity=ta.value.trim()?'':'0.5';b.style.cursor=ta.value.trim()?'':'not-allowed';};
-  ta.addEventListener('input',sync);
+  const syncDebounced=debounce(sync,120); // 输入高频事件防抖（§12.5）；初始化仍同步执行一次
+  ta.addEventListener('input',syncDebounced);
   sync();
 }
 /** 批量解析成功后的通用收尾（v1.0.53）：
