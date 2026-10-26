@@ -73,7 +73,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDNzNFREU5MENGNTZFOQpSV1RwVnMrUTNqN0hENXl5dHFjaUlhSkhWYlkwU2tKL1k5dzBseG0xa3luSEQ2eEhuZVI1M3JKeQo=",
       "endpoints": [
-        "https://github.com/trexwb/fastenerTradeWorkbench/releases/latest/download/latest.json"
+        "https://github.com/trexwb/fastenerTradeWorkbench/releases/latest/download/latest.json",
+        "https://v4.gh-proxy.org/https://github.com/trexwb/fastenerTradeWorkbench/releases/latest/download/latest.json"
       ]
     }
   }
