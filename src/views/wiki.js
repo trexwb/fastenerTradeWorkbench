@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   wiki.js — 专业解读（本地互动文档）视图
+   wiki.js — 专业解读（本地知识库）视图
    ───────────────────────────────────────────────────────────────────
    文档来源：src/public/wiki/*.html → 构建后位于 dist/wiki/*.html
              （单文件、零外部依赖，构建时原样复制，不参与打包编译）
@@ -7,8 +7,17 @@
              通过「动态 <script> 注入」加载，而非 fetch ——
              file:// 双击运行时页面 origin 为 null，fetch 本地文件会被 CORS 拦截，
              而 <script src> 不受该限制（与 core/exporter.js 加载 vendor/xlsx.min.js 同策略）。
+             索引 version 2 起含 docs[i].text 全文纯文本（构建期提取，仅用于站内检索）。
    展示方式：iframe 内嵌，保留文档自身排版/主题/交互，不做任何内联改写。
              新增文档只需把 .html 丢进 src/public/wiki/，索引自动重建。
+
+   知识库能力（2026-10-27 深化，不推进版本号）：
+     - 阅读元数据 DB.wikiMeta[file] = {star, read, readCount, lastReadAt, notes}
+       收藏 / 已读 / 最近阅读 / 阅读笔记，随 DB 一起进 IndexedDB 与本地文件备份
+     - 列表态：全文检索（回车触发，命中片段高亮）+ 筛选（收藏/未读/有笔记）
+       + 「继续阅读」最近阅读条
+     - 阅读态：顶栏收藏按钮（原地更新不重建 iframe）+ 底部笔记（防抖自动保存）
+     - 全局搜索面板（views/search-panel.js）复用同一索引做知识库源检索
    ═══════════════════════════════════════════════════════════════════ */
 
 /** 当前打开的文档文件名（null = 列表态） */
@@ -19,6 +28,26 @@ let _wikiIndex = null;
 let _wikiState = 'idle';
 /** 索引加载中的等待回调队列 */
 let _wikiWaiters = [];
+/** 列表态搜索关键词（原文） */
+let _wikiSearch = '';
+/** 列表态筛选：'' | 'star' | 'unread' | 'note' */
+let _wikiFilter = '';
+/** 笔记自动保存防抖定时器 id */
+let _wikiNoteTimer = 0;
+
+/** 筛选 chips 定义（k 为 _wikiFilter 的合法值，'' = 全部） */
+const WIKI_FILTERS = [
+  { k: '', label: '全部' },
+  { k: 'star', label: '收藏' },
+  { k: 'unread', label: '未读' },
+  { k: 'note', label: '有笔记' },
+];
+/** 笔记停止输入后自动保存的防抖延迟（毫秒） */
+const WIKI_NOTE_DEBOUNCE_MS = 900;
+/** 命中片段前后各保留的字符数 */
+const WIKI_SNIPPET_RADIUS = 60;
+/** 「继续阅读」条展示的最近文档数 */
+const WIKI_RECENT_COUNT = 3;
 
 /**
  * 拼接文档（或索引）的绝对 URL。
@@ -79,36 +108,231 @@ function loadWikiIndex(cb){
   document.head.appendChild(s);
 }
 
+/* =========================================================
+   阅读元数据（收藏 / 已读 / 笔记）
+   ========================================================= */
 /**
- * 重置为列表态（切换导航离开本模块时由 router 的 go() 调用）。
- * @returns {void}
+ * 只读获取文档元数据（不创建、无副作用）：渲染与筛选路径专用。
+ * @param {string} file - 原始文件名
+ * @returns {Object|null} 元数据对象或 null
  */
-function __wikiReset(){ _wikiDoc=null; }
+function _wikiMetaGet(file){
+  if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')return null;
+  const m=DB.wikiMeta[file];
+  return (m&&typeof m==='object')?m:null;
+}
 
 /**
- * 打开指定文档。
+ * 取文档元数据（懒创建，写入路径专用）：保证旧数据/任意初始化路径下结构完整。
+ * @param {string} file - 原始文件名
+ * @returns {{star:number, read:number, readCount:number, lastReadAt:number, notes:string}}
+ */
+function _wikiMeta(file){
+  if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')DB.wikiMeta={};
+  let m=DB.wikiMeta[file];
+  if(!m||typeof m!=='object'){
+    m={star:0,read:0,readCount:0,lastReadAt:0,notes:''};
+    DB.wikiMeta[file]=m;
+  }
+  if(typeof m.notes!=='string')m.notes=m.notes?String(m.notes):'';
+  return m;
+}
+
+/** 相对时间文案：刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前 / YYYY-MM-DD */
+function _wikiRelTime(ts){
+  const n=Number(ts||0);
+  if(!n)return '';
+  const diff=Date.now()-n;
+  const MS_MINUTE=60000,MS_HOUR=3600000,MS_DAY=86400000,MS_MONTH=30*MS_DAY;
+  if(diff<MS_MINUTE)return '刚刚';
+  if(diff<MS_HOUR)return Math.floor(diff/MS_MINUTE)+' 分钟前';
+  if(diff<MS_DAY)return Math.floor(diff/MS_HOUR)+' 小时前';
+  if(diff<2*MS_DAY)return '昨天';
+  if(diff<MS_MONTH)return Math.floor(diff/MS_DAY)+' 天前';
+  const d=new Date(n);
+  const pad=function(x){return String(x).padStart(2,'0');};
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+/** 当前时刻 HH:mm（笔记保存时间戳用） */
+function _wikiClock(){
+  const d=new Date();
+  const pad=function(x){return String(x).padStart(2,'0');};
+  return pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
+/* =========================================================
+   站内检索
+   ========================================================= */
+/** 解析搜索词：空白/逗号分隔多关键词，全部命中才算匹配（AND） */
+function _wikiQueryTerms(q){
+  return String(q||'').split(/[\s,，]+/).map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
+}
+
+/** 检索 haystack：标题 + 摘要 + 分类 + 标签 + 全文（索引 v1 无 text 时自动降级） */
+function _wikiHay(d){
+  return [d.title||'',d.desc||'',d.category||'',(d.tags||[]).join(' '),d.text||''].join('\n').toLowerCase();
+}
+
+/** 高亮纯文本片段：先按关键词切分再逐段转义，用户数据始终过 escHtml，避免 XSS */
+function _wikiHi(text,terms){
+  const s=String(text||'');
+  const safe=terms.filter(Boolean).map(function(t){return String(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');});
+  if(!safe.length)return escHtml(s);
+  let re;
+  try{ re=new RegExp('('+safe.join('|')+')','gi'); }catch(e){ return escHtml(s); }
+  return s.split(re).map(function(part,i){
+    return i%2===1?'<mark class="wiki-hit">'+escHtml(part)+'</mark>':escHtml(part);
+  }).join('');
+}
+
+/**
+ * 命中信息：全文首个命中位置的上下文片段 + 首个命中关键词的出现次数。
+ * @param {Object} d - 索引文档对象
+ * @param {string[]} terms - 小写关键词数组
+ * @returns {{snippet:string, hits:number}}
+ */
+function _wikiHitInfo(d,terms){
+  const text=String(d.text||'');
+  const lower=text.toLowerCase();
+  const first=terms.find(function(t){return lower.indexOf(t)>=0;})||'';
+  const idx=first?lower.indexOf(first):-1;
+  let snippet='';
+  if(idx>=0){
+    const start=Math.max(0,idx-WIKI_SNIPPET_RADIUS);
+    const end=idx+first.length+WIKI_SNIPPET_RADIUS;
+    snippet=(start>0?'…':'')+text.slice(start,end)+(end<text.length?'…':'');
+  }else if(d.desc){
+    snippet=String(d.desc);
+  }
+  let hits=0;
+  if(first){
+    let pos=lower.indexOf(first);
+    while(pos>=0&&hits<999){hits++;pos=lower.indexOf(first,pos+first.length);}
+  }
+  return {snippet:snippet,hits:hits};
+}
+
+/** 按搜索词与筛选 chip 过滤文档（搜索与筛选同时生效，AND 语义） */
+function _wikiFilterDocs(docs){
+  const terms=_wikiQueryTerms(_wikiSearch);
+  let list=docs.slice();
+  if(terms.length){
+    list=list.filter(function(d){
+      const hay=_wikiHay(d);
+      return terms.every(function(t){return hay.indexOf(t)>=0;});
+    });
+  }
+  if(_wikiFilter==='star')list=list.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.star);});
+  else if(_wikiFilter==='unread')list=list.filter(function(d){const m=_wikiMetaGet(d.file);return !(m&&m.read);});
+  else if(_wikiFilter==='note')list=list.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.notes);});
+  return list;
+}
+
+/* =========================================================
+   用户动作（全局函数，供内联事件调用）
+   ========================================================= */
+/**
+ * 列表态搜索（回车 / 点击放大镜触发，§8 约定不用 oninput 实时搜索）。
+ * @param {string} v - 搜索框内容
+ */
+function onWikiSearch(v){
+  _wikiSearch=String(v||'').trim();
+  render();
+  const inp=document.getElementById('wikiSearchInput');
+  if(inp){inp.focus();try{inp.setSelectionRange(inp.value.length,inp.value.length);}catch(e){}}
+}
+
+/** 切换筛选 chip（再次点击同一 chip 取消） */
+function onWikiFilter(k){
+  _wikiFilter=(_wikiFilter===k)?'':k;
+  render();
+}
+
+/** 清空搜索与筛选（工具栏「清除」按钮） */
+function clearWikiFilters(){
+  _wikiSearch='';
+  _wikiFilter='';
+  render();
+}
+
+/**
+ * 收藏 / 取消收藏。
+ * 列表态直接重渲染；阅读态只原地更新顶栏按钮，避免 render() 重建 iframe
+ * 导致文档阅读位置丢失。
+ * @param {string} key - encodeURIComponent 后的文件名
+ */
+function toggleWikiStar(key){
+  let file=String(key||'');
+  try{ file=decodeURIComponent(file); }catch(e){}
+  if(!file)return;
+  const m=_wikiMeta(file);
+  m.star=m.star?0:1;
+  saveDB();
+  if(typeof toast==='function')toast(m.star?'已收藏':'已取消收藏','ok');
+  if(_wikiDoc===file){
+    const btn=document.getElementById('wikiStarBtn');
+    if(btn)btn.classList.toggle('on',!!m.star);
+  }else{
+    render();
+  }
+}
+
+/** 笔记输入：标记「未保存」并安排防抖自动保存 */
+function onWikiNoteInput(){
+  const st=document.getElementById('wikiNoteStat');
+  if(st){st.textContent='有未保存更改…';st.classList.add('dirty');}
+  if(_wikiNoteTimer)clearTimeout(_wikiNoteTimer);
+  _wikiNoteTimer=setTimeout(saveWikiNote,WIKI_NOTE_DEBOUNCE_MS);
+}
+
+/** 保存当前文档笔记到 DB（自动保存与「保存笔记」按钮共用） */
+function saveWikiNote(){
+  if(_wikiNoteTimer){clearTimeout(_wikiNoteTimer);_wikiNoteTimer=0;}
+  if(!_wikiDoc)return;
+  const ta=document.getElementById('wikiNoteTA');
+  if(!ta)return;
+  const m=_wikiMeta(_wikiDoc);
+  if(m.notes===ta.value)return;  // 内容未变化不写库
+  m.notes=ta.value;
+  saveDB();
+  const st=document.getElementById('wikiNoteStat');
+  if(st){st.textContent='已保存 '+_wikiClock();st.classList.remove('dirty');}
+}
+
+/** 离开阅读态前冲刷挂起的自动保存（closeWikiDoc / __wikiReset 调用） */
+function _wikiFlushNote(){
+  if(_wikiNoteTimer)saveWikiNote();
+}
+
+/** 重置为列表态（切换导航离开本模块时由 router 的 go() 调用） */
+function __wikiReset(){ _wikiFlushNote(); _wikiDoc=null; }
+
+/**
+ * 打开指定文档：记录已读 / 最近阅读（lastReadAt + readCount）后进入阅读态。
  * @param {string} key - encodeURIComponent 后的文件名（见 _wikiAttr）
- * @returns {void}
  */
 function openWikiDoc(key){
   let file=String(key||'');
   try{ file=decodeURIComponent(file); }catch(e){}
   if(!file)return;
+  _wikiFlushNote();
   _wikiDoc=file;
+  const m=_wikiMeta(file);
+  m.read=1;
+  m.readCount=(m.readCount||0)+1;
+  m.lastReadAt=Date.now();
+  saveDB();
   render();
   window.scrollTo(0,0);
 }
 
-/**
- * 关闭文档，回到列表。
- * @returns {void}
- */
-function closeWikiDoc(){ _wikiDoc=null; render(); }
+/** 关闭文档，回到列表 */
+function closeWikiDoc(){ _wikiFlushNote(); _wikiDoc=null; render(); }
 
 /**
  * 复制文档的绝对链接（file:// 下 navigator.clipboard 可能不可用，降级 execCommand）。
  * @param {string} key - encodeURIComponent 后的文件名
- * @returns {void}
  */
 function copyWikiLink(key){
   let file=String(key||'');
@@ -149,25 +373,113 @@ function _wikiReadTime(size){
   return '≈ '+min+' 分钟';
 }
 
+/* =========================================================
+   渲染
+   ========================================================= */
 /**
- * 渲染单张文档卡片。
+ * 渲染单张文档卡片（含收藏星标 / 未读标记 / 笔记标记 / 上次阅读）。
  * @param {Object} d - 索引中的文档对象
  * @returns {string} HTML
  */
 function _wikiCard(d){
   const attr=_wikiAttr(d.file);
+  const meta=_wikiMetaGet(d.file)||{};
   const tags=(d.tags||[]).map(function(t){return '<span class="tag">'+escHtml(t)+'</span>';}).join('');
+  const unread=!meta.read;
   return '<article class="wiki-card" tabindex="0" role="link" aria-label="打开《'+escHtml(d.title)+'》" '
     +'onclick="openWikiDoc('+attr+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiDoc('+attr+');}">'
+    +'<button type="button" class="wiki-star'+(meta.star?' on':'')+'" aria-label="'+(meta.star?'取消收藏':'收藏')+'" title="'+(meta.star?'取消收藏':'收藏')+'" onclick="event.stopPropagation();toggleWikiStar('+attr+')">'+icon('star','16')+'</button>'
     +'<div class="wiki-card-top"><span class="tag info">'+escHtml(d.category||'专业解读')+'</span>'
+      +(unread?'<span class="tag warn">未读</span>':'')
+      +(meta.notes?'<span class="tag purple">笔记</span>':'')
       +'<span class="wiki-card-time">'+_wikiReadTime(d.size)+'</span></div>'
     +'<h3 class="wiki-card-title">'+escHtml(d.title)+'</h3>'
     +(d.desc?'<p class="wiki-card-desc">'+escHtml(d.desc)+'</p>':'')
     +'<div class="wiki-card-ft">'
       +(tags?'<div class="wiki-card-tags">'+tags+'</div>':'<span class="wiki-card-meta">互动长页 · 单文件离线可读</span>')
-      +'<span class="wiki-card-go">开始阅读 '+icon('chevronRight','14')+'</span>'
+      +(meta.lastReadAt?'<span class="wiki-card-meta wiki-card-last">上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+'</span>':'')
+      +'<span class="wiki-card-go">'+(unread?'开始阅读':'继续阅读')+' '+icon('chevronRight','14')+'</span>'
     +'</div>'
     +'</article>';
+}
+
+/**
+ * 渲染单条全文检索命中行（标题/片段高亮 + 命中次数）。
+ * @param {Object} d - 索引文档对象
+ * @param {string[]} terms - 小写关键词数组
+ * @returns {string} HTML
+ */
+function _wikiHitRow(d,terms){
+  const attr=_wikiAttr(d.file);
+  const info=_wikiHitInfo(d,terms);
+  const meta=_wikiMetaGet(d.file)||{};
+  const tags=(d.tags||[]).map(function(t){return '<span class="tag">'+escHtml(t)+'</span>';}).join('');
+  return '<article class="wiki-hit-row" tabindex="0" role="link" aria-label="打开《'+escHtml(d.title)+'》" '
+    +'onclick="openWikiDoc('+attr+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiDoc('+attr+');}">'
+    +'<div class="wiki-hit-title"><span>'+_wikiHi(d.title,terms)+'</span>'
+      +'<span class="tag info">'+escHtml(d.category||'专业解读')+'</span>'
+      +(meta.star?'<span class="tag warn">已收藏</span>':'')+tags
+    +'</div>'
+    +(info.snippet?'<div class="wiki-hit-snippet">'+_wikiHi(info.snippet,terms)+'</div>':'')
+    +'<div class="wiki-hit-meta">'+(info.hits?'全文命中 <b>'+info.hits+'</b> 处 · ':'')+_wikiReadTime(d.size)
+      +(meta.notes?' · 有笔记':'')
+      +(meta.lastReadAt?' · 上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt)):'')
+    +'</div>'
+    +'</article>';
+}
+
+/**
+ * 渲染「继续阅读」条：最近打开的文档（仅无搜索、无筛选时显示）。
+ * @param {Array} docs - 全部文档
+ * @returns {string} HTML（无最近阅读时返回空串）
+ */
+function _wikiRecentStrip(docs){
+  const recent=docs
+    .filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.lastReadAt);})
+    .sort(function(a,b){
+      const ma=_wikiMetaGet(a.file)||{};
+      const mb=_wikiMetaGet(b.file)||{};
+      return (mb.lastReadAt||0)-(ma.lastReadAt||0);
+    })
+    .slice(0,WIKI_RECENT_COUNT);
+  if(!recent.length)return '';
+  return '<div class="wiki-recent">'
+    +'<span class="wiki-recent-hd">'+icon('clock','14')+'<span>继续阅读</span></span>'
+    +recent.map(function(d){
+      const attr=_wikiAttr(d.file);
+      const m=_wikiMetaGet(d.file)||{};
+      return '<button type="button" class="wiki-recent-item" onclick="openWikiDoc('+attr+')">'
+        +escHtml(d.title)+'<small>'+escHtml(_wikiRelTime(m.lastReadAt))+'</small></button>';
+    }).join('')
+    +'</div>';
+}
+
+/**
+ * 渲染工具栏：搜索框（回车触发）+ 筛选 chips（含计数）+ 清除按钮。
+ * @param {Array} docs - 全部文档（计数基准）
+ * @returns {string} HTML
+ */
+function _wikiToolbar(docs){
+  const counts={
+    '':docs.length,
+    'star':docs.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.star);}).length,
+    'unread':docs.filter(function(d){const m=_wikiMetaGet(d.file);return !(m&&m.read);}).length,
+    'note':docs.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.notes);}).length,
+  };
+  const chips=WIKI_FILTERS.map(function(f){
+    return '<button type="button" class="wiki-chip'+(_wikiFilter===f.k?' on':'')+'" '
+      +'aria-pressed="'+(_wikiFilter===f.k?'true':'false')+'" onclick="onWikiFilter(\''+f.k+'\')">'
+      +escHtml(f.label)+'<span class="wiki-chip-n">'+counts[f.k]+'</span></button>';
+  }).join('');
+  return '<div class="wiki-toolbar">'
+    +'<div class="search-box'+(_wikiSearch?' has-val':'')+'">'
+      +'<button type="button" class="search-trigger" aria-label="搜索知识库" onclick="onWikiSearch(document.getElementById(\'wikiSearchInput\').value)">'+icon('search','16')+'</button>'
+      +'<input id="wikiSearchInput" type="text" aria-label="搜索标题、标签与正文" value="'+escAttr(_wikiSearch)+'" placeholder="搜索标题 / 标签 / 正文全文…（回车搜索）" onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onWikiSearch(this.value)">'
+      +'<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onWikiSearch(\'\')">×</button>'
+    +'</div>'
+    +'<div class="wiki-chips">'+chips+'</div>'
+    +((_wikiSearch||_wikiFilter)?'<button type="button" class="btn ghost sm" onclick="clearWikiFilters()">'+icon('x','14')+'<span>清除</span></button>':'')
+    +'</div>';
 }
 
 /**
@@ -190,8 +502,27 @@ function _wikiList(docs){
   }).join('');
 }
 
+/** 空态：搜索无结果 */
+function _wikiEmptySearch(){
+  return '<div class="empty-state">'
+    +'<div class="es-icon">'+icon('search','28')+'</div>'
+    +'<div class="es-title">未找到与「'+escHtml(_wikiSearch)+'」相关的解读</div>'
+    +'<div class="es-desc">试试更换关键词；检索范围为标题、摘要、标签与正文全文。</div>'
+    +'</div>';
+}
+
+/** 空态：筛选无结果 */
+function _wikiEmptyFilter(){
+  const label=(_wikiFilter==='star')?'收藏':((_wikiFilter==='unread')?'未读':'有笔记');
+  return '<div class="empty-state">'
+    +'<div class="es-icon">'+icon('filter','28')+'</div>'
+    +'<div class="es-title">没有'+label+'的文档</div>'
+    +'<div class="es-desc">切换到「全部」或调整筛选条件试试。</div>'
+    +'</div>';
+}
+
 /**
- * 渲染阅读器（iframe 内嵌文档）。
+ * 渲染阅读器（iframe 内嵌 + 顶栏收藏 + 底部阅读笔记）。
  * @returns {string} HTML
  */
 function _viewWikiReader(){
@@ -199,19 +530,37 @@ function _viewWikiReader(){
   const doc=docs.find(function(d){return d.file===_wikiDoc;})||{file:_wikiDoc,title:_wikiDoc,desc:'',size:0,category:'专业解读'};
   const attr=_wikiAttr(doc.file);
   const url=_wikiUrl(doc.file);
+  const meta=_wikiMetaGet(doc.file)||{};
+  const subBits=[];
+  if(doc.category)subBits.push(escHtml(doc.category));
+  subBits.push(meta.lastReadAt
+    ?'上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+(meta.readCount?' · 已读 '+meta.readCount+' 次':'')
+    :'首次阅读');
   return '<div class="wiki-reader">'
     +'<div class="wiki-bar">'
       +'<button type="button" class="btn" onclick="closeWikiDoc()">'+icon('chevronLeft','16')+'<span>返回列表</span></button>'
       +'<div class="wiki-bar-main">'
         +'<div class="wiki-bar-title">'+escHtml(doc.title)+'</div>'
-        +(doc.desc?'<div class="wiki-bar-sub">'+escHtml(doc.desc)+'</div>':'')
+        +'<div class="wiki-bar-sub">'+subBits.join(' · ')+'</div>'
       +'</div>'
       +'<div class="wiki-bar-acts">'
+        +'<button type="button" class="btn wiki-star'+(meta.star?' on':'')+'" id="wikiStarBtn" '
+          +'onclick="toggleWikiStar('+attr+')" title="'+(meta.star?'取消收藏':'收藏')+'" aria-pressed="'+(meta.star?'true':'false')+'">'
+          +icon('star','14')+'<span>'+(meta.star?'已收藏':'收藏')+'</span></button>'
         +'<button type="button" class="btn" onclick="copyWikiLink('+attr+')">'+icon('copy','14')+'<span>复制链接</span></button>'
         +'<a class="btn" href="'+escHtml(url)+'" target="_blank" rel="noopener">'+icon('link','14')+'<span>独立窗口</span></a>'
       +'</div>'
     +'</div>'
     +'<iframe class="wiki-frame" src="'+escHtml(url)+'" title="'+escHtml(doc.title)+'" loading="lazy"></iframe>'
+    +'<div class="wiki-notes">'
+      +'<div class="wiki-notes-hd">'+icon('edit','14')+'<span>我的笔记</span>'
+        +'<span class="wiki-notes-stat" id="wikiNoteStat">'+(meta.notes?'停止输入后自动保存':'记录阅读要点，自动保存')+'</span>'
+        +'<button type="button" class="btn sm" onclick="saveWikiNote()"><span>保存笔记</span></button>'
+      +'</div>'
+      +'<textarea id="wikiNoteTA" class="wiki-notes-ta" aria-label="本篇文档的阅读笔记" '
+        +'placeholder="记录这篇解读的要点、疑问或与订单相关的线索…（停止输入约 1 秒后自动保存）" '
+        +'oninput="onWikiNoteInput()">'+escHtml(meta.notes||'')+'</textarea>'
+    +'</div>'
     +'</div>';
 }
 
@@ -248,13 +597,31 @@ function viewWiki(){
       +'</div></div>';
   }
 
+  const list=_wikiFilterDocs(docs);
+  const terms=_wikiQueryTerms(_wikiSearch);
   const generated=(_wikiIndex.generatedAt||'').slice(0,10);
+  const readCount=docs.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.read);}).length;
+  const starCount=docs.filter(function(d){const m=_wikiMetaGet(d.file);return !!(m&&m.star);}).length;
+
+  // 结果区：有关键词 → 命中行列表；否则 → 继续阅读 + 分组卡片（筛选模式下不显示继续阅读）
+  let body='';
+  if(terms.length){
+    body=list.length
+      ?'<div class="wiki-search-list">'+list.map(function(d){return _wikiHitRow(d,terms);}).join('')+'</div>'
+      :_wikiEmptySearch();
+  }else{
+    body=(_wikiFilter?'':_wikiRecentStrip(docs))+_wikiList(list);
+    if(!list.length)body=_wikiEmptyFilter();
+  }
+
   return '<div class="card wiki-list-card">'
     +'<h2>'+icon('fileText','18')+'<span>专业解读</span>'
       +'<span class="tag info">'+docs.length+' 篇</span>'
-      +(generated?'<span class="wiki-list-meta">索引更新于 '+escHtml(generated)+'</span>':'')
+      +'<span class="wiki-list-meta">已读 '+readCount+' · 收藏 '+starCount
+        +(generated?' · 索引更新于 '+escHtml(generated):'')+'</span>'
     +'</h2>'
-    +'<p class="wiki-intro">产品与材料方向的深度长页，独立成文、可离线阅读。点击卡片在应用内直接打开，也可在新窗口单独查看。</p>'
-    +_wikiList(docs)
+    +'<p class="wiki-intro">内置本地知识库：产品与材料方向的深度长页，支持全文检索、收藏、阅读进度与笔记，全部离线可用。点击卡片在应用内直接打开，也可在新窗口单独查看。</p>'
+    +_wikiToolbar(docs)
+    +body
     +'</div>';
 }

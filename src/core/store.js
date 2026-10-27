@@ -64,9 +64,9 @@ const STATUS_FLOW=['待确认','寻货中','报价中','签约完成','送货中
 
 /**
  * 全局数据主存储对象（主力存储：IndexedDB）
- * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, seq: number, orderSeq: number, _savedAt?: number}}
+ * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, wikiMeta: Object, seq: number, orderSeq: number, _savedAt?: number}}
  */
-let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[],aiWorkflows:[]};
+let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[],aiWorkflows:[],wikiMeta:{}};
 
 /* 补齐 DB 可能缺失的字段（供 idbLoad 和 loadFromFile 复用） */
 /**
@@ -86,6 +86,7 @@ function ensureDBFields(){
   if(!Array.isArray(DB.trash))DB.trash=[];          // 回收站（软删除隔离区，AI 永不触碰）
   if(!Array.isArray(DB.aiOps))DB.aiOps=[];          // AI/用户操作日志（审计+回滚依据）
   if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[]; // AI 多步工作流（执行计划草稿/进度持久化）
+  if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')DB.wikiMeta={}; // 专业解读知识库阅读元数据（收藏/已读/笔记）
   if(!DB.seq)DB.seq=100;
   if(!DB._savedAt)DB._savedAt=Date.now();
   if(!DB.orderSeq){
@@ -510,6 +511,13 @@ function mergeFileData(fileData){
       if(!DB.specs[k])DB.specs[k]=[];
       const seen=new Set(DB.specs[k]);
       fileVals.forEach(v=>{if(!seen.has(v)){DB.specs[k].push(v);seen.add(v);}});
+    });
+  }
+  // 专业解读阅读元数据（收藏/已读/笔记）：按文件名取并集，两边都有时以 IndexedDB 现有为准
+  if(fileData.wikiMeta&&typeof fileData.wikiMeta==='object'){
+    if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')DB.wikiMeta={};
+    Object.keys(fileData.wikiMeta).forEach(function(k){
+      if(!DB.wikiMeta[k])DB.wikiMeta[k]=fileData.wikiMeta[k];
     });
   }
   // seq / orderSeq 取最大值（避免编号回退）

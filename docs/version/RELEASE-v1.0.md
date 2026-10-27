@@ -6,6 +6,47 @@
 
 ---
 
+## 未发布 · 📚 专业解读深化为内置知识库（不推进版本号）
+
+> **状态**: ✅ 代码就绪 + 真实浏览器功能验证通过（**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-27
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 6 个代码文件针对性增强 + 3 篇文档 head 补元数据 + 3 份文档更新；无业务算法改动
+> **需求**: 「wiki 模块其实是作为知识库使用的，请帮我深化模块的功能」
+
+### 一、新功能
+
+- **站内全文检索**：索引生成器（v2）构建期提取每篇文档纯文本（去 script/style/注释，上限 2 万字）；列表顶部搜索框（回车触发，§8 约定）支持标题/摘要/标签/正文全文，空格分隔多关键词（AND），命中片段高亮（`<mark class="wiki-hit">`，先切分后转义防 XSS）+ 命中次数
+- **筛选 chips**：全部 / 收藏 / 未读 / 有笔记（带实时计数），与搜索 AND 组合；「清除」一键重置
+- **阅读进度**：打开自动记已读、次数、最近时间（`DB.wikiMeta[file]`）；列表头部统计「已读 N · 收藏 K」；卡片显示未读标记/上次阅读；列表顶部「继续阅读」条直达最近 3 篇
+- **收藏**：卡片右上角星标 + 阅读页顶栏「收藏」按钮；阅读态切换只原地更新按钮，不重建 iframe（不丢阅读位置）
+- **阅读笔记**：阅读页底部「我的笔记」，停止输入约 900ms 自动保存（防抖）+ 手动保存按钮 + 「有未保存更改…/已保存 hh:mm」状态指示；离开阅读态前冲刷
+- **⌘K 全局搜索接入**：`search-panel.js` 新增第七源「知识库」，命中正文片段（`_cmdWikiSub`），Enter 直达文档；面板打开时预热索引
+- **AI 帮助**：`help-knowledge.js` 新增 `wiki` 条目（query_help 可检索），概览条目导航列表补「专业解读」
+- **首次引导**：`router.js` Coach 新增 wiki 模块三步引导
+- **文档元数据**：3 篇互动长页 `<head>` 补 `description` / `wiki-category`（材料专题/工艺专题/质量失效）/ `wiki-tags`，列表自动按分类分组并展示标签
+
+### 二、实现要点
+
+- 阅读元数据：`DB.wikiMeta[file] = {star, read, readCount, lastReadAt, notes}`；`store.js` 初始 DB/`ensureDBFields` 补字段，`mergeFileData` 按「本地优先」合并（随文件同步/备份走）；`_wikiMetaGet()` 只读（渲染/筛选路径无副作用）、`_wikiMeta()` 懒创建（写入路径）
+- 索引 v2 兼容 v1：无 `text` 字段时检索自动降级为标题/摘要/标签
+- `utils.js` SVG 图标表新增 `star`（既有图标零改动）
+- 样式全部入 `components.css` wiki 区块，复用既有设计令牌与 `.search-box`/`.btn.ghost`/`.tag.*` 组件类，无 `!important`、无硬编码色值；`.wiki-card` 追加 `position:relative` 供星标定位
+
+### 三、变更文件
+
+`scripts/gen-wiki-index.mjs`、`src/views/wiki.js`、`src/views/search-panel.js`、`src/core/store.js`、`src/core/help-knowledge.js`、`src/core/router.js`、`src/core/utils.js`、`src/styles/components.css`、`src/public/wiki/{17-4ph-fastener,2A12-T4-自冲摩擦铆焊-互动长页,hydrogen-embrittlement}.html`（仅 head 元数据）、`docs/wiki-integration.md`、`docs/flows/search-panel.md`、本文档
+
+### 四、验证
+
+- `node --check` 通过：wiki.js / search-panel.js / store.js / help-knowledge.js / router.js / utils.js / gen-wiki-index.mjs
+- `npm run wiki:index` 重新生成索引 v2（3 篇，57KB，text 提取 6.6K/8.4K/7K 字符，分类/标签正确）
+- `npm run vite:build` 成功（chunk 体积告警为既有提示，与基线一致）
+- 真实浏览器（Chromium，http 静态服务）实测通过：列表卡片/分组/统计、单关键词命中片段高亮、多关键词 AND、空态、筛选计数、打开文档记录已读、收藏原地切换（iframe 未重载）、笔记「未保存→已保存」自动落库、「继续阅读」条、⌘K 知识库源命中并点击直达、刷新后 IndexedDB 持久化恢复
+- 注：沙箱浏览器对 `file://` 页面注入了禁 eval 的 CSP 导致无法直接双击验证；产物本身无 CSP，Tauri CSP 已含 `unsafe-eval`，正常浏览器双击 `dist/index.html` 不受影响（启动方式与 v1.0.57 完全一致，未改动）
+
+---
+
 ## 未发布 · 📚 新增「专业解读」：本地互动文档 iframe 内嵌（不推进版本号）
 
 > **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57）

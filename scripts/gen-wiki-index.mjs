@@ -11,6 +11,10 @@
      因此索引统一产出为 `window.__WIKI_INDEX = {...}`，由 views/wiki.js
      动态注入 <script> 加载（与 core/exporter.js 加载 vendor/xlsx.min.js 同策略）。
 
+   索引 version 2（2026-10-27）起新增 docs[i].text：构建期从文档提取的纯文本
+   （去 script/style/注释与标签，截断到 TEXT_MAX），仅供站内全文检索使用，
+   不改动文档本身、也不参与打包编译。
+
    元数据约定（可选，写在 <head> 内）：
      <title>                               → 卡片标题（必填，缺失回退文件名）
      <meta name="description" content="">  → 卡片摘要（缺失时自动截取正文首段 <p>）
@@ -32,6 +36,7 @@ const WIKI_DIR = resolve(ROOT, 'src/public/wiki')
 const OUT_FILE = resolve(WIKI_DIR, 'index.js')
 const DEFAULT_CATEGORY = '专业解读'
 const DESC_MAX = 96
+const TEXT_MAX = 20000  // 全文检索文本上限（字符），控制 index.js 体积
 
 /** 取第一个捕获组，未命中返回空串 */
 function pick(re, html) {
@@ -74,6 +79,17 @@ function firstParagraph(html) {
   return m ? stripTags(m[1]) : ''
 }
 
+/** 全文检索文本：去 script/style/注释与标签，压缩空白，截断到 TEXT_MAX */
+function extractText(html) {
+  const body = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote|pre)>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+  return decodeEntities(body).replace(/\s+/g, ' ').trim().slice(0, TEXT_MAX)
+}
+
 /** 截断摘要，尽量断在标点处 */
 function clip(text) {
   const s = String(text || '').trim()
@@ -97,6 +113,7 @@ function readDoc(file) {
     .map((t) => t.trim())
     .filter(Boolean)
   const orderRaw = parseInt(metaContent(html, 'wiki-order'), 10)
+  const text = extractText(html)
 
   return {
     file,                              // 原始文件名（含中文/空格，前端负责 encodeURI）
@@ -104,6 +121,7 @@ function readDoc(file) {
     desc,
     category,
     tags,
+    text,                              // 全文纯文本（检索用，仅存索引）
     order: Number.isFinite(orderRaw) ? orderRaw : 9999,
     size: st.size,                     // 字节数，用于卡片上展示篇幅
     mtime: Math.round(st.mtimeMs / 1000), // 秒级时间戳，用于「最近更新」标记
@@ -131,7 +149,7 @@ export function generateWikiIndex(options = {}) {
     .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-Hans-CN'))
 
   const payload = {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
     count: docs.length,
     docs,

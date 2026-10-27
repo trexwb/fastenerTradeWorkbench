@@ -5,7 +5,7 @@
 
 ## 模块功能概述
 
-全局搜索与命令面板（`⌘K`）：一个输入框聚合六源检索（订单 / 客户 / 报价 / BOM / 结算 / 发票），支持关键字高亮、键盘导航、结果为空时直接转问 AI、选中条目按 `Tab` 以该条为上下文问 AI。
+全局搜索与命令面板（`⌘K`）：一个输入框聚合七源检索（订单 / 客户 / 报价 / BOM / 结算 / 发票 / 知识库），支持关键字高亮、键盘导航、结果为空时直接转问 AI、选中条目按 `Tab` 以该条为上下文问 AI。
 
 ## 核心数据结构
 
@@ -70,7 +70,7 @@ closeSearchPanel()
 
 ```
 search-panel.js（只读检索 + 路由跳转）
-    ├── DB.*（六源）─────────→ 只读，不产生写入
+    ├── DB.*（七源，知识库源读 window.__WIKI_INDEX）─→ 只读，不产生写入
     ├── router.js ──────────→ go() / goOrderView() / goOrder()
     ├── settlements.js ─────→ openSettleDetail()
     ├── invoices.js ───────→ openInvEdit()

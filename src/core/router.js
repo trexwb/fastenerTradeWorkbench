@@ -831,6 +831,11 @@ document.addEventListener('click', function (e) {
       {target:'.btn.primary[data-action="bind-dir"]',pos:'top',title:'② 进阶：绑定本地文件夹 = 自动同步',body:'绑定一个文件夹后，系统会把所有数据写入「紧固件贸易工作台_数据.json」；换电脑、换浏览器只要打开这同一个文件夹就能拿到最新数据，这是<b>最佳实践</b>。'},
       {title:'③ 重置示例数据 / 清空：有保护机制',body:'重置和清空会经过二次确认（显示影响条目数），绑定了文件也不会清空目标文件，放心使用。'}
     ]},
+    wiki:{label:'专业解读',icon:'fileText',steps:[
+      {title:'专业解读 = 你的内置知识库',body:'这里是随应用分发的<b>本地知识库</b>：材料/工艺深度长文（17-4PH、氢脆、自冲摩擦铆焊…），全部离线可读，还能做笔记。'},
+      {target:'.wiki-toolbar',pos:'bottom',title:'① 全文检索 + 筛选',body:'搜索框支持<b>标题/摘要/标签/正文全文</b>检索（回车触发，空格分隔多关键词）；右侧 chips 按「收藏 / 未读 / 有笔记」过滤。⌘K 全局搜索也会命中知识库。'},
+      {target:'.wiki-grid',pos:'top',title:'② 收藏 · 已读 · 笔记',body:'卡片右上角星标收藏；打开即自动记已读，列表顶部出现<b>「继续阅读」</b>；阅读页底部可写<b>读书笔记</b>（自动保存，随数据备份保存）。'}
+    ]},
     keyboard:{label:'快捷键',icon:'keyboard',steps:[
       {title:'快捷键 = 效率倍增开关',body:'把高频操作全部集中到键盘，尤其是全局命令面板 <span class="kbd">⌘K</span>。这里可以看到完整的快捷键列表，并能切换启用/禁用。'},
       {title:'⌘K 能做什么？',body:'① 搜索订单 / 报价 / BOM SKU 并直接跳转；② 输入自然语言问题让 AI 助手分析数据；③ 快速新建单位/订单/报价。真正的全局入口。'}
