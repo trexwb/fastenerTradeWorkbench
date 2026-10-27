@@ -73,6 +73,7 @@ const NAV=[
     {k:'inv-receive',label:'收票记录',icon:'fileDown'}
   ]},
   {k:'data',label:'数据管理',icon:'database'},
+  {k:'wiki',label:'专业解读',icon:'fileText'},
 ];
 
 /* =========================================================
@@ -193,7 +194,10 @@ if(hashRoutingEnabled()){
  * @param {string} v - 目标视图 key
  * @returns {void} 无返回值
  */
-function go(v){view=v;curOrder=null;curOrderView=null;sidebarOpen=false;updateHash();render();window.scrollTo(0,0);}
+function go(v){view=v;curOrder=null;curOrderView=null;sidebarOpen=false;
+  // 专业解读模块：离开时关闭已打开的文档，回到列表态（模块未加载时静默跳过）
+  if(typeof __wikiReset==='function'){try{__wikiReset();}catch(e){}}
+  updateHash();render();window.scrollTo(0,0);}
 
 /**
  * 渲染整个应用界面，包括侧栏、面包屑和内容区。
@@ -253,6 +257,7 @@ function render(){
     case 'inv-issue':content=viewInvoices('issue');break;
     case 'inv-receive':content=viewInvoices('receive');break;
     case 'data':content=viewData();break;
+    case 'wiki':content=viewWiki();break;
   }
   app.innerHTML='<div class="app">'+
     '<div class="menu-overlay'+(sidebarOpen?' on':'')+'" onclick="toggleSidebar()"></div>'+

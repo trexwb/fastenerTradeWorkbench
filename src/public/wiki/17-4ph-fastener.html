@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>0Cr17Ni4Cu4Nb · 会自己变强的钢</title>
+<style>
+  :root{
+    --bg:#080b12; --bg2:#0e1420; --panel:#121a28; --panel2:#182231;
+    --line:#243044; --txt:#e9eef7; --dim:#98a6bb; --dim2:#6b7a91;
+    --blue:#4ea8ff; --gold:#d9a441; --teal:#35d6c0; --red:#ff6b5e; --green:#3ddc84;
+    --fs:17px; --maxw:920px;
+    --shadow:0 20px 54px rgba(0,0,0,.5);
+  }
+  html[data-theme="light"]{
+    --bg:#f5f6f8; --bg2:#eceef2; --panel:#ffffff; --panel2:#f3f5f8;
+    --line:#d8dde6; --txt:#16202f; --dim:#5b697c; --dim2:#8a96a8;
+    --blue:#1069c7; --gold:#a97a1c; --teal:#0e8f80; --red:#c0392b; --green:#1e8e4e;
+    --shadow:0 18px 44px rgba(30,45,70,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{font-size:var(--fs);scroll-behavior:smooth}
+  body{
+    margin:0;overflow-x:hidden;background:var(--bg);color:var(--txt);line-height:1.85;letter-spacing:.01em;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background-image:radial-gradient(1100px 620px at 12% -12%,rgba(78,168,255,.13),transparent 60%),
+                     radial-gradient(900px 520px at 108% 8%,rgba(217,164,65,.10),transparent 55%);
+    background-attachment:fixed;
+  }
+  ::selection{background:var(--gold);color:#0a0d14}
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--blue),var(--gold));z-index:60;transition:width .08s linear}
+  .bar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:.35rem;padding:.55rem .7rem;
+    background:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line)}
+  .bar .brand{font-weight:800;letter-spacing:.05em;font-size:.76rem;color:var(--blue);margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;min-width:2.2rem;height:2.1rem;padding:0 .55rem;
+    border-radius:.6rem;border:1px solid var(--line);background:var(--panel);color:var(--txt);
+    font-size:.78rem;font-weight:600;cursor:pointer;transition:.18s;white-space:nowrap}
+  .btn:hover{border-color:var(--blue);color:var(--blue)}
+  .btn:active{transform:scale(.96)}
+  .btn.pri{background:linear-gradient(135deg,var(--blue),#2b6fd0);border-color:transparent;color:#04101f}
+  #searchWrap{position:fixed;z-index:55;top:3.4rem;left:0;right:0;padding:0 .8rem;display:none}
+  #searchWrap.on{display:block}
+  #searchWrap input{width:100%;max-width:var(--maxw);margin:0 auto;display:block;padding:.7rem 1rem;border-radius:.8rem;
+    border:1px solid var(--blue);background:var(--panel);color:var(--txt);font-size:.9rem;outline:none;box-shadow:var(--shadow)}
+  #searchInfo{max-width:var(--maxw);margin:.3rem auto 0;font-size:.74rem;color:var(--dim);text-align:right}
+  .hit{background:linear-gradient(180deg,transparent 58%,rgba(78,168,255,.42) 58%);border-radius:2px}
+  .hit.cur{outline:2px solid var(--blue);outline-offset:2px}
+  #toc{position:fixed;z-index:58;top:0;left:0;bottom:0;width:min(80vw,320px);background:var(--panel);
+    border-right:1px solid var(--line);transform:translateX(-102%);transition:transform .28s ease;overflow:auto;padding:4.2rem 1rem 2rem}
+  #toc.on{transform:none;box-shadow:var(--shadow)}
+  #toc h4{margin:.2rem 0 .8rem;font-size:.72rem;letter-spacing:.18em;color:var(--dim2)}
+  #toc a{display:block;padding:.5rem .6rem;border-radius:.5rem;color:var(--txt);text-decoration:none;font-size:.86rem;border-left:2px solid transparent}
+  #toc a:hover{background:var(--panel2);border-left-color:var(--blue);color:var(--blue)}
+  #toc a small{display:block;color:var(--dim2);font-size:.7rem}
+  #mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:57;display:none}
+  #mask.on{display:block}
+  main{max-width:var(--maxw);margin:0 auto;padding:3.6rem 1.05rem 5rem}
+  section{scroll-margin-top:4.2rem}
+  h2{font-size:1.3rem;line-height:1.4;margin:0 0 .9rem}
+  h2 .num{color:var(--blue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;letter-spacing:.14em;display:block;margin-bottom:.25rem}
+  h3{font-size:1rem;margin:1.5rem 0 .5rem;color:var(--gold)}
+  p{margin:.75rem 0}
+  strong{color:var(--gold);font-weight:700}
+  em{font-style:normal;color:var(--teal)}
+  .dim{color:var(--dim)}
+  ul,ol{padding-left:1.15rem;margin:.7rem 0}
+  li{margin:.45rem 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);
+    border-radius:.35rem;padding:.05rem .35rem;font-size:.86em;color:var(--teal)}
+  .hero{padding:1.2rem 0 .4rem}
+  .kicker{display:inline-flex;align-items:center;gap:.45rem;font-size:.7rem;letter-spacing:.16em;color:var(--blue);
+    border:1px solid color-mix(in srgb,var(--blue) 45%,transparent);border-radius:999px;padding:.28rem .7rem;margin-bottom:1.1rem}
+  .kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--blue);animation:pulse 1.8s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(78,168,255,.5)}50%{opacity:.55;box-shadow:0 0 0 7px rgba(78,168,255,0)}}
+  .hero h1{font-size:clamp(1.9rem,7.2vw,3.3rem);line-height:1.14;margin:0 0 .5rem;letter-spacing:-.02em;font-weight:900}
+  .hero h1 .sub{display:block;color:var(--gold);font-size:.42em;letter-spacing:.06em;margin-top:.55rem;font-weight:800}
+  .lede{font-size:1.02rem;color:var(--dim);max-width:38em}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin:1.5rem 0 .4rem}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:.9rem;padding:.85rem .9rem;position:relative;overflow:hidden}
+  .stat::after{content:"";position:absolute;right:-18px;top:-18px;width:58px;height:58px;border-radius:50%;
+    background:radial-gradient(circle,rgba(78,168,255,.25),transparent 70%)}
+  .stat b{display:block;font-size:1.12rem;color:var(--blue);letter-spacing:-.01em}
+  .stat small{color:var(--dim2);font-size:.72rem;display:block;margin-top:.15rem}
+  .scrollhint{margin-top:1.6rem;font-size:.74rem;color:var(--dim2);letter-spacing:.14em}
+  .scene{padding:2.4rem 0 .6rem;border-top:1px solid var(--line);margin-top:2rem}
+  .scene:first-of-type{border-top:0}
+  .card{background:linear-gradient(165deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:1.1rem;
+    padding:1.05rem 1.05rem .9rem;margin:1rem 0;box-shadow:var(--shadow)}
+  .fig{background:var(--panel);border:1px solid var(--line);border-radius:1rem;padding:.8rem;margin:1.1rem 0}
+  .fig svg{width:100%;height:auto;display:block;border-radius:.6rem}
+  .fig figcaption{font-size:.73rem;color:var(--dim2);margin-top:.55rem;text-align:center;line-height:1.6}
+  .cite{display:inline-flex;align-items:center;justify-content:center;min-width:1.05em;height:1.05em;padding:0 .18em;
+    margin-left:.12em;font-size:.62em;font-weight:800;border-radius:.3em;vertical-align:super;
+    background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal);
+    border:1px solid color-mix(in srgb,var(--teal) 45%,transparent);cursor:help;line-height:1}
+  .cite:hover{background:var(--teal);color:#04110f}
+  #citePop{position:fixed;z-index:70;max-width:min(92vw,540px);display:none;background:var(--panel);
+    border:1px solid var(--teal);border-radius:.8rem;padding:.8rem .9rem;font-size:.8rem;line-height:1.7;box-shadow:var(--shadow)}
+  #citePop b{display:block;font-size:.68rem;letter-spacing:.12em;color:var(--teal);margin-bottom:.3rem}
+  .guess{border:1px dashed color-mix(in srgb,var(--gold) 55%,transparent);border-radius:1rem;padding:1rem;margin:1.2rem 0;
+    background:color-mix(in srgb,var(--gold) 6%,transparent)}
+  .guess .q{font-weight:700;color:var(--gold);margin:0 0 .6rem;font-size:.95rem}
+  .guess .ans{display:none;margin-top:.8rem;padding-top:.8rem;border-top:1px dashed var(--line);font-size:.92rem}
+  .guess.on .ans{display:block;animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .pain{display:grid;gap:.55rem;margin:1rem 0}
+  .pain .row{border:1px solid var(--line);border-radius:.8rem;background:var(--panel);overflow:hidden}
+  .pain .h{display:flex;align-items:center;gap:.6rem;padding:.75rem .9rem;cursor:pointer;font-size:.92rem;font-weight:700}
+  .pain .h i{font-style:normal;font-size:.7rem;font-weight:800;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 50%,transparent);
+    background:color-mix(in srgb,var(--red) 12%,transparent);border-radius:.35rem;padding:.05rem .4rem}
+  .pain .h .ar{margin-left:auto;color:var(--dim2);transition:.25s;font-size:.78rem}
+  .pain .row.on .h .ar{transform:rotate(90deg);color:var(--blue)}
+  .pain .b{max-height:0;overflow:hidden;transition:max-height .3s ease}
+  .pain .row.on .b{max-height:320px}
+  .pain .b p{margin:0;padding:0 .9rem .85rem;font-size:.88rem;color:var(--dim)}
+  .ctl{background:var(--panel2);border:1px solid var(--line);border-radius:.85rem;padding:.9rem;margin:.9rem 0}
+  .ctl .lab{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.5rem}
+  .ctl .lab b{font-size:1.7rem;color:var(--blue);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .ctl .lab span{font-size:.76rem;color:var(--dim2)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:32px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:9px;border-radius:6px;
+    background:linear-gradient(90deg,#4ea8ff 0%,#4ea8ff 20%,#d9a441 20%,#d9a441 55%,#ff6b5e 55%,#ff6b5e 100%);opacity:.9}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;margin-top:-8.5px;
+    background:var(--panel);border:3px solid var(--blue);box-shadow:0 0 0 4px color-mix(in srgb,var(--blue) 22%,transparent)}
+  .tick{display:flex;justify-content:space-between;font-size:.67rem;color:var(--dim2);font-variant-numeric:tabular-nums}
+  .readouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:.45rem;margin-top:.8rem}
+  .ro{background:var(--panel);border:1px solid var(--line);border-radius:.6rem;padding:.5rem .6rem}
+  .ro small{display:block;font-size:.66rem;color:var(--dim2);letter-spacing:.03em}
+  .ro b{font-size:.98rem;color:var(--txt);font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;font-variant-numeric:tabular-nums}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:.8rem;margin:.9rem 0}
+  th,td{padding:.5rem .55rem;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+  th{background:var(--panel2);color:var(--dim);font-weight:700;font-size:.74rem;letter-spacing:.02em}
+  tr:last-child td{border-bottom:0}
+  td.ok{color:var(--green)}
+  td.bad{color:var(--red)}
+  .chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.8rem 0}
+  .chip{padding:.42rem .7rem;border-radius:999px;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);font-size:.8rem;cursor:pointer;transition:.18s}
+  .chip.on{background:color-mix(in srgb,var(--blue) 18%,transparent);border-color:var(--blue);color:var(--blue);font-weight:700}
+  .bars{display:grid;gap:.5rem;margin:.8rem 0}
+  .barline{display:grid;grid-template-columns:4.4rem 1fr 4.2rem;align-items:center;gap:.5rem;font-size:.76rem;color:var(--dim2)}
+  .rail{height:11px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+  .fill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--teal));transition:width .5s ease}
+  .barline .v{text-align:right;color:var(--txt);font-variant-numeric:tabular-nums}
+  .quiz{border:1px solid var(--line);border-radius:1rem;background:var(--panel);padding:1rem;margin:.9rem 0}
+  .quiz .qt{font-weight:700;font-size:.95rem;margin:0 0 .7rem}
+  .opt{display:block;width:100%;text-align:left;padding:.65rem .8rem;margin:.4rem 0;border-radius:.6rem;
+    border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:.88rem;cursor:pointer;transition:.18s}
+  .opt:hover{border-color:var(--blue)}
+  .opt.right{border-color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+  .opt.wrong{border-color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent)}
+  .opt:disabled{cursor:default}
+  .explain{font-size:.82rem;color:var(--dim);margin:.55rem 0 0;display:none}
+  .explain.on{display:block}
+  #score{font-size:.9rem;color:var(--gold);font-weight:700;margin-top:.6rem;min-height:1.4em}
+  details.archive{margin:2.6rem 0 0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);overflow:hidden}
+  details.archive>summary{cursor:pointer;padding:1rem 1.1rem;font-weight:700;font-size:.95rem;list-style:none;display:flex;align-items:center;gap:.6rem}
+  details.archive>summary::-webkit-details-marker{display:none}
+  details.archive>summary::before{content:"▸";color:var(--blue);transition:.2s}
+  details.archive[open]>summary::before{transform:rotate(90deg)}
+  details.archive>summary small{margin-left:auto;color:var(--dim2);font-weight:400;font-size:.74rem}
+  .archiveBody{padding:0 1.1rem 1.4rem;border-top:1px solid var(--line)}
+  .archiveBody p{font-size:.9rem;color:var(--dim)}
+  .archiveBody h4{font-size:.86rem;color:var(--gold);margin:1.2rem 0 .3rem}
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);font-size:.76rem;color:var(--dim2)}
+  .toTop{position:fixed;right:1rem;bottom:calc(1rem + env(safe-area-inset-bottom));z-index:40;display:none}
+  .toTop.on{display:inline-flex}
+  @media(max-width:520px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .barline{grid-template-columns:3.6rem 1fr 3.6rem}
+    main{padding-left:.85rem;padding-right:.85rem}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<div class="bar">
+  <span class="brand">0Cr17Ni4Cu4Nb / 17-4PH</span>
+  <button class="btn" id="tocBtn">目录</button>
+  <button class="btn" id="searchBtn">搜索</button>
+  <button class="btn" id="fsDown">A−</button>
+  <button class="btn" id="fsUp">A+</button>
+  <button class="btn" id="themeBtn">明</button>
+</div>
+
+<div id="searchWrap">
+  <input id="searchInput" type="search" placeholder="搜：时效 / ε-Cu / 1180MPa / 热镦 / CrN …" autocomplete="off">
+  <div id="searchInfo"></div>
+</div>
+
+<nav id="toc">
+  <h4>目录</h4>
+  <a href="#s1">01 换掉 30CrMnSiA 的四个理由<small>痛点档案</small></a>
+  <a href="#s2">02 它凭什么又强又韧<small>沉淀硬化机理</small></a>
+  <a href="#s3">03 温度地图<small>固溶 · 时效 · 相变点</small></a>
+  <a href="#s4">04 时效温度实验台<small>拖动看性能曲线</small></a>
+  <a href="#s5">05 五组工艺与指标<small>表 1 / 表 3</small></a>
+  <a href="#s6">06 从棒料到螺栓<small>热镦 · 冷镦 · 机加工</small></a>
+  <a href="#s7">07 12 个规格实测<small>表 2 + 表面处理</small></a>
+  <a href="#quiz">自测 3 题<small></small></a>
+  <a href="#archive">原文归档<small>可查读</small></a>
+</nav>
+<div id="mask"></div>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="kicker">宇航紧固件材料档案 · 002</div>
+    <h1>会自己变强的钢<span class="sub">0Cr17Ni4Cu4Nb 在宇航紧固件中的应用</span></h1>
+    <p class="lede">它先被加热到 1020~1060℃ 溶成一块“软铁”，再回到 460~650℃ 待上几小时——<strong>强度反而涨到 1100MPa 以上</strong>。这不是矛盾，是沉淀硬化。<span class="cite" data-cite="1">1</span></p>
+
+    <div class="stats">
+      <div class="stat"><b>≥1100MPa</b><small>热处理强化后抗拉强度</small></div>
+      <div class="stat"><b>1180±100MPa</b><small>螺栓常用抗拉强度</small></div>
+      <div class="stat"><b>35~42HRC</b><small>对应 1078~1303MPa</small></div>
+      <div class="stat"><b>5~10 倍</b><small>耐蚀能力对比结构钢电镀件</small></div>
+    </div>
+    <div class="scrollhint">↓ 7 个场景：从材料机理到 12 个规格实测</div>
+  </section>
+
+  <!-- S1 -->
+  <section class="scene" id="s1" data-scene="1">
+    <h2><span class="num">SCENE 01</span>换掉 30CrMnSiA 的四个理由</h2>
+    <p>碳素钢与合金钢紧固件冷加工性能好、成本低，在宇航紧固件领域用量很大；GB、GJB、HB 标准里，合金钢和碳素钢紧固件占相当比例。<span class="cite" data-cite="2">2</span>但 800MPa 以上等级多用 30CrMnSiA，它在服役中暴露了不少问题。</p>
+
+    <div class="pain" id="painList">
+      <div class="row">
+        <div class="h"><i>痛点 01</i>淬透性差，回火脆性、脱碳风险<span class="ar">▸</span></div>
+        <div class="b"><p>大截面件心部性能得不到保证；回火脆性与脱碳会直接削弱疲劳与承载能力，属于“看不见的质量损失”。</p></div>
+      </div>
+      <div class="row">
+        <div class="h"><i>痛点 02</i>屈强比低，纵横向差异大<span class="ar">▸</span></div>
+        <div class="b"><p>屈强比低意味着材料强度储备利用不充分；纵向、横向力学指标差异较大，难以满足高承载、高抗疲劳要求。</p></div>
+      </div>
+      <div class="row">
+        <div class="h"><i>痛点 03</i>耐蚀性差，必须表面处理<span class="ar">▸</span></div>
+        <div class="b"><p>需镀锌、镀镉、氧化等处理才能应对环境腐蚀。海洋环境下这道“外加防线”本身就是薄弱环节。</p></div>
+      </div>
+      <div class="row">
+        <div class="h"><i>痛点 04</i>电镀后氢脆风险大<span class="ar">▸</span></div>
+        <div class="b"><p>电镀过程引入氢，高强度钢对氢脆极其敏感——这就是上一份档案里那位“看不见的刺客”。换材料，是从源头不给氢机会。</p></div>
+      </div>
+    </div>
+
+    <p>海防装备发展，对海防飞机、航天飞行器所用紧固件在<strong>海洋环境下的耐蚀性能</strong>提出更高要求。通行做法是“好基体 + 合适涂镀层”，而 0Cr17Ni4Cu4Nb 就是高强度不锈钢里的典型代表。<span class="cite" data-cite="3">3</span></p>
+  </section>
+
+  <!-- S2 -->
+  <section class="scene" id="s2" data-scene="2">
+    <h2><span class="num">SCENE 02</span>它凭什么又强又韧</h2>
+    <p>不锈钢有三条技术路线：奥氏体耐蚀好但只能冷作强化；马氏体靠淬火强化但回火脆性大、耐蚀性差；于是有了<em>沉淀硬化</em>这条折中路。<span class="cite" data-cite="4">4</span></p>
+    <p>0Cr17Ni4Cu4Nb 在 Cr17 型不锈钢基础上加入 Cu、Nb，通过马氏体相变 + 在 <strong>400~650℃</strong> 时效析出 <strong>ε-Cu、NbC、M23C6</strong> 等强化相，实现沉淀硬化。固溶状态是低碳板条马氏体，时效后析出尺寸约 <strong>20nm</strong> 的弥散相。<span class="cite" data-cite="5">5</span></p>
+
+    <figure class="fig" data-figure="1">
+      <svg viewBox="0 0 640 290" role="img" aria-label="沉淀硬化机理：固溶态板条马氏体，时效后析出纳米级强化相">
+        <defs>
+          <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#4ea8ff" stop-opacity=".22"/>
+            <stop offset="1" stop-color="#4ea8ff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <rect x="20" y="40" width="270" height="190" rx="12" fill="#0d1522" stroke="#243044"/>
+        <text x="155" y="28" fill="#98a6bb" font-size="12" text-anchor="middle">固溶态 · 过饱和低碳板条马氏体</text>
+        <g id="laths" stroke="#4b6b95" stroke-width="7" stroke-linecap="round" opacity=".85">
+          <line x1="55" y1="80" x2="250" y2="80"/><line x1="55" y1="108" x2="250" y2="108"/>
+          <line x1="55" y1="136" x2="250" y2="136"/><line x1="55" y1="164" x2="250" y2="164"/>
+          <line x1="55" y1="192" x2="250" y2="192"/>
+        </g>
+        <g id="precip" opacity="0" fill="#d9a441">
+          <circle cx="95" cy="80" r="3.2"/><circle cx="150" cy="80" r="3.2"/><circle cx="205" cy="80" r="3.2"/>
+          <circle cx="120" cy="108" r="3.2"/><circle cx="180" cy="108" r="3.2"/><circle cx="230" cy="108" r="3.2"/>
+          <circle cx="80" cy="136" r="3.2"/><circle cx="140" cy="136" r="3.2"/><circle cx="200" cy="136" r="3.2"/>
+          <circle cx="110" cy="164" r="3.2"/><circle cx="170" cy="164" r="3.2"/><circle cx="225" cy="164" r="3.2"/>
+          <circle cx="90" cy="192" r="3.2"/><circle cx="155" cy="192" r="3.2"/><circle cx="215" cy="192" r="3.2"/>
+        </g>
+        <path d="M300 135 h40" stroke="#35d6c0" stroke-width="2.4" marker-end="url(#ar1)"/>
+        <text x="320" y="122" fill="#35d6c0" font-size="11" text-anchor="middle">时效</text>
+        <text x="320" y="158" fill="#35d6c0" font-size="11" text-anchor="middle">460~650℃</text>
+        <defs><marker id="ar1" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#35d6c0"/></marker></defs>
+        <rect x="350" y="40" width="270" height="190" rx="12" fill="url(#lg1)" stroke="#2c4a6e"/>
+        <text x="485" y="28" fill="#98a6bb" font-size="12" text-anchor="middle">时效态 · 纳米强化相弥散析出</text>
+        <g stroke="#5d86b8" stroke-width="7" stroke-linecap="round" opacity=".55">
+          <line x1="385" y1="80" x2="580" y2="80"/><line x1="385" y1="108" x2="580" y2="108"/>
+          <line x1="385" y1="136" x2="580" y2="136"/><line x1="385" y1="164" x2="580" y2="164"/>
+          <line x1="385" y1="192" x2="580" y2="192"/>
+        </g>
+        <g fill="#f0c060">
+          <circle cx="420" cy="80" r="3.6"/><circle cx="470" cy="80" r="3.6"/><circle cx="525" cy="80" r="3.6"/><circle cx="565" cy="80" r="3.6"/>
+          <circle cx="440" cy="108" r="3.6"/><circle cx="495" cy="108" r="3.6"/><circle cx="550" cy="108" r="3.6"/>
+          <circle cx="405" cy="136" r="3.6"/><circle cx="460" cy="136" r="3.6"/><circle cx="515" cy="136" r="3.6"/><circle cx="570" cy="136" r="3.6"/>
+          <circle cx="430" cy="164" r="3.6"/><circle cx="485" cy="164" r="3.6"/><circle cx="540" cy="164" r="3.6"/>
+          <circle cx="415" cy="192" r="3.6"/><circle cx="475" cy="192" r="3.6"/><circle cx="535" cy="192" r="3.6"/>
+        </g>
+        <text x="485" y="254" fill="#f0c060" font-size="11.5" text-anchor="middle">ε-Cu · NbC · M₂₃C₆（约 20nm）</text>
+        <text x="155" y="254" fill="#6b7a91" font-size="11.5" text-anchor="middle">强度低 · 塑韧性好 · 便于成形</text>
+      </svg>
+      <figcaption>图 1 ｜ 固溶（软）→ 时效（析出强化），这也是“先成形、后强化”的工艺基础</figcaption>
+    </figure>
+
+    <div class="guess">
+      <p class="q">先猜：既然要强度，为什么不在固溶后就结束，反而要回炉 460~650℃？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans">因为强化靠的不是急冷，而是<strong>析出</strong>。固溶态是过饱和的低碳板条马氏体，只有在这个温度区间时效，Cu、Nb 才会以 ε-Cu、NbC、M23C6 的形式弥散析出（尺寸约 20nm），把位错钉住、强度顶上去。温度太低析不出，太高又会粗化软化。</div>
+    </div>
+  </section>
+
+  <!-- S3 -->
+  <section class="scene" id="s3" data-scene="3">
+    <h2><span class="num">SCENE 03</span>温度地图：固溶、时效与相变点</h2>
+    <p>常用热处理是 <strong>1020~1060℃ 固溶</strong> + <strong>460~650℃ 时效</strong>。固溶温度不宜太高，是为了留足强度和韧性。<span class="cite" data-cite="6">6</span>相变点数据：Ac1 约 670℃、Ac3 约 740℃、Ms 80~140℃、Mf 约 32℃。<span class="cite" data-cite="7">7</span></p>
+
+    <div class="card">
+      <div class="ctl" style="margin-top:0">
+        <div class="lab"><b id="tpVal">900</b><span>℃　拖动查看所处区间</span></div>
+        <input id="tpRange" type="range" min="0" max="1100" step="10" value="900" aria-label="工艺温度">
+        <div class="tick"><span>0℃</span><span>670 Ac1</span><span>1020 固溶</span><span>1100℃</span></div>
+        <div id="tpState" style="margin-top:.75rem;font-size:.9rem;border-radius:.7rem;padding:.7rem .85rem;background:var(--panel);border:1px solid var(--line)"></div>
+      </div>
+    </div>
+
+    <figure class="fig" data-figure="2">
+      <svg viewBox="0 0 640 170" role="img" aria-label="工艺温度轴：时效区460到650，固溶区1020到1060，相变点Ac1 670、Ac3 740、Ms 80到140、Mf 32">
+        <line x1="40" y1="90" x2="610" y2="90" stroke="#3a4a60" stroke-width="2"/>
+        <g font-size="10" fill="#8fa0b8" text-anchor="middle">
+          <text x="52" y="120">0</text>
+          <text x="112" y="120">140</text>
+          <text x="205" y="120">460</text>
+          <text x="290" y="120">650</text>
+          <text x="345" y="120">740</text>
+          <text x="470" y="120">1020</text>
+          <text x="500" y="120">1060</text>
+          <text x="600" y="120">1100℃</text>
+        </g>
+        <!-- 时效区 -->
+        <rect x="205" y="78" width="85" height="24" rx="6" fill="#d9a441" opacity=".3"/>
+        <text x="247" y="68" fill="#f0c060" font-size="11" text-anchor="middle">时效区</text>
+        <!-- 固溶区 -->
+        <rect x="470" y="78" width="30" height="24" rx="6" fill="#4ea8ff" opacity=".35"/>
+        <text x="485" y="68" fill="#9dc9ff" font-size="11" text-anchor="middle">固溶</text>
+        <!-- 相变点 -->
+        <g stroke="#ff6b5e" stroke-width="1.4" stroke-dasharray="4 3">
+          <line x1="112" y1="60" x2="112" y2="90"/><line x1="345" y1="60" x2="345" y2="90"/>
+          <line x1="318" y1="90" x2="318" y2="130"/>
+        </g>
+        <text x="112" y="52" fill="#ff6b5e" font-size="10" text-anchor="middle">Ms 80~140</text>
+        <text x="345" y="52" fill="#ff6b5e" font-size="10" text-anchor="middle">Ac3 740</text>
+        <text x="318" y="145" fill="#ff6b5e" font-size="10" text-anchor="middle">Ac1 670</text>
+        <text x="52" y="145" fill="#6b7a91" font-size="10">Mf≈32</text>
+      </svg>
+      <figcaption>图 2 ｜ 一张图看懂：什么时候软下来（固溶），什么时候强起来（时效）</figcaption>
+    </figure>
+  </section>
+
+  <!-- S4 -->
+  <section class="scene" id="s4" data-scene="4">
+    <h2><span class="num">SCENE 04</span>时效温度实验台</h2>
+    <p>1040℃ 固溶 1h 后，时效温度在 <strong>200~650℃</strong> 之间变化，四项指标并不同步：抗拉/屈服先升后降、500℃ 最高；伸长率先降后升、500℃ 最低；断面收缩率先降后升、450℃ 最低；冲击韧度同样在 450℃ 附近最低。<span class="cite" data-cite="8">8</span></p>
+    <p class="dim">拖滑杆，看强度与塑性怎么互相“躲”。</p>
+
+    <div class="card">
+      <div class="ctl">
+        <div class="lab"><b id="agVal">500</b><span>℃ 时效温度</span></div>
+        <input id="agRange" type="range" min="200" max="650" step="10" value="500" aria-label="时效温度">
+        <div class="tick"><span>200℃</span><span>350℃</span><span>500℃</span><span>650℃</span></div>
+      </div>
+      <svg id="agChart" viewBox="0 0 660 300" style="width:100%;height:auto;display:block" role="img" aria-label="时效温度与强度、塑性、冲击韧度的趋势示意曲线"></svg>
+      <div class="readouts" id="agReadouts"></div>
+      <p class="dim" style="font-size:.72rem;margin:.7rem 0 0">曲线按原文描述的趋势与图表量程绘制，用于理解规律，<strong>不构成精确读数</strong>；工程取值以《航空材料手册》与实测报告为准。</p>
+    </div>
+
+    <div class="guess">
+      <p class="q">先猜：想同时拿到最高强度和最好塑性，能不能靠“选一个中间温度”一次性解决？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans">不能。强度在 500℃ 达峰时，伸长率恰好跌到最低——这是典型的<strong>强度—塑性倒挂</strong>。工程上只能按零件服役需求取舍：承力件偏向 470~500℃ 强度档，需要韧性的场合则把时效温度往上推。表 1 给了五组工艺，本质就是这份取舍清单。</div>
+    </div>
+  </section>
+
+  <!-- S5 -->
+  <section class="scene" id="s5" data-scene="5">
+    <h2><span class="num">SCENE 05</span>五组工艺，一份取舍清单</h2>
+    <p>标准里的性能指标按组别给出，从固溶态（只限硬度上限 ≤363HBW）到 610~630℃ 时效（≥930MPa），强度一路让位给塑性。<span class="cite" data-cite="9">9</span>点选组别看条形对比。</p>
+
+    <div class="card">
+      <div class="chips" id="grpChips"></div>
+      <div class="bars" id="grpBars"></div>
+      <p class="dim" style="font-size:.72rem;margin:.6rem 0 0">试样毛坯尺寸 25mm；固溶 1020~1060℃ 水冷；时效后空冷。“—”表示该组不考核该项。</p>
+    </div>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>组别</th><th>时效温度</th><th>Rm/MPa</th><th>Rp0.2/MPa</th><th>A/%</th><th>Z/%</th><th>HBW</th></tr></thead>
+        <tbody>
+          <tr><td>1（固溶态）</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>≤363</td></tr>
+          <tr><td>2</td><td>470~490</td><td>≥1310</td><td>≥1180</td><td>≥10</td><td>≥40</td><td>≥375</td></tr>
+          <tr><td>3</td><td>540~560</td><td>≥1040</td><td>≥1000</td><td>≥12</td><td>≥45</td><td>≥331</td></tr>
+          <tr><td>4</td><td>570~590</td><td>≥1000</td><td>≥865</td><td>≥13</td><td>≥45</td><td>≥302</td></tr>
+          <tr><td>5</td><td>610~630</td><td>≥930</td><td>≥725</td><td>≥16</td><td>≥50</td><td>≥277</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>螺栓的验收指标（表 3）</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Rm/MPa</th><th>Rp0.2/MPa</th><th>A/%</th><th>Z/%</th><th>KU2/J</th></tr></thead>
+        <tbody><tr><td>1075~1275</td><td>≥1000</td><td>≥12</td><td>≥45</td><td>≥40</td></tr></tbody>
+      </table>
+    </div>
+    <p class="dim">螺栓性能可用抗拉强度或硬度两种方式表达：抗拉强度一般 <strong>1180MPa±100MPa</strong>，硬度 <strong>35~42HRC</strong>，按 HB0-94—1977 换算后对应 1078~1303MPa。<span class="cite" data-cite="10">10</span></p>
+  </section>
+
+  <!-- S6 -->
+  <section class="scene" id="s6" data-scene="6">
+    <h2><span class="num">SCENE 06</span>从棒料到螺栓：成形与机加</h2>
+    <p>固溶态强度仍偏高，镦制成形对设备吨位和模具精度要求也高；但材料热稳定性与耐蚀性好，热加工时只要参数合适，不容易出现过热、过烧。<span class="cite" data-cite="11">11</span></p>
+
+    <div class="card">
+      <div class="chips" id="procChips"></div>
+      <div id="procBody" style="font-size:.92rem"></div>
+    </div>
+
+    <figure class="fig" data-figure="3">
+      <svg viewBox="0 0 640 250" role="img" aria-label="热镦与冷镦工艺对比：热镦参数失控形成过热组织，冷镦大变形产生应变线与掉头开裂">
+        <rect x="24" y="34" width="280" height="180" rx="12" fill="#0d1522" stroke="#243044"/>
+        <text x="164" y="24" fill="#98a6bb" font-size="12" text-anchor="middle">热镦 · 头部大变形量（六角头/扁圆头）</text>
+        <g>
+          <rect x="70" y="120" width="60" height="26" rx="4" fill="#2a3f5c" stroke="#5d86b8"/>
+          <rect x="130" y="86" width="96" height="94" rx="8" fill="#2a3f5c" stroke="#5d86b8"/>
+          <text x="178" y="112" fill="#9dc9ff" font-size="10" text-anchor="middle">头部</text>
+        </g>
+        <g stroke="#ff6b5e" stroke-width="2" fill="none">
+          <path d="M140 140 q18 -12 34 4 q16 14 34 -2"/>
+          <path d="M142 168 q20 10 40 -4 q18 -12 36 4"/>
+        </g>
+        <text x="164" y="204" fill="#ff6b5e" font-size="10" text-anchor="middle">参数失控 → 过热/过烧组织</text>
+
+        <rect x="336" y="34" width="280" height="180" rx="12" fill="#0d1522" stroke="#243044"/>
+        <text x="476" y="24" fill="#98a6bb" font-size="12" text-anchor="middle">冷镦 · 变形量过大</text>
+        <g>
+          <rect x="400" y="120" width="56" height="24" rx="4" fill="#2a3f5c" stroke="#5d86b8"/>
+          <rect x="456" y="92" width="92" height="80" rx="8" fill="#2a3f5c" stroke="#5d86b8"/>
+          <path d="M456 92 l22 -16 l24 16" fill="#2a3f5c" stroke="#5d86b8"/>
+        </g>
+        <g stroke="#d9a441" stroke-width="1.8" fill="none" opacity=".95">
+          <path d="M462 120 q40 -10 80 4"/>
+          <path d="M462 138 q40 12 80 -4"/>
+          <path d="M462 156 q40 -8 80 6"/>
+        </g>
+        <text x="476" y="204" fill="#d9a441" font-size="10" text-anchor="middle">“应变线”→ 受力时快速解理开裂</text>
+        <text x="576" y="200" fill="#ff6b5e" font-size="10">掉头</text>
+      </svg>
+      <figcaption>图 3 ｜ 两类典型缺陷：热镦过热组织（500×）与冷镦掉头（10×）</figcaption>
+    </figure>
+
+    <p>所以六角头、扁圆头这类头部大变形产品一般走<strong>热镦</strong>；若用冷变形，容易产生“应变线”，受力时快速解理开裂。后续用<strong>冷滚压</strong>控制头杆结合部与螺纹处的金属流线，提高疲劳寿命。<span class="cite" data-cite="12">12</span></p>
+    <p>机加工方面，材料切削性能良好，车削、磨削可选较高加工速度与较大切削量，但要<strong>注意冷却以免磨削烧伤</strong>；成品表面粗糙度低、尺寸一致性好。<span class="cite" data-cite="13">13</span></p>
+  </section>
+
+  <!-- S7 -->
+  <section class="scene" id="s7" data-scene="7">
+    <h2><span class="num">SCENE 07</span>12 个规格实测 + 表面处理</h2>
+    <p>按型号最常用的头型、型式与典型规格选取螺栓、螺钉和螺母验证，每格 3 件实测值。点下面的规格看是否落在 1075~1275MPa 区间（括号内为硬度 HRC）。<span class="cite" data-cite="14">14</span></p>
+
+    <div class="card">
+      <div class="chips" id="specChips"></div>
+      <div id="specOut" style="margin-top:.6rem;font-size:.9rem"></div>
+    </div>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>产品</th><th>规格</th><th>实测（3 件）</th><th>单位</th><th>判定</th></tr></thead>
+        <tbody id="specBody"></tbody>
+      </table>
+    </div>
+
+    <h3>表面处理：三种选择</h3>
+    <div class="card">
+      <ul style="margin:0">
+        <li><strong>化学钝化 Ct.P</strong>　常规方案。材料自身耐蚀性好，可应对抗氧化、耐弱酸、碱和盐腐蚀环境。<span class="cite" data-cite="15">15</span></li>
+        <li><strong>涂 MoS₂ / 涂十六醇</strong>　特殊情况使用，提升表面润滑性，防止冷焊（咬死）。</li>
+        <li><strong>PVD 真空离子镀 CrN 纳米涂层</strong>　海防装备上进一步提升耐蚀性的常用手段。<span class="cite" data-cite="16">16</span></li>
+      </ul>
+    </div>
+
+    <div class="guess">
+      <p class="q">先猜：既然材料本身耐蚀，为什么海防装备还要再加 PVD 涂层？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans">因为“耐蚀”是相对的。材料能抗氧化、耐弱酸碱盐，但海洋环境是盐雾 + 湿热 + 应力 + 微动磨损的组合拳，紧固件还有螺纹咬死问题。钝化解决基体钝化膜，MoS₂/十六醇解决咬死，PVD CrN 再叠一层硬质屏障——三重各管一段。</div>
+    </div>
+  </section>
+
+  <!-- QUIZ -->
+  <section class="scene" id="quiz">
+    <h2><span class="num">CHECK</span>自测：3 题</h2>
+    <div id="quizBox"></div>
+    <div id="score"></div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section class="scene" id="archive">
+    <h2><span class="num">ARCHIVE</span>原文归档</h2>
+    <details class="archive">
+      <summary>展开全文（与源文档一致）<small>约 2700 字</small></summary>
+      <div class="archiveBody">
+        <h4>1 序言</h4>
+        <p>由于碳素钢及合金钢紧固件具有良好的冷加工性能且成本低廉，所以在宇航紧固件领域中大量应用；GB、GJB、HB 标准中合金钢、碳素钢紧固件占有较大的比例[1，2]。</p>
+        <p>在宇航型号部件结构设计中，800MPa 以上等级的紧固件多以 30CrMnSiA 材料为主，30CrMnSiA 钢具有良好的机械加工性能，但在实际使用过程中存在较多对产品质量造成影响的缺陷，如淬透性差，存在回火脆性、脱碳等风险；其屈强比低，纵向、横向力学指标差异较大，无法满足高承载、高抗疲劳性能要求；耐蚀性差，需要进行表面处理（镀锌、镀镉、氧化等），电镀后存在氢脆风险较大等缺点。</p>
+        <p>随着航空航天海防装备的发展，对海防飞机、航天飞行器等所用紧固件在海洋环境下的耐蚀性能提出了更高的要求。为提高紧固件的耐蚀性，普遍做法是采用良好耐蚀性基体材料与适当的表面涂/镀层。为进一步提升航天海防装备专用紧固件在海洋环境下的适应性能力，必须开发新型材料，研制各种新型紧固件。</p>
+        <p>海防新型紧固件需要采用稳定的高强度不锈钢材料，通过先进的加工技术和表面处理方式，使之具有较好的耐蚀性及综合力学性能，其中 0Cr17Ni4Cu4Nb 不锈钢是高强度不锈钢的典型代表。本文从材料特性、成形特性、紧固件结构特点、表面处理工艺等几个方面论证了 0Cr17Ni4Cu4Nb 材料在航天海防装备应用的可行性。</p>
+        <h4>2 材料特性</h4>
+        <p>奥氏体不锈钢具有较好的耐蚀性，但只能通过机械加工强化。在机械加工过程中，受产品形状的限制，成形工艺较为复杂，一般用于制造性能要求较低的非主承力紧固件。</p>
+        <p>马氏体不锈钢通过淬火形成马氏体相变强化，但存在较大的回火脆性风险，其耐蚀性比奥氏体不锈钢差。为了克服以上缺点，开发了耐蚀性和综合力学性能较好的沉淀硬化不锈钢，其中 0Cr17Ni4Cu4Nb 不锈钢应用最为广泛。</p>
+        <p>0Cr17Ni4Cu4Nb 材料是在 Cr17 型不锈钢基础上，加入 Cu、Nb 等元素研制的一种马氏体沉淀硬化不锈钢，通过马氏体相变和在 400~650℃ 温度内时效时，析出 ε-Cu、NbC 和 M23C6 等时效强化相而产生沉淀硬化。在固溶状态下组织为低碳板条马氏体，随后通过在 400~650℃ 温度内时效，其 Ac1 约为 670℃，Ac3 约为 740℃，Ms 为 80~140℃，Mf 约为 32℃，常用热处理工艺为 1020~1060℃ 固溶，460~650℃ 时效，具体热处理工艺见表 1。</p>
+        <p>经过热处理强化后材料抗拉强度可达到 1100MPa 以上，同时具有较好的韧性和塑性。0Cr17Ni4Cu4Nb 材料中抗氧化性能与普通奥氏体不锈钢相近，耐大气腐蚀和耐酸腐蚀能力明显优于马氏体不锈钢，与某些奥氏体不锈钢相当，且该钢在还原性酸、特别是硫酸中耐腐蚀性良好。在海水中的腐蚀减重约为 0Cr17Ni7Al 不锈钢的 30%，与 1Cr18Ni9Ti 不锈钢相当。在高温高压水中的缝隙腐蚀性能大致与 1Cr18Ni9Nb 不锈钢相当，综合性能优于 30CrMnSiA 不锈钢。</p>
+        <p>0Cr17Ni4Cu4Nb 不锈钢在固溶状态下，其显微组织为过饱和低碳板条马氏体。为保证材料获得足够的强度和韧性，在选择固溶温度时，一般固溶温度不要太高。时效的目的是利用弥散强化作用产生细小并弥散分布的沉淀相，以获得尽可能好的综合力学性能。固溶处理后时效时，马氏体组织发生回火转变，析出尺寸极小（约 20nm）的 ε-Cu 和 NbC、M23C6 等时效强化相，以获得尽可能好的综合力学性能。</p>
+        <p>查阅航空材料手册[4]，在 1040℃ 固溶 1h，不同时效温度下 0Cr17Ni4Cu4Nb 不锈钢室温拉伸性能如图 2a 所示，冲击性能如图 2b 所示。</p>
+        <p>随着时效温度（200~650℃）的升高，抗拉强度和屈服强度先升高后降低，500℃ 达到最高；伸长率先降低后升高，500℃ 达到最低；断面收缩率先升高后降低再升高，450℃ 达到最低；冲击韧度先升高后降低再升高，450℃ 最低。</p>
+        <h4>3 成形特性</h4>
+        <p>3.1 镦制成形性能：由于其固溶状态下强度较高，所以在制造紧固件时对镦制成形设备吨位和模具精度的要求也较高。该材料还具有非常高的热稳定性和耐蚀性，在进行热加工成形时，选择合适的工艺参数，不容易出现过热、过烧现象，典型过热组织如图 3a 所示。对于六角头、扁圆头等头部大变形量的产品一般采用热镦方式成形，如果采用冷变形形式易产生"应变线"，使产品在受力过程中易出现快速解理开裂。冷滚压控制头杆结合部位金属流线和螺纹处金属流线，提高产品疲劳寿命。</p>
+        <p>3.2 机加工性能：0Cr17Ni4Cu4Nb 材料主要用于制造 1100MPa 级高强度紧固件，由于其对表面质量要求较高，所以在制造紧固件过程中需要数控车削和无心磨削等精加工手段予以保证。该材料机加工性能良好，在车削、磨削加工过程中，可以选用较高加工速度和较大车削量，但注意冷却以免产生磨削烧伤。加工后的产品表面粗糙度值低，表面质量及尺寸一致性好。</p>
+        <h4>4 紧固件结构和性能指标</h4>
+        <p>采用 0Cr17Ni4Cu4Nb 不锈钢制造的螺栓、螺钉、螺柱和螺母紧固件的结构参照 HB 系列标准中的 30CrMnSiA 不锈钢和 1Cr17Ni2 不锈钢。热处理状态为固溶+时效，螺栓性能有抗拉强度和硬度两种方式，螺栓抗拉强度一般为 1180MPa±100MPa，硬度为 35~42HRC（通过 HB0-94—1977 换算后抗拉强度为 1078~1303MPa）。</p>
+        <p>为验证 0Cr17Ni4Cu4Nb 不锈钢紧固件标准性能指标和实测情况，确定 0Cr17Ni4Cu4Nb 不锈钢材料性能的稳定性和合理性。按照航空航天型号最普遍使用的几种头型、型式和典型规格进行选择螺栓、螺钉和螺母来验证其紧固件性能方案，并对其强度和硬度进行实际检测，结果见表 2。</p>
+        <h4>5 表面处理工艺</h4>
+        <p>0Cr17Ni4Cu4Nb 材料自身耐蚀性好，一般可用在抗氧化、耐弱酸、碱和盐腐蚀环境。表面处理方式主要用化学钝化（Ct.P），特殊情况下可进行其他类型的表面处理方式如涂 MoS2、涂十六醇等提升表面润滑性，防止冷焊（咬死）问题产生，也可依据客户需求和使用环境选用不同的表面处理方式。</p>
+        <p>目前，在海防装备上为进一步提升 0Cr17Ni4Cu4Nb 不锈钢紧固件的耐蚀性，常在紧固件表面采用物理气相沉积技术（PVD）真空离子镀膜 CrN 纳米涂层[5]。</p>
+        <h4>6 结束语</h4>
+        <p>综合分析了 0Cr17Ni4Cu4Nb 材料特性，镦制成形性能，机加工性能、热处理和表面处理工艺及紧固件结构特点，并制定了紧固件综合性能指标。</p>
+        <p>0Cr17Ni4Cu4Nb 材料在国内宇航紧固件领域应用条件已经成熟，加工工艺稳定，材料供应渠道畅通，供应充足，价格相比钛合金与高温合金等高端紧固件材料成本较低；耐蚀能力可以达到传统结构钢电镀紧固件的 5~10 倍，性价比高，能够取代传统结构钢电镀紧固件。</p>
+        <p>国外相近材料牌号 17-4PH 沉淀硬化不锈钢，已在欧美等发达国家宇航紧固件领域得到广泛应用[6]，为 0Cr17Ni4Cu4Nb 材料在我国相关领域的应用提供了重要的借鉴。</p>
+        <p class="dim" style="font-size:.82rem">说明：原文正文含 [1]~[6] 共 6 处引文标注，但 PDF 未附参考文献表，此处不补写。图 2 横轴原文标注为“室内温度/℃”，与正文“时效温度 200~650℃”不符，疑为“时效温度”之误，页面按原文保留并标注。</p>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <p>内容依据：《0Cr17Ni4Cu4Nb材料在宇航紧固件中的应用.pdf》（8 页）。关键数据均带原文出处角标。</p>
+    <p>单文件离线页面，零外部依赖；字号、明暗、阅读进度保存在本机浏览器。</p>
+  </footer>
+</main>
+
+<button class="btn toTop" id="toTop">↑</button>
+<div id="citePop"><b>原文出处</b><span id="citeTxt"></span></div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var LS = {
+    get:function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } },
+    set:function(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  };
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var SOURCES = {
+    "1":"经过热处理强化后材料抗拉强度可达到 1100MPa 以上，同时具有较好的韧性和塑性。",
+    "2":"由于碳素钢及合金钢紧固件具有良好的冷加工性能且成本低廉，所以在宇航紧固件领域中大量应用；GB、GJB、HB 标准中合金钢、碳素钢紧固件占有较大的比例。",
+    "3":"海防新型紧固件需要采用稳定的高强度不锈钢材料，通过先进的加工技术和表面处理方式，使之具有较好的耐蚀性及综合力学性能，其中 0Cr17Ni4Cu4Nb 不锈钢是高强度不锈钢的典型代表。",
+    "4":"奥氏体不锈钢具有较好的耐蚀性，但只能通过机械加工强化。马氏体不锈钢通过淬火形成马氏体相变强化，但存在较大的回火脆性风险，其耐蚀性比奥氏体不锈钢差。",
+    "5":"通过马氏体相变和在 400~650℃ 温度内时效时，析出 ε-Cu、NbC 和 M23C6 等时效强化相而产生沉淀硬化。固溶处理后时效时，马氏体组织发生回火转变，析出尺寸极小（约 20nm）的 ε-Cu 和 NbC、M23C6 等时效强化相。",
+    "6":"常用热处理工艺为 1020~1060℃ 固溶，460~650℃ 时效。",
+    "7":"其 Ac1 约为 670℃，Ac3 约为 740℃，Ms 为 80~140℃，Mf 约为 32℃。",
+    "8":"随着时效温度（200~650℃）的升高，抗拉强度和屈服强度先升高后降低，500℃ 达到最高；伸长率先降低后升高，500℃ 达到最低；断面收缩率先升高后降低再升高，450℃ 达到最低；冲击韧度先升高后降低再升高，450℃ 最低。",
+    "9":"试样毛坯尺寸 25mm；第 1 组为固溶态，仅给硬度上限 ≤363HBW；第 2~5 组为固溶后不同温度时效的力学性能要求。",
+    "10":"螺栓抗拉强度一般为 1180MPa±100MPa，硬度为 35~42HRC（通过 HB0-94—1977 换算后抗拉强度为 1078~1303MPa）。",
+    "11":"由于其固溶状态下强度较高，所以在制造紧固件时对镦制成形设备吨位和模具精度的要求也较高。",
+    "12":"对于六角头、扁圆头等头部大变形量的产品一般采用热镦方式成形，如果采用冷变形形式易产生“应变线”，使产品在受力过程中易出现快速解理开裂。冷滚压控制头杆结合部位金属流线和螺纹处金属流线，提高产品疲劳寿命。",
+    "13":"该材料机加工性能良好，在车削、磨削加工过程中，可以选用较高加工速度和较大车削量，但注意冷却以免产生磨削烧伤。",
+    "14":"按照航空航天型号最普遍使用的几种头型、型式和典型规格进行选择螺栓、螺钉和螺母来验证其紧固件性能方案，并对其强度和硬度进行实际检测，结果见表 2。",
+    "15":"表面处理方式主要用化学钝化（Ct.P），特殊情况下可进行其他类型的表面处理方式如涂 MoS2、涂十六醇等提升表面润滑性，防止冷焊（咬死）问题产生。",
+    "16":"在海防装备上为进一步提升 0Cr17Ni4Cu4Nb 不锈钢紧固件的耐蚀性，常在紧固件表面采用物理气相沉积技术（PVD）真空离子镀膜 CrN 纳米涂层。"
+  };
+
+  /* 角标 */
+  var pop = $('#citePop'), popTxt = $('#citeTxt');
+  document.addEventListener('click', function(e){
+    var c = e.target.closest ? e.target.closest('.cite') : null;
+    if(!c){ pop.style.display='none'; return; }
+    var id = c.getAttribute('data-cite');
+    popTxt.textContent = '「' + (SOURCES[id] || '（未找到出处）') + '」';
+    pop.style.display = 'block';
+    var r = c.getBoundingClientRect();
+    var top = r.bottom + 8;
+    var left = Math.min(Math.max(8, r.left - 20), window.innerWidth - Math.min(window.innerWidth*0.92, 540) - 12);
+    if(top + 150 > window.innerHeight) top = Math.max(8, r.top - 160);
+    pop.style.top = top + 'px'; pop.style.left = left + 'px';
+  });
+  window.addEventListener('scroll', function(){ pop.style.display='none'; }, {passive:true});
+
+  /* 进度 + 回到顶部 + 记忆 */
+  var prog = $('#progress'), toTop = $('#toTop'), saveTimer = null;
+  function onScroll(){
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    var p = h > 0 ? window.scrollY / h : 0;
+    prog.style.width = (p*100).toFixed(2) + '%';
+    toTop.classList.toggle('on', window.scrollY > 900);
+    if(saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      LS.set('ph4.scrollY', String(Math.round(window.scrollY)));
+      LS.set('ph4.pct', String(Math.round(p*100)));
+    }, 400);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  toTop.addEventListener('click', function(){ window.scrollTo({top:0, behavior: reduceMotion ? 'auto':'smooth'}); });
+
+  /* 目录 */
+  var toc = $('#toc'), mask = $('#mask');
+  function closeToc(){ toc.classList.remove('on'); mask.classList.remove('on'); }
+  $('#tocBtn').addEventListener('click', function(){
+    toc.classList.toggle('on'); mask.classList.toggle('on', toc.classList.contains('on'));
+  });
+  mask.addEventListener('click', closeToc);
+  $$('#toc a').forEach(function(a){ a.addEventListener('click', closeToc); });
+
+  /* 搜索 */
+  var sWrap = $('#searchWrap'), sInput = $('#searchInput'), sInfo = $('#searchInfo'), hits = [], curHit = -1;
+  $('#searchBtn').addEventListener('click', function(){
+    sWrap.classList.toggle('on');
+    if(sWrap.classList.contains('on')) sInput.focus(); else { sInput.value=''; clearHits(); }
+  });
+  function clearHits(){ $$('.hit').forEach(function(el){ el.classList.remove('hit','cur'); }); hits=[]; curHit=-1; sInfo.textContent=''; }
+  function doSearch(){
+    clearHits();
+    var q = sInput.value.trim(); if(!q) return;
+    $$('main p, main li, main h2, main h3, main td, .pain .h').forEach(function(el){
+      if(el.textContent.indexOf(q) !== -1){ el.classList.add('hit'); hits.push(el); }
+    });
+    if(!hits.length){ sInfo.textContent='没有匹配内容'; return; }
+    curHit = 0; focusHit();
+  }
+  function focusHit(){
+    if(!hits.length) return;
+    $$('.hit.cur').forEach(function(el){ el.classList.remove('cur'); });
+    var el = hits[curHit]; el.classList.add('hit.cur');
+    el.scrollIntoView({block:'center', behavior: reduceMotion ? 'auto':'smooth'});
+    sInfo.textContent = (curHit+1) + ' / ' + hits.length + '　（回车下一处）';
+  }
+  var sTimer = null;
+  sInput.addEventListener('input', function(){ if(sTimer) clearTimeout(sTimer); sTimer = setTimeout(doSearch, 220); });
+  sInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); if(hits.length){ curHit=(curHit+1)%hits.length; focusHit(); } else doSearch(); }
+    if(e.key === 'Escape'){ sWrap.classList.remove('on'); sInput.value=''; clearHits(); }
+  });
+
+  /* 字号 / 明暗 */
+  var fs = parseInt(LS.get('ph4.fs','17'),10) || 17;
+  function applyFs(){ document.documentElement.style.setProperty('--fs', fs+'px'); }
+  applyFs();
+  $('#fsUp').addEventListener('click', function(){ fs=Math.min(22,fs+1); applyFs(); LS.set('ph4.fs',String(fs)); });
+  $('#fsDown').addEventListener('click', function(){ fs=Math.max(14,fs-1); applyFs(); LS.set('ph4.fs',String(fs)); });
+  var theme = LS.get('ph4.theme','dark');
+  function applyTheme(t){ document.documentElement.setAttribute('data-theme',t); $('#themeBtn').textContent = t==='dark'?'明':'暗'; }
+  applyTheme(theme);
+  $('#themeBtn').addEventListener('click', function(){ theme = theme==='dark'?'light':'dark'; applyTheme(theme); LS.set('ph4.theme',theme); });
+
+  /* 痛点折叠 */
+  $$('#painList .h').forEach(function(h){
+    h.addEventListener('click', function(){ h.parentNode.classList.toggle('on'); });
+  });
+
+  /* 相变温度轴 */
+  var tp = $('#tpRange'), tpVal = $('#tpVal'), tpState = $('#tpState');
+  function renderTp(){
+    var t = parseInt(tp.value,10);
+    tpVal.textContent = t;
+    var col, name, txt;
+    if(t < 32){ col='#4ea8ff'; name='Mf 以下'; txt='低于 Mf（约 32℃），马氏体转变已基本完成。'; }
+    else if(t < 80){ col='#7fb6ff'; name='Mf~Ms 之间'; txt='处在 Mf≈32℃ 与 Ms 80~140℃ 之间，马氏体转变收尾阶段。'; }
+    else if(t < 400){ col='#8fa0b8'; name='Ms 以上 / 时效前'; txt='Ms 为 80~140℃。这一区间既不是固溶也不是有效时效区间，强化相不会充分析出。'; }
+    else if(t < 460){ col='#d9a441'; name='时效下沿附近'; txt='接近时效窗口下沿（460℃）。析出刚起步，需要更高温度或更长时间才充分。'; }
+    else if(t <= 650){ col='#f0c060'; name='时效区 460~650℃'; txt='<strong>强化区间。</strong>ε-Cu、NbC、M23C6 弥散析出（约 20nm），强度与塑性的取舍就发生在这里。'; }
+    else if(t < 670){ col='#ff9a6b'; name='时效区之上'; txt='已超出常用时效上限 650℃，继续升温将进入 Ac1 附近，组织开始不稳定。'; }
+    else if(t < 740){ col='#ff6b5e'; name='Ac1 670℃ ~ Ac3 740℃'; txt='两相区。Ac1 约 670℃、Ac3 约 740℃，此区间加热会出现奥氏体与铁素体共存。'; }
+    else if(t < 1020){ col='#ff6b5e'; name='Ac3 以上 / 固溶前'; txt='已完全奥氏体化，尚未到常用固溶温度区间（1020~1060℃）。'; }
+    else if(t <= 1060){ col='#4ea8ff'; name='固溶区 1020~1060℃'; txt='<strong>固溶窗口。</strong>碳化物与强化相重新溶解，水冷后得到过饱和低碳板条马氏体——软下来，才好成形。'; }
+    else { col='#ff6b5e'; name='高于固溶上限'; txt='超过 1060℃ 后晶粒易粗化，固溶温度一般不宜太高，否则强度与韧性都会受损。'; }
+    tpState.innerHTML = '<span style="display:inline-block;font-size:.68rem;font-weight:800;letter-spacing:.1em;padding:.12rem .5rem;border-radius:999px;margin-right:.5rem;background:'+col+'22;color:'+col+';border:1px solid '+col+'66">'+name+'</span>'+txt;
+  }
+  tp.addEventListener('input', renderTp); renderTp();
+
+  /* 时效曲线实验台 */
+  var AG_T = [200,300,400,450,500,550,650];
+  var AG_RM = [1100,1180,1260,1290,1310,1270,1000];
+  var AG_RP = [980,1030,1100,1140,1180,1120,870];
+  var AG_A  = [17,15,13,11.5,10.5,12,16];
+  var AG_Z  = [48,44,40,38,42,48,53];
+  var AG_KU = [1150,950,750,620,700,820,980];
+
+  function interp(arr, t){
+    if(t <= AG_T[0]) return arr[0];
+    if(t >= AG_T[AG_T.length-1]) return arr[arr.length-1];
+    for(var i=0;i<AG_T.length-1;i++){
+      if(t >= AG_T[i] && t <= AG_T[i+1]){
+        var k = (t - AG_T[i]) / (AG_T[i+1] - AG_T[i]);
+        return arr[i] + (arr[i+1]-arr[i]) * k;
+      }
+    }
+    return arr[0];
+  }
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var chart = $('#agChart');
+  var CW = 660, CH = 300, PL = 56, PR = 56, PT = 26, PB = 44;
+  var X0 = PL, X1 = CW - PR, Y0 = PT, Y1 = CH - PB;
+  var RM_MIN = 850, RM_MAX = 1400, PC_MIN = 8, PC_MAX = 20;
+
+  function sx(t){ return X0 + (t - 200) / 450 * (X1 - X0); }
+  function syRm(v){ return Y1 - (v - RM_MIN) / (RM_MAX - RM_MIN) * (Y1 - Y0); }
+  function syP(v){ return Y1 - (v - PC_MIN) / (PC_MAX - PC_MIN) * (Y1 - Y0); }
+
+  function el(tag, attrs, txt){
+    var n = document.createElementNS(SVGNS, tag);
+    for(var k in attrs){ n.setAttribute(k, attrs[k]); }
+    if(txt !== undefined) n.textContent = txt;
+    return n;
+  }
+  var grid = el('g', {});
+  [900,1000,1100,1200,1300,1400].forEach(function(v){
+    var y = syRm(v);
+    grid.appendChild(el('line',{x1:X0,y1:y,x2:X1,y2:y,stroke:'#243044','stroke-width':1}));
+    grid.appendChild(el('text',{x:X0-8,y:y+4,fill:'#6b7a91','font-size':10,'text-anchor':'end'}, v));
+  });
+  [8,11,14,17,20].forEach(function(v){
+    grid.appendChild(el('text',{x:X1+8,y:syP(v)+4,fill:'#6b7a91','font-size':10,'text-anchor':'start'}, v));
+  });
+  AG_T.forEach(function(t){
+    grid.appendChild(el('text',{x:sx(t),y:Y1+18,fill:'#6b7a91','font-size':10,'text-anchor':'middle'}, t));
+  });
+  grid.appendChild(el('line',{x1:X0,y1:Y1,x2:X1,y2:Y1,stroke:'#3a4a60','stroke-width':1.5}));
+  grid.appendChild(el('line',{x1:X0,y1:Y0,x2:X0,y2:Y1,stroke:'#3a4a60','stroke-width':1.5}));
+  grid.appendChild(el('line',{x1:X1,y1:Y0,x2:X1,y2:Y1,stroke:'#3a4a60','stroke-width':1.5}));
+  grid.appendChild(el('text',{x:(X0+X1)/2,y:CH-6,fill:'#8fa0b8','font-size':11,'text-anchor':'middle'},'时效温度 / ℃'));
+  grid.appendChild(el('text',{x:14,y:Y0+4,fill:'#8fa0b8','font-size':11},'MPa'));
+  grid.appendChild(el('text',{x:CW-10,y:Y0+4,fill:'#8fa0b8','font-size':11,'text-anchor':'end'},'%'));
+  chart.appendChild(grid);
+
+  function pathOf(arr, sy){
+    return arr.map(function(v,i){ return (i?'L':'M') + sx(AG_T[i]).toFixed(1) + ' ' + sy(v).toFixed(1); }).join(' ');
+  }
+  chart.appendChild(el('path',{d:pathOf(AG_RM, syRm), fill:'none', stroke:'#4ea8ff','stroke-width':2.6,'stroke-linecap':'round'}));
+  chart.appendChild(el('path',{d:pathOf(AG_RP, syRm), fill:'none', stroke:'#35d6c0','stroke-width':2.2,'stroke-dasharray':'6 4','stroke-linecap':'round'}));
+  chart.appendChild(el('path',{d:pathOf(AG_A, syP), fill:'none', stroke:'#d9a441','stroke-width':2,'stroke-dasharray':'3 3'}));
+  chart.appendChild(el('path',{d:pathOf(AG_Z, syP), fill:'none', stroke:'#ff9a6b','stroke-width':2,'stroke-dasharray':'3 3'}));
+
+  var legend = el('g',{});
+  [['Rm',  '#4ea8ff', 0],['Rp0.2','#35d6c0', 1],['A', '#d9a441', 2],['Z', '#ff9a6b', 3]].forEach(function(it){
+    var x = X0 + it[2]*92;
+    legend.appendChild(el('line',{x1:x,y1:12,x2:x+18,y2:12,stroke:it[1],'stroke-width':3}));
+    legend.appendChild(el('text',{x:x+24,y:16,fill:'#98a6bb','font-size':11}, it[0]));
+  });
+  chart.appendChild(legend);
+
+  var vline = el('line',{x1:0,y1:Y0,x2:0,y2:Y1,stroke:'#ffffff', 'stroke-width':1, 'stroke-dasharray':'4 4', opacity:.35});
+  var dotRm = el('circle',{r:5,fill:'#4ea8ff',stroke:'#0b0f18','stroke-width':2});
+  var dotRp = el('circle',{r:4.5,fill:'#35d6c0',stroke:'#0b0f18','stroke-width':2});
+  var dotA  = el('circle',{r:4.5,fill:'#d9a441',stroke:'#0b0f18','stroke-width':2});
+  var dotZ  = el('circle',{r:4.5,fill:'#ff9a6b',stroke:'#0b0f18','stroke-width':2});
+  chart.appendChild(vline); chart.appendChild(dotRm); chart.appendChild(dotRp); chart.appendChild(dotA); chart.appendChild(dotZ);
+
+  var agRange = $('#agRange'), agVal = $('#agVal'), agOut = $('#agReadouts');
+  agOut.innerHTML =
+    '<div class="ro"><small>抗拉强度 Rm</small><b id="roRm">—</b></div>' +
+    '<div class="ro"><small>屈服强度 Rp0.2</small><b id="roRp">—</b></div>' +
+    '<div class="ro"><small>伸长率 A</small><b id="roA">—</b></div>' +
+    '<div class="ro"><small>断面收缩率 Z</small><b id="roZ">—</b></div>' +
+    '<div class="ro"><small>冲击韧度 KU2</small><b id="roKu">—</b></div>';
+
+  function renderAg(){
+    var t = parseInt(agRange.value,10);
+    agVal.textContent = t;
+    var rm = interp(AG_RM,t), rp = interp(AG_RP,t), a = interp(AG_A,t), z = interp(AG_Z,t), ku = interp(AG_KU,t);
+    var x = sx(t);
+    vline.setAttribute('x1', x); vline.setAttribute('x2', x);
+    dotRm.setAttribute('cx', x); dotRm.setAttribute('cy', syRm(rm));
+    dotRp.setAttribute('cx', x); dotRp.setAttribute('cy', syRm(rp));
+    dotA.setAttribute('cx', x);  dotA.setAttribute('cy', syP(a));
+    dotZ.setAttribute('cx', x);  dotZ.setAttribute('cy', syP(z));
+    $('#roRm').textContent = Math.round(rm) + ' MPa';
+    $('#roRp').textContent = Math.round(rp) + ' MPa';
+    $('#roA').textContent  = a.toFixed(1) + ' %';
+    $('#roZ').textContent  = z.toFixed(1) + ' %';
+    $('#roKu').textContent = Math.round(ku);
+  }
+  agRange.addEventListener('input', renderAg); renderAg();
+
+  /* 五组工艺条形 */
+  var GROUPS = [
+    {name:'1 固溶态',  t:'—',        rm:null, rp:null, a:null, z:null, hb:363},
+    {name:'2 470~490', t:'470~490℃', rm:1310, rp:1180, a:10, z:40, hb:375},
+    {name:'3 540~560', t:'540~560℃', rm:1040, rp:1000, a:12, z:45, hb:331},
+    {name:'4 570~590', t:'570~590℃', rm:1000, rp:865,  a:13, z:45, hb:302},
+    {name:'5 610~630', t:'610~630℃', rm:930,  rp:725,  a:16, z:50, hb:277}
+  ];
+  var chips = $('#grpChips'), bars = $('#grpBars');
+  GROUPS.forEach(function(g,i){
+    var b = document.createElement('button');
+    b.className = 'chip' + (i===1?' on':'');
+    b.type = 'button'; b.textContent = g.name;
+    b.addEventListener('click', function(){
+      $$('.chip', chips).forEach(function(c){ c.classList.remove('on'); });
+      b.classList.add('on'); renderGroup(i);
+    });
+    chips.appendChild(b);
+  });
+  function barLine(label, val, max, unit){
+    var pct = val === null ? 0 : Math.max(2, Math.min(100, val/max*100));
+    return '<div class="barline"><span>'+label+'</span><span class="rail"><span class="fill" style="width:'+pct+'%"></span></span><span class="v">'+(val===null?'—':val+unit)+'</span></div>';
+  }
+  function renderGroup(i){
+    var g = GROUPS[i];
+    bars.innerHTML =
+      '<p style="margin:0 0 .2rem;font-size:.8rem;color:var(--dim2)">第 '+g.name.split(' ')[0]+' 组　'+g.t+'　硬度要求 ≥'+g.hb+'HBW</p>' +
+      barLine('Rm', g.rm, 1400, '') +
+      barLine('Rp0.2', g.rp, 1400, '') +
+      barLine('A', g.a, 20, '%') +
+      barLine('Z', g.z, 60, '%');
+  }
+  renderGroup(1);
+
+  /* 工艺选择器 */
+  var PROC = [
+    {k:'热镦', d:'六角头、扁圆头等头部大变形量产品一般采用热镦成形。材料热稳定性好，工艺参数合适时不易过热、过烧；但参数失控就会出现图 3a 那种过热组织。'},
+    {k:'冷镦', d:'冷变形方式在大变形量下易产生“应变线”，产品受力过程中易出现快速解理开裂，甚至头部掉头（图 3b）。'},
+    {k:'冷滚压', d:'控制头杆结合部位与螺纹处的金属流线，让流线沿轮廓连续分布，从而提高产品疲劳寿命。'},
+    {k:'机加工', d:'数控车削 + 无心磨削保证表面质量；可选较高加工速度与较大切削量，但必须注意冷却，避免磨削烧伤。'}
+  ];
+  var pChips = $('#procChips'), pBody = $('#procBody');
+  PROC.forEach(function(p,i){
+    var b = document.createElement('button');
+    b.className = 'chip' + (i===0?' on':''); b.type='button'; b.textContent = p.k;
+    b.addEventListener('click', function(){
+      $$('.chip', pChips).forEach(function(c){ c.classList.remove('on'); });
+      b.classList.add('on'); pBody.innerHTML = '<p style="margin:.3rem 0 0">'+p.d+'</p>';
+    });
+    pChips.appendChild(b);
+  });
+  pBody.innerHTML = '<p style="margin:.3rem 0 0">'+PROC[0].d+'</p>';
+
+  /* 实测规格 */
+  var SPECS = [
+    {p:'六角头螺栓', s:'M6×26',   v:[1196,1202,1215], u:'MPa'},
+    {p:'六角头螺栓', s:'M8×24',   v:[1227,1205,1210], u:'MPa'},
+    {p:'六角头螺栓', s:'M10×40',  v:[1122,1119,1119], u:'MPa'},
+    {p:'六角头螺栓', s:'M12×120', v:[1120,1113,1120], u:'MPa'},
+    {p:'六角头螺栓', s:'M16×70',  v:[1194,1192,1188], u:'MPa'},
+    {p:'六角头螺栓', s:'M20×55',  v:[1226,1214,1223], u:'MPa'},
+    {p:'六角螺母',   s:'M4',      v:[1123,1124,1121], u:'MPa'},
+    {p:'六角螺母',   s:'M5',      v:[1180,1193,1186], u:'MPa'},
+    {p:'六角螺母',   s:'M6',      v:[1153,1170,1172], u:'MPa'},
+    {p:'六角螺母',   s:'M10',     v:[37.5,37.2,37.6], u:'HRC'},
+    {p:'角型托板自锁螺母', s:'M5', v:[37.3,37.5,37.6], u:'HRC'},
+    {p:'六角自锁螺母', s:'M20×1.5', v:[36.9,37.5,37.9], u:'HRC'}
+  ];
+  var specBody = $('#specBody'), specChips = $('#specChips'), specOut = $('#specOut');
+  function verdict(sp){
+    if(sp.u === 'HRC'){
+      var okH = sp.v.every(function(x){ return x >= 35 && x <= 42; });
+      return okH ? {cls:'ok', txt:'合格'} : {cls:'bad', txt:'超差'};
+    }
+    var okT = sp.v.every(function(x){ return x >= 1075 && x <= 1275; });
+    return okT ? {cls:'ok', txt:'合格'} : {cls:'bad', txt:'超差'};
+  }
+  SPECS.forEach(function(sp, i){
+    var vd = verdict(sp);
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>'+sp.p+'</td><td>'+sp.s+'</td><td>'+sp.v.join('、')+'</td><td>'+sp.u+'</td><td class="'+vd.cls+'">'+vd.txt+'</td>';
+    specBody.appendChild(tr);
+    var b = document.createElement('button');
+    b.className = 'chip'; b.type='button'; b.textContent = sp.s;
+    b.addEventListener('click', function(){
+      $$('.chip', specChips).forEach(function(c){ c.classList.remove('on'); });
+      b.classList.add('on');
+      var v = verdict(sp);
+      specOut.innerHTML = '<strong>'+sp.p+' '+sp.s+'</strong>　实测：'+sp.v.join(' / ')+' '+sp.u+
+        '　判定依据：'+(sp.u==='HRC' ? '硬度 35~42HRC' : 'Rm 1075~1275MPa')+
+        '　<span style="color:var(--'+(v.cls==='ok'?'green':'red')+');font-weight:800">'+v.txt+'</span>';
+    });
+    specChips.appendChild(b);
+  });
+
+  /* 先猜再看 */
+  $$('.guess').forEach(function(g){
+    var btn = $('.peek', g);
+    btn.addEventListener('click', function(){
+      g.classList.toggle('on');
+      btn.textContent = g.classList.contains('on') ? '收起答案' : '看答案';
+    });
+  });
+
+  /* Quiz */
+  var QUIZ = [
+    {q:'0Cr17Ni4Cu4Nb 的强化靠什么？',
+     opts:['淬火形成马氏体即完成强化','时效析出 ε-Cu、NbC、M23C6 等弥散相','冷作硬化','表面渗氮'],
+     a:1, ex:'它靠“马氏体相变 + 400~650℃ 时效析出”双重作用，析出相尺寸约 20nm，属沉淀硬化不锈钢。'},
+    {q:'时效温度升到 500℃ 附近，性能出现什么典型特征？',
+     opts:['强度与塑性同时达到最高','强度达到最高，伸长率跌到最低','强度最低，塑性最好','各项指标都不变'],
+     a:1, ex:'原文：抗拉与屈服强度在 500℃ 最高，伸长率在 500℃ 最低——强度与塑性倒挂，只能按服役需求取舍。'},
+    {q:'六角头螺栓这类头部大变形产品，通常采用哪种成形？',
+     opts:['冷镦，效率高','热镦，避免产生“应变线”导致解理开裂','纯车削','粉末冶金'],
+     a:1, ex:'大变形量走热镦；冷变形易产生应变线，受力时快速解理开裂，甚至头部掉头。'}
+  ];
+  var qbox = $('#quizBox'), scoreEl = $('#score'), answered = 0, right = 0;
+  QUIZ.forEach(function(item, qi){
+    var wrap = document.createElement('div'); wrap.className='quiz';
+    var h = document.createElement('p'); h.className='qt'; h.textContent = 'Q'+(qi+1)+'　'+item.q;
+    wrap.appendChild(h);
+    var ex = document.createElement('p'); ex.className='explain'; ex.textContent = item.ex;
+    item.opts.forEach(function(txt, oi){
+      var b = document.createElement('button');
+      b.className='opt'; b.type='button'; b.textContent = txt;
+      b.addEventListener('click', function(){
+        if(wrap.dataset.done) return;
+        wrap.dataset.done='1'; answered++;
+        $$('.opt', wrap).forEach(function(o,k){ o.disabled = true; if(k===item.a) o.classList.add('right'); });
+        if(oi!==item.a) b.classList.add('wrong'); else right++;
+        ex.classList.add('on');
+        if(answered === QUIZ.length){
+          scoreEl.textContent = '答对 '+right+' / '+QUIZ.length+'　'+(right===QUIZ.length?'全对，可以去看工艺卡了。':'回对应场景再看一眼就能补上。');
+        }
+      });
+      wrap.appendChild(b);
+    });
+    wrap.appendChild(ex); qbox.appendChild(wrap);
+  });
+
+  /* 续读 */
+  var savedY = parseInt(LS.get('ph4.scrollY','0'),10) || 0;
+  var savedPct = parseInt(LS.get('ph4.pct','0'),10) || 0;
+  if(savedY > 600){
+    var tip = document.createElement('div');
+    tip.className='card';
+    tip.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(1rem + env(safe-area-inset-bottom));z-index:45;max-width:92vw;display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;font-size:.8rem;box-shadow:var(--shadow)';
+    tip.innerHTML = '<span>上次读到 <b style="color:var(--blue)">'+savedPct+'%</b></span>';
+    var go = document.createElement('button'); go.className='btn'; go.textContent='继续';
+    var no = document.createElement('button'); no.className='btn'; no.textContent='不用';
+    go.addEventListener('click', function(){ window.scrollTo({top:savedY, behavior: reduceMotion?'auto':'smooth'}); tip.remove(); });
+    no.addEventListener('click', function(){ LS.set('ph4.scrollY','0'); LS.set('ph4.pct','0'); tip.remove(); });
+    tip.appendChild(go); tip.appendChild(no); document.body.appendChild(tip);
+    setTimeout(function(){ if(tip.parentNode) tip.remove(); }, 9000);
+  }
+
+  onScroll();
+})();
+</script>
+</body>
+</html>

@@ -12,6 +12,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "node scripts/with-updater-key.mjs tauri build",
     "gen:latest": "node scripts/gen-latest-json.mjs",
+    "wiki:index": "node scripts/gen-wiki-index.mjs",
     "make:dmg": "bash scripts/make-dmg.sh",
     "icons": "tauri icon src/public/images/favicon.png",
     "version:set": "node scripts/bump-version.mjs",

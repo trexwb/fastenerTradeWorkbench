@@ -45,6 +45,7 @@ const SCRIPTS = [
   'views/settlements.js',
   'views/invoices.js',
   'views/data.js',
+  'views/wiki.js', // 专业解读：src/public/wiki/*.html 互动长页（iframe 内嵌，索引由 scripts/gen-wiki-index.mjs 生成）
   'views/search-panel.js',
   'views/keyboard.js',
   'views/ai-chat.js',

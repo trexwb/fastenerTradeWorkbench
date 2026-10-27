@@ -6,6 +6,56 @@
 
 ---
 
+## 未发布 · 📚 新增「专业解读」：本地互动文档 iframe 内嵌（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-26
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 新增侧栏一级入口「专业解读」+ 文档索引生成器 + 集成说明文档；改动 7 个既有文件，无业务算法改动
+> **详细说明**: `docs/wiki-integration.md`
+
+### 一、功能
+
+- 侧栏新增一级入口「专业解读」（`NAV` 位于「数据管理」之后），卡片列表展示 `src/public/wiki/*.html` 全部互动长页
+- 卡片含分类标签、标题、摘要（3 行截断）、篇幅估算（`≈ N 分钟`）、阅读入口；支持键盘 Enter/Space 打开
+- 点击进入全高阅读器：顶部工具条（返回列表 / 复制链接 / 独立窗口）+ iframe 内嵌，文档自身排版与主题不受影响
+- 切换导航时自动收起文档回到列表态；`#wiki` hash 可直接还原视图
+
+### 二、实现要点
+
+- 新增 `src/views/wiki.js`（约 300 行，`viewWiki/openWikiDoc/closeWikiDoc/copyWikiLink` 全局函数，注册于 `App.vue` 的 `SCRIPTS`，位于 `views/data.js` 之后、`router.js` 之前）
+- 新增 `scripts/gen-wiki-index.mjs`：扫描 `src/public/wiki/*.html`，提取 `<title>` / `description` / `wiki-category` / `wiki-tags` / `wiki-order`，产出 `src/public/wiki/index.js`
+- 索引**必须**是 JS 而非 JSON：`file://` 双击运行时 `origin` 为 `null`，`fetch` 会被 CORS 拦截，只能用动态 `<script src>` 注入
+- `vite.config.js` 新增 `ftwb-wiki-index` 插件：`buildStart` 重建索引，dev 期监听 wiki 目录 `.html` 增删改自动重建并刷新；`package.json` 新增 `wiki:index` 手动脚本
+- 文档 URL 统一由 `new URL('wiki/'+encodeURI(file), document.baseURI)` 生成，适配 dev / file:// / GitHub Pages 子路径 / `tauri.localhost` 四种加载环境
+
+### 三、三处环境障碍修复
+
+- `src-tauri/tauri.conf.json`：CSP `frame-src 'none'` → `frame-src 'self'`，解除桌面端 iframe 禁用
+- `src/public/sw.js`：新增 `/wiki/` 前缀 `navigate` 请求专用分支（缓存优先→网络→失败透传），不再误回退 `index.html`（iframe 加载 HTML 同为 navigate 模式，否则离线打开文档显示应用首页）
+- 索引产物改为 `window.__WIKI_INDEX` 的 JS 文件，规避 file:// 下 origin null 的 CORS 限制
+
+### 四、变更文件
+
+`src/views/wiki.js`（新增）、`scripts/gen-wiki-index.mjs`（新增）、`docs/wiki-integration.md`（新增）、`src/core/router.js`、`src/App.vue`、`src/public/sw.js`、`src-tauri/tauri.conf.json`、`src/styles/components.css`、`vite.config.js`、`package.json`、`.gitignore`、`AGENTS.md`
+
+### 五、验证
+
+- `node --check` 通过：`src/views/wiki.js`、`src/public/sw.js`、`src/public/wiki/index.js`、`src/core/router.js`
+- mock DOM 环境下实跑 `viewWiki()`：首屏 loading 正常、索引注入路径正确、3 篇文档全部渲染、`onclick` 参数为纯 ASCII 编码、中文文件名 iframe src 编码正确、`closeWikiDoc()` 正常回列表
+- 产物 HTML 结构校验（html.parser）：标签闭合无误、无异常属性
+- 待人工验证：`npm run dev` 实际渲染效果、Tauri 打包后桌面端 iframe 显示、GitHub Pages 离线文档打开
+
+### 六、当前文档清单
+
+| 文件 | 标题 |
+| --- | --- |
+| `17-4ph-fastener.html` | 0Cr17Ni4Cu4Nb · 会自己变强的钢 |
+| `2A12-T4-自冲摩擦铆焊-互动长页.html` | 不打孔也能焊死｜2A12-T4 铝合金自冲摩擦铆焊读解 |
+| `hydrogen-embrittlement.html` | 氢脆 · 看不见的金属刺客 |
+
+---
+
 ## v1.0.57 · ♿ UI/UX 验收修复（不推进版本号）
 
 > **状态**: ♿ 无障碍/视觉验收整改（产品设计 QA 18 项偏差全量修复；**不推进版本号**，版本号维持 1.0.57）

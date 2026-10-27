@@ -36,6 +36,22 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // 专业解读文档（dist/wiki/*.html）：iframe 加载 HTML 同样属于 navigate 模式，
+  // 但它不是「应用导航」——不能走下面的 index.html 回退，否则离线打开文档会显示应用首页。
+  // 策略：缓存优先 → 网络 → 双失败交给浏览器默认错误页。
+  if (request.mode === 'navigate' && url.pathname.indexOf('/wiki/') !== -1) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((resp) => {
+        if (resp && resp.status === 200 && resp.type === 'basic') {
+          const clone = resp.clone();
+          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)));
+        }
+        return resp;
+      }))
+    );
+    return;
+  }
+
   // 导航请求：网络优先，失败回退缓存首页
   if (request.mode === 'navigate') {
     event.respondWith(

@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>氢脆 · 看不见的金属刺客</title>
+<style>
+  :root{
+    --bg:#0b0e13; --bg2:#11161f; --panel:#151b26; --panel2:#1b2331;
+    --line:#26303f; --txt:#e8edf5; --dim:#9aa8bd; --dim2:#6f7d92;
+    --amber:#f5a623; --amber2:#ffca62; --teal:#35d6c0; --red:#ff5f56; --green:#3ddc84;
+    --fs:17px; --maxw:900px;
+    --shadow:0 18px 50px rgba(0,0,0,.45);
+  }
+  html[data-theme="light"]{
+    --bg:#f4f1ea; --bg2:#ece7dd; --panel:#ffffff; --panel2:#f7f4ee;
+    --line:#dcd4c6; --txt:#1c2430; --dim:#5a6675; --dim2:#8b95a3;
+    --amber:#c47a00; --amber2:#a86400; --teal:#0e8f80; --red:#c0392b; --green:#1e8e4e;
+    --shadow:0 18px 44px rgba(60,45,20,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{font-size:var(--fs);scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.85;letter-spacing:.01em;
+    background-image:radial-gradient(1200px 600px at 15% -10%,rgba(245,166,35,.10),transparent 60%),
+                     radial-gradient(900px 500px at 105% 10%,rgba(53,214,192,.08),transparent 55%);
+    background-attachment:fixed;
+  }
+  ::selection{background:var(--amber);color:#111}
+
+  /* ---------- 进度与工具栏 ---------- */
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--amber),var(--teal));z-index:60;transition:width .08s linear}
+  .bar{
+    position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:.35rem;
+    padding:.55rem max(.7rem,env(safe-area-inset-left));
+    background:color-mix(in srgb,var(--bg) 82%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar .brand{font-weight:800;letter-spacing:.06em;font-size:.82rem;color:var(--amber);margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:.3rem;
+    min-width:2.2rem;height:2.1rem;padding:0 .55rem;border-radius:.6rem;
+    border:1px solid var(--line);background:var(--panel);color:var(--txt);
+    font-size:.78rem;font-weight:600;cursor:pointer;transition:.18s;white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--amber);color:var(--amber2)}
+  .btn:active{transform:scale(.96)}
+  #searchWrap{position:fixed;z-index:55;top:3.4rem;left:0;right:0;padding:0 .8rem;display:none}
+  #searchWrap.on{display:block}
+  #searchWrap input{
+    width:100%;max-width:var(--maxw);margin:0 auto;display:block;
+    padding:.7rem 1rem;border-radius:.8rem;border:1px solid var(--amber);
+    background:var(--panel);color:var(--txt);font-size:.9rem;outline:none;box-shadow:var(--shadow)
+  }
+  #searchInfo{max-width:var(--maxw);margin:.3rem auto 0;font-size:.74rem;color:var(--dim);text-align:right}
+  .hit{background:linear-gradient(180deg,transparent 58%,rgba(245,166,35,.45) 58%);border-radius:2px}
+  .hit.cur{outline:2px solid var(--amber);outline-offset:2px}
+
+  /* ---------- 目录抽屉 ---------- */
+  #toc{
+    position:fixed;z-index:58;top:0;left:0;bottom:0;width:min(78vw,300px);
+    background:var(--panel);border-right:1px solid var(--line);
+    transform:translateX(-102%);transition:transform .28s ease;overflow:auto;padding:4.2rem 1rem 2rem;
+  }
+  #toc.on{transform:none;box-shadow:var(--shadow)}
+  #toc h4{margin:.2rem 0 .8rem;font-size:.72rem;letter-spacing:.18em;color:var(--dim2);text-transform:uppercase}
+  #toc a{display:block;padding:.5rem .6rem;border-radius:.5rem;color:var(--txt);text-decoration:none;font-size:.88rem;border-left:2px solid transparent}
+  #toc a:hover{background:var(--panel2);border-left-color:var(--amber);color:var(--amber2)}
+  #toc a small{display:block;color:var(--dim2);font-size:.7rem}
+  #mask{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:57;display:none}
+  #mask.on{display:block}
+
+  /* ---------- 布局 ---------- */
+  main{max-width:var(--maxw);margin:0 auto;padding:3.6rem 1.05rem 5rem}
+  section{scroll-margin-top:4.2rem}
+  h2{font-size:1.32rem;line-height:1.4;margin:0 0 .9rem;letter-spacing:.01em}
+  h2 .num{color:var(--amber);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;letter-spacing:.14em;display:block;margin-bottom:.25rem;opacity:.9}
+  h3{font-size:1rem;margin:1.6rem 0 .6rem;color:var(--amber2)}
+  p{margin:.75rem 0;color:var(--txt)}
+  strong{color:var(--amber2);font-weight:700}
+  em{font-style:normal;color:var(--teal)}
+  .dim{color:var(--dim)}
+  ul,ol{padding-left:1.15rem;margin:.7rem 0}
+  li{margin:.45rem 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:.35rem;padding:.05rem .35rem;font-size:.86em;color:var(--teal)}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:1.2rem 0 .4rem;position:relative}
+  .kicker{display:inline-flex;align-items:center;gap:.45rem;font-size:.72rem;letter-spacing:.16em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);border-radius:999px;padding:.28rem .7rem;margin-bottom:1.1rem}
+  .kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);animation:pulse 1.8s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(245,166,35,.5)}50%{opacity:.55;box-shadow:0 0 0 6px rgba(245,166,35,0)}}
+  .hero h1{font-size:clamp(2.3rem,9vw,3.9rem);line-height:1.06;margin:0 0 .5rem;letter-spacing:-.02em;font-weight:900}
+  .hero h1 span{display:block;color:var(--amber);font-size:.34em;letter-spacing:.4em;font-weight:700;margin-top:.5rem}
+  .lede{font-size:1.02rem;color:var(--dim);max-width:36em}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin:1.5rem 0 .4rem}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:.9rem;padding:.85rem .9rem;position:relative;overflow:hidden}
+  .stat::after{content:"";position:absolute;right:-20px;top:-20px;width:60px;height:60px;border-radius:50%;background:radial-gradient(circle,rgba(245,166,35,.22),transparent 70%)}
+  .stat b{display:block;font-size:1.18rem;color:var(--amber2);letter-spacing:-.01em}
+  .stat small{color:var(--dim2);font-size:.72rem;display:block;margin-top:.15rem}
+  .scrollhint{margin-top:1.6rem;font-size:.74rem;color:var(--dim2);letter-spacing:.14em}
+
+  /* ---------- 场景卡片 ---------- */
+  .scene{padding:2.4rem 0 .6rem;border-top:1px solid var(--line);margin-top:2rem}
+  .scene:first-of-type{border-top:0}
+  .card{background:linear-gradient(165deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:1.1rem;padding:1.05rem 1.05rem .9rem;margin:1rem 0;box-shadow:var(--shadow)}
+  .fig{background:var(--panel);border:1px solid var(--line);border-radius:1rem;padding:.8rem;margin:1.1rem 0}
+  .fig svg{width:100%;height:auto;display:block;border-radius:.6rem}
+  .fig figcaption{font-size:.74rem;color:var(--dim2);margin-top:.55rem;text-align:center}
+
+  /* ---------- 引用角标 ---------- */
+  .cite{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:1.05em;height:1.05em;padding:0 .18em;margin-left:.12em;
+    font-size:.62em;font-weight:800;border-radius:.3em;vertical-align:super;
+    background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal);
+    border:1px solid color-mix(in srgb,var(--teal) 45%,transparent);cursor:help;line-height:1;
+  }
+  .cite:hover{background:var(--teal);color:#04110f}
+  #citePop{
+    position:fixed;z-index:70;max-width:min(92vw,520px);display:none;
+    background:var(--panel);border:1px solid var(--teal);border-radius:.8rem;
+    padding:.8rem .9rem;font-size:.8rem;line-height:1.7;box-shadow:var(--shadow);color:var(--txt)
+  }
+  #citePop b{display:block;font-size:.68rem;letter-spacing:.12em;color:var(--teal);margin-bottom:.3rem}
+
+  /* ---------- 先猜再看 ---------- */
+  .guess{border:1px dashed color-mix(in srgb,var(--amber) 55%,transparent);border-radius:1rem;padding:1rem;margin:1.2rem 0;background:color-mix(in srgb,var(--amber) 6%,transparent)}
+  .guess .q{font-weight:700;color:var(--amber2);margin:0 0 .6rem;font-size:.96rem}
+  .guess .ans{display:none;margin-top:.8rem;padding-top:.8rem;border-top:1px dashed var(--line);color:var(--txt);font-size:.92rem}
+  .guess.on .ans{display:block;animation:fade .35s ease}
+  .guess .peek{margin-top:.2rem}
+  @keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+  /* ---------- 温度滑轨 ---------- */
+  .tempwrap{margin:1rem 0 .4rem}
+  .tempnow{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.6rem}
+  .tempnow b{font-size:2rem;color:var(--amber);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .tempnow span{font-size:.8rem;color:var(--dim)}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:34px;background:transparent;cursor:pointer
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:10px;border-radius:6px;
+    background:linear-gradient(90deg,#4aa3ff 0%,#4aa3ff 16%,var(--red) 16%,var(--red) 42%,#3ddc84 42%,#3ddc84 100%);
+    opacity:.85
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:26px;height:26px;border-radius:50%;margin-top:-8px;
+    background:var(--panel);border:3px solid var(--amber);box-shadow:0 0 0 4px color-mix(in srgb,var(--amber) 22%,transparent)
+  }
+  .tick{display:flex;justify-content:space-between;font-size:.68rem;color:var(--dim2);font-variant-numeric:tabular-nums}
+  #tempState{margin-top:.9rem;border-radius:.8rem;padding:.85rem .95rem;font-size:.92rem;border:1px solid var(--line);background:var(--panel2);min-height:3.2rem}
+  #tempState .badge{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.1em;padding:.12rem .5rem;border-radius:999px;margin-right:.5rem}
+
+  /* ---------- 翻转卡 ---------- */
+  .flips{display:grid;gap:.7rem;margin:1.1rem 0}
+  .flip{border:1px solid var(--line);border-radius:.9rem;overflow:hidden;background:var(--panel)}
+  .flip .head{display:flex;align-items:center;gap:.6rem;padding:.8rem .95rem;cursor:pointer;font-weight:700;font-size:.95rem}
+  .flip .head .idx{width:1.6rem;height:1.6rem;flex:none;border-radius:.45rem;display:grid;place-items:center;background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber);font-size:.75rem;font-weight:800}
+  .flip .head .arrow{margin-left:auto;color:var(--dim2);transition:.25s;font-size:.8rem}
+  .flip.on .head .arrow{transform:rotate(90deg);color:var(--amber)}
+  .flip .body{max-height:0;overflow:hidden;transition:max-height .32s ease}
+  .flip.on .body{max-height:420px}
+  .flip .body p{margin:0;padding:0 .95rem .95rem 3.15rem;font-size:.9rem;color:var(--dim)}
+
+  /* ---------- 步骤条 ---------- */
+  .steps{counter-reset:s;margin:1rem 0}
+  .step{position:relative;padding:.1rem 0 1rem 2.6rem;border-left:2px solid var(--line);margin-left:.8rem}
+  .step:last-child{border-left-color:transparent;padding-bottom:0}
+  .step::before{
+    counter-increment:s;content:counter(s);
+    position:absolute;left:-.85rem;top:0;width:1.6rem;height:1.6rem;border-radius:50%;
+    display:grid;place-items:center;font-size:.74rem;font-weight:800;
+    background:var(--panel);border:2px solid var(--amber);color:var(--amber)
+  }
+  .step b{display:block;font-size:.95rem;color:var(--txt)}
+  .step p{margin:.25rem 0 0;font-size:.88rem;color:var(--dim)}
+
+  /* ---------- 化学反应动画 ---------- */
+  .chem{position:relative;overflow:hidden;border-radius:.9rem;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel2),var(--panel));padding:1rem;text-align:center;margin:1rem 0}
+  .chem .eq{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.02rem;letter-spacing:.02em}
+  .chem .eq .h2{color:var(--teal)}
+  .chem .bub{position:relative;height:52px;margin-top:.4rem}
+  .chem .bub i{position:absolute;bottom:0;width:7px;height:7px;border-radius:50%;background:color-mix(in srgb,var(--teal) 70%,transparent);animation:rise linear infinite}
+  @keyframes rise{0%{transform:translateY(0) scale(.7);opacity:0}20%{opacity:.9}100%{transform:translateY(-46px) scale(1.1);opacity:0}}
+
+  /* ---------- 计算器 ---------- */
+  .calc{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin:.8rem 0}
+  .calc label{font-size:.78rem;color:var(--dim2);display:block;margin-bottom:.25rem}
+  .calc input,.calc select{width:100%;padding:.55rem .6rem;border-radius:.55rem;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:.9rem}
+  #calcOut{margin-top:.7rem;border-radius:.7rem;padding:.75rem .85rem;font-size:.88rem;border:1px solid var(--line);background:var(--panel2)}
+
+  /* ---------- 试验台 ---------- */
+  .bench{margin:1rem 0}
+  .switch{display:flex;align-items:center;gap:.6rem;font-size:.86rem;margin:.6rem 0 1rem;color:var(--dim)}
+  .switch input{width:18px;height:18px;accent-color:var(--amber)}
+  .rods{display:grid;gap:.45rem;margin:.6rem 0}
+  .rod{display:grid;grid-template-columns:3.2rem 1fr 4.2rem;align-items:center;gap:.55rem;font-size:.74rem;color:var(--dim2)}
+  .rail{height:12px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line);position:relative}
+  .fill{height:100%;width:0;background:linear-gradient(90deg,var(--teal),var(--green));transition:width .1s linear}
+  .fill.broken{background:linear-gradient(90deg,var(--red),#8b1f18)}
+  .rod .t{text-align:right;font-variant-numeric:tabular-nums}
+  #verdict{margin-top:.9rem;border-radius:.8rem;padding:.85rem;font-size:.9rem;border:1px solid var(--line);background:var(--panel2);display:none}
+  #verdict.on{display:block;animation:fade .3s ease}
+
+  /* ---------- Quiz ---------- */
+  .quiz{border:1px solid var(--line);border-radius:1rem;background:var(--panel);padding:1rem;margin:.9rem 0}
+  .quiz .qt{font-weight:700;font-size:.96rem;margin:0 0 .7rem}
+  .opt{display:block;width:100%;text-align:left;padding:.65rem .8rem;margin:.4rem 0;border-radius:.6rem;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:.88rem;cursor:pointer;transition:.18s}
+  .opt:hover{border-color:var(--amber)}
+  .opt.right{border-color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+  .opt.wrong{border-color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent)}
+  .opt:disabled{cursor:default}
+  .explain{font-size:.82rem;color:var(--dim);margin:.55rem 0 0;display:none}
+  .explain.on{display:block}
+  #score{font-size:.9rem;color:var(--amber2);font-weight:700;margin-top:.6rem;min-height:1.4em}
+
+  /* ---------- 归档全文 ---------- */
+  details.archive{margin:2.6rem 0 0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);overflow:hidden}
+  details.archive>summary{cursor:pointer;padding:1rem 1.1rem;font-weight:700;font-size:.95rem;list-style:none;display:flex;align-items:center;gap:.6rem}
+  details.archive>summary::-webkit-details-marker{display:none}
+  details.archive>summary::before{content:"▸";color:var(--amber);transition:.2s}
+  details.archive[open]>summary::before{transform:rotate(90deg)}
+  details.archive>summary small{margin-left:auto;color:var(--dim2);font-weight:400;font-size:.74rem}
+  .archiveBody{padding:0 1.1rem 1.4rem;border-top:1px solid var(--line)}
+  .archiveBody p{font-size:.9rem;color:var(--dim)}
+  .archiveBody h4{font-size:.86rem;color:var(--amber2);margin:1.2rem 0 .3rem}
+
+  footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--line);font-size:.76rem;color:var(--dim2)}
+  footer a{color:var(--teal);text-decoration:none}
+  .toTop{position:fixed;right:1rem;bottom:calc(1rem + env(safe-area-inset-bottom));z-index:40;display:none}
+  .toTop.on{display:inline-flex}
+  @media(max-width:520px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .calc{grid-template-columns:1fr}
+    .rod{grid-template-columns:2.8rem 1fr 3.4rem}
+    main{padding-left:.85rem;padding-right:.85rem}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<div class="bar">
+  <span class="brand">氢脆 · HYDROGEN EMBRITTLEMENT</span>
+  <button class="btn" id="tocBtn" title="目录">目录</button>
+  <button class="btn" id="searchBtn" title="搜索">搜索</button>
+  <button class="btn" id="fsDown" title="缩小字号">A−</button>
+  <button class="btn" id="fsUp" title="放大字号">A+</button>
+  <button class="btn" id="themeBtn" title="明暗切换">明</button>
+</div>
+
+<div id="searchWrap">
+  <input id="searchInput" type="search" placeholder="在页面里搜：驱氢 / 马氏体 / 1275MPa …" autocomplete="off">
+  <div id="searchInfo"></div>
+</div>
+
+<nav id="toc">
+  <h4>目录</h4>
+  <a href="#s1">01 它不是“脆”，是“突然断”<small>定义与三个特征</small></a>
+  <a href="#s2">02 氢是怎么混进钢里的<small>扩散 · 聚集 · 内压</small></a>
+  <a href="#s3">03 致命温度窗<small>拖一下滑杆试试</small></a>
+  <a href="#s4">04 三个因素决定谁更危险<small>环境 · 强度 · 热处理</small></a>
+  <a href="#s5">05 酸洗四改<small>把氢挡在门外</small></a>
+  <a href="#s6">06 防氢脆五招<small>含驱氢窗口计算器</small></a>
+  <a href="#s7">07 HB5067 试验台<small>6 根试样 200 小时</small></a>
+  <a href="#quiz">自测：你学会了吗<small>3 题</small></a>
+  <a href="#archive">归档全文<small>原文可查</small></a>
+</nav>
+<div id="mask"></div>
+
+<main>
+  <!-- ================= HERO ================= -->
+  <section class="hero">
+    <div class="kicker">材料失效档案 · 第 001 号</div>
+    <h1>氢脆<span>看不见的金属刺客</span></h1>
+    <p class="lede">它不改变零件的样子，不改变颜色，甚至不改变尺寸。一根螺栓装上去的时候还好好的，几天、几十天之后，在远低于它强度极限的静载荷下，<strong>毫无征兆地断了</strong>。<span class="cite" data-cite="1">1</span></p>
+
+    <div class="stats">
+      <div class="stat"><b>−50~100℃</b><small>最危险的温度区间</small></div>
+      <div class="stat"><b>≥1275MPa</b><small>试验标准针对的高强度钢</small></div>
+      <div class="stat"><b>180~200℃×3~4h</b><small>酸洗后的驱氢规范</small></div>
+      <div class="stat"><b>200h</b><small>判定合格的最短不断裂时长</small></div>
+    </div>
+
+    <div class="scrollhint">↓ 往下滑，7 个场景把这件事讲透</div>
+  </section>
+
+  <!-- ================= SCENE 1 ================= -->
+  <section class="scene" id="s1" data-scene="1">
+    <h2><span class="num">SCENE 01</span>它不是“脆”，是“突然断”</h2>
+    <p>氢脆是这么一回事：钢材的<strong>塑性显著下降</strong>，脆性急剧增加，然后在静载荷下——往往还低于材料的抗拉强度 σb——<em>经过一段时间</em>之后发生破裂破坏。<span class="cite" data-cite="2">2</span></p>
+    <p class="dim">关键词是“经过一段时间”。普通过载是立刻断，氢脆是憋着、攒着、然后一次性断。这也是它最难防的地方：验收时一切正常，失效发生在服役之后。</p>
+
+    <figure class="fig" data-figure="1">
+      <svg viewBox="0 0 640 260" role="img" aria-label="应力-时间曲线：氢脆在低于抗拉强度的静载下延时断裂">
+        <defs>
+          <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f5a623" stop-opacity=".35"/>
+            <stop offset="1" stop-color="#f5a623" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line x1="60" y1="210" x2="600" y2="210" stroke="#3a4658" stroke-width="1.5"/>
+        <line x1="60" y1="30" x2="60" y2="210" stroke="#3a4658" stroke-width="1.5"/>
+        <text x="600" y="232" fill="#8b98ad" font-size="12" text-anchor="end">时间 t</text>
+        <text x="46" y="34" fill="#8b98ad" font-size="12" text-anchor="end" transform="rotate(-90 46 34)">应力 σ</text>
+        <!-- σb 线 -->
+        <line x1="60" y1="60" x2="600" y2="60" stroke="#ff5f56" stroke-width="1.4" stroke-dasharray="6 5"/>
+        <text x="596" y="52" fill="#ff5f56" font-size="12" text-anchor="end">σb 抗拉强度</text>
+        <!-- 载荷平台 -->
+        <path d="M60 120 L300 120" stroke="#35d6c0" stroke-width="3"/>
+        <path d="M300 120 L420 120" stroke="#35d6c0" stroke-width="3" stroke-dasharray="5 5"/>
+        <text x="120" y="112" fill="#35d6c0" font-size="12">恒定静载荷（低于 σb）</text>
+        <!-- 断裂 -->
+        <path d="M420 120 L438 152 L452 96 L470 128" stroke="#ff5f56" stroke-width="3" fill="none" stroke-linejoin="round"/>
+        <circle cx="420" cy="120" r="5" fill="#ff5f56"/>
+        <path d="M420 120 L420 210" stroke="#ff5f56" stroke-width="1" stroke-dasharray="3 4"/>
+        <text x="426" y="200" fill="#ff5f56" font-size="12">延时断裂点</text>
+        <path d="M60 120 L420 120 L420 210 L60 210 Z" fill="url(#g1)" opacity=".5"/>
+        <text x="240" y="186" fill="#f5a623" font-size="13" font-weight="700">这一段潜伏期，就是氢在内部做功</text>
+      </svg>
+      <figcaption>图 1 ｜ 氢脆的典型形态：载荷不高，但时间一到就断</figcaption>
+    </figure>
+
+    <div class="guess">
+      <p class="q">先猜一下：如果一根高强度螺栓发生氢脆，断口处会不会有明显的塑性变形（缩颈、弯曲）？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans">不会有。氢脆属于脆性断裂，<strong>塑性显著下降</strong>、脆性急剧增加，断口通常平齐、几乎看不到缩颈。所以光看外观，你判断不出这根螺栓“快要断了”。</div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 2 ================= -->
+  <section class="scene" id="s2" data-scene="2">
+    <h2><span class="num">SCENE 02</span>氢是怎么混进钢里的</h2>
+    <p>先说个前提：氢在钢中有一定的溶解度。炼钢时钢液凝固，微量的氢还会留在钢里。<span class="cite" data-cite="3">3</span></p>
+    <p>真正的麻烦在于：<strong>氢在钢中的溶解度随温度下降而迅速降低</strong>，过饱和的氢必须找地方跑。而氢又是钢铁中<em>扩散速度最快</em>的元素，原子半径最小，即便在低温区仍有很强的扩散能力。<span class="cite" data-cite="4">4</span></p>
+    <div class="card">
+      <p style="margin-top:0"><strong>两条分岔路：</strong></p>
+      <ul>
+        <li>冷却时有足够时间让氢逸出表面，或含氢量本来就低 → <span style="color:var(--green)">氢脆不易发生</span>。</li>
+        <li>冷却速度快、断面尺寸大、含氢量高 → 中心部位的氢来不及逸出，过剩的氢钻进<strong>枝晶间隙、气孔</strong>这类缺陷里。</li>
+      </ul>
+      <p class="dim" style="margin-bottom:0">缺陷吸附氢原子后，表面能大大降低，破坏所需的临界应力随之急剧下降；氢在缺陷附近聚集还会产生强大的内压，直接诱发微裂纹的萌生与扩展。<span class="cite" data-cite="5">5</span></p>
+    </div>
+
+    <figure class="fig" data-figure="2">
+      <svg viewBox="0 0 640 300" role="img" aria-label="氢原子扩散进入晶格缺陷并聚集产生内压示意">
+        <rect x="0" y="0" width="640" height="300" fill="none"/>
+        <!-- 晶格 -->
+        <g stroke="#33415a" stroke-width="1.4">
+          <path d="M70 60 L150 60 L150 140 L70 140 Z M150 60 L230 60 L230 140 L150 140 Z M230 60 L310 60 L310 140 L230 140 Z M310 60 L390 60 L390 140 L310 140 Z M390 60 L470 60 L470 140 L390 140 Z"/>
+          <path d="M70 140 L150 140 L150 220 L70 220 Z M150 140 L230 140 L230 220 L150 220 Z M230 140 L310 140 L310 220 L230 220 Z M310 140 L390 140 L390 220 L310 220 Z M390 140 L470 140 L470 220 L390 220 Z"/>
+        </g>
+        <!-- 缺陷（气孔） -->
+        <ellipse cx="270" cy="140" rx="52" ry="34" fill="#0b0e13" stroke="#f5a623" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="270" y="212" fill="#f5a623" font-size="12" text-anchor="middle">缺陷 / 气孔 聚集区</text>
+        <!-- 氢原子 -->
+        <g fill="#35d6c0">
+          <circle cx="100" cy="100" r="6"/><circle cx="180" cy="180" r="6"/>
+          <circle cx="340" cy="100" r="6"/><circle cx="420" cy="180" r="6"/>
+          <circle cx="200" cy="60" r="5"/><circle cx="440" cy="120" r="5"/>
+          <circle cx="240" cy="132" r="6" opacity=".9"/>
+          <circle cx="300" cy="150" r="6" opacity=".9"/>
+          <circle cx="270" cy="126" r="5" opacity=".9"/>
+        </g>
+        <text x="105" y="86" fill="#35d6c0" font-size="11">H</text>
+        <!-- 扩散箭头 -->
+        <g stroke="#35d6c0" stroke-width="1.6" fill="none" opacity=".75">
+          <path d="M112 104 L236 132" marker-end="url(#ar)"/>
+          <path d="M186 176 L232 152" marker-end="url(#ar)"/>
+          <path d="M334 104 L304 132" marker-end="url(#ar)"/>
+          <path d="M414 176 L310 154" marker-end="url(#ar)"/>
+        </g>
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0 0 L9 4.5 L0 9 z" fill="#35d6c0"/>
+          </marker>
+        </defs>
+        <!-- 内压 -->
+        <g stroke="#ff5f56" stroke-width="2">
+          <path d="M226 100 L206 84" marker-end="url(#ar2)"/>
+          <path d="M314 100 L334 84" marker-end="url(#ar2)"/>
+          <path d="M226 180 L206 196" marker-end="url(#ar2)"/>
+          <path d="M314 180 L334 196" marker-end="url(#ar2)"/>
+        </g>
+        <defs>
+          <marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0 0 L9 4.5 L0 9 z" fill="#ff5f56"/>
+          </marker>
+        </defs>
+        <text x="500" y="88" fill="#ff5f56" font-size="12">内压 ↑</text>
+        <text x="500" y="108" fill="#8b98ad" font-size="11">表面能 ↓</text>
+        <text x="500" y="128" fill="#8b98ad" font-size="11">临界应力 ↓</text>
+        <text x="70" y="262" fill="#8b98ad" font-size="12">氢原子沿晶格与缺陷快速扩散，最终在缺陷处“会师”</text>
+      </svg>
+      <figcaption>图 2 ｜ 氢的扩散—聚集—内压—开裂链条</figcaption>
+    </figure>
+
+    <div class="guess">
+      <p class="q">再猜一下：天冷了，氢是不是就“冻住”了，扩散变慢、氢脆风险就小了？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans">一半对一半错。温度过低时氢扩散速度确实太慢、聚集少，不会析出；但这并不意味着安全边界很宽——氢原子半径最小，<strong>在低温区仍有很强的扩散能力</strong>，危险窗口恰恰落在室温附近（−50~100℃）。温度高到一定程度，氢被“烤”出钢外，反而又不容易发生氢脆。</div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 3 ================= -->
+  <section class="scene" id="s3" data-scene="3">
+    <h2><span class="num">SCENE 03</span>致命温度窗：−50~100℃</h2>
+    <p>一般来说，钢的氢脆发生在室温附近的 <strong>−50~100℃</strong> 之间。温度过低，氢扩散太慢、聚集少不会析出；高温时氢被“烤”出钢外，氢脆破坏也不大会发生。<span class="cite" data-cite="6">6</span></p>
+    <p class="dim">拖一下下面的滑杆，看看不同温度下氢在钢里干什么。</p>
+
+    <div class="card tempwrap">
+      <div class="tempnow"><b id="tempVal">25</b><span>℃</span></div>
+      <input id="tempRange" type="range" min="-150" max="350" step="5" value="25" aria-label="温度">
+      <div class="tick"><span>−150℃</span><span>−50℃</span><span>100℃</span><span>350℃</span></div>
+      <div id="tempState"></div>
+    </div>
+
+    <figure class="fig" data-figure="3">
+      <svg viewBox="0 0 640 130" role="img" aria-label="温度区间带：危险窗口位于-50到100摄氏度">
+        <rect x="40" y="42" width="120" height="34" rx="8" fill="#1f6fd0" opacity=".35"/>
+        <rect x="160" y="42" width="180" height="34" rx="8" fill="#ff5f56" opacity=".35"/>
+        <rect x="340" y="42" width="260" height="34" rx="8" fill="#3ddc84" opacity=".28"/>
+        <text x="100" y="64" fill="#9dc4ff" font-size="13" text-anchor="middle">扩散慢</text>
+        <text x="250" y="64" fill="#ffb3ae" font-size="13" text-anchor="middle" font-weight="700">危险窗口</text>
+        <text x="470" y="64" fill="#8ef0b6" font-size="13" text-anchor="middle">氢被“烤”出</text>
+        <text x="160" y="100" fill="#8b98ad" font-size="12" text-anchor="middle">−50℃</text>
+        <text x="340" y="100" fill="#8b98ad" font-size="12" text-anchor="middle">100℃</text>
+        <text x="40" y="24" fill="#8b98ad" font-size="12">温度 →</text>
+      </svg>
+      <figcaption>图 3 ｜ 室温附近才是高危区，越冷越热都不代表更安全</figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= SCENE 4 ================= -->
+  <section class="scene" id="s4" data-scene="4">
+    <h2><span class="num">SCENE 04</span>三个因素决定谁更危险</h2>
+    <p>影响钢氢脆断裂的因素主要有三方面，点开看细节。</p>
+
+    <div class="flips">
+      <div class="flip">
+        <div class="head"><span class="idx">01</span>环境因素<span class="arrow">▸</span></div>
+        <div class="body"><p>钢处在含氢量较高的环境中（水、酸、氢气），氢通过吸附在钢铁表面向内扩散，造成钢变脆。氢分压对裂纹扩展速度有明显影响：<strong>提高氢气压力会增加氢脆敏感性</strong>。<span class="cite" data-cite="7">7</span></p></div>
+      </div>
+      <div class="flip">
+        <div class="head"><span class="idx">02</span>强度因素<span class="arrow">▸</span></div>
+        <div class="body"><p>钢的强度越高，氢脆敏感性越大。国外一些发达国家明文规定“<strong>高强度钢不准酸洗</strong>”，就是为了防止氢脆。化学成分是通过强度来影响氢脆的：氢与 S、P 等原子偏析于晶界，会减弱晶界结合力，促使沿晶界首先断裂。<span class="cite" data-cite="8">8</span></p></div>
+      </div>
+      <div class="flip">
+        <div class="head"><span class="idx">03</span>热处理<span class="arrow">▸</span></div>
+        <div class="body"><p>氢脆与显微组织和热处理密切相关。组织在热力学上稳定性愈差，氢脆敏感性愈大。<strong>珠光体、铁素体组织的氢脆倾向远低于马氏体</strong>，而<strong>网状分布的高碳马氏体最敏感</strong>。<span class="cite" data-cite="9">9</span></p></div>
+      </div>
+    </div>
+
+    <div class="guess">
+      <p class="q">先猜再看：同样含氢，珠光体组织和网状高碳马氏体，谁更容易裂？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans"><strong>网状高碳马氏体</strong>最敏感。原因在热力学稳定性：组织越不稳定，氢脆敏感性越大。珠光体、铁素体的氢脆倾向远低于马氏体。</div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 5 ================= -->
+  <section class="scene" id="s5" data-scene="5">
+    <h2><span class="num">SCENE 05</span>酸洗四改：把氢挡在门外</h2>
+    <p>热处理产业链上多道工序需要酸洗：淬火后回火前、回火后喷砂前、蒸汽处理或氧氮化前、TiN 等表面强化前，以及电镀前的酸洗。目的各不相同——去氧化皮、提高表面活性、缩小尺寸。<span class="cite" data-cite="10">10</span></p>
+    <p class="dim">传统酸洗工艺繁琐、流程长、成本高、能耗大、污染重，更可怕的是对钢材内在质量产生很大危害——氢脆。于是有了下面四步改进。</p>
+
+    <div class="steps">
+      <div class="step"><b>降低酸浓度</b><p>常规用 30%~35% HCl（质量分数），除氧化皮快，但耗量大、酸雾重、过腐蚀强。低浓度工艺借氧化皮的多孔性 + 润湿剂，让酸液迅速渗透到基体与氧化皮界面反应，靠氢气的机械剥落作用清洁表面；尿素等缓蚀剂对裸露基体吸附力强，既防过腐蚀，也减轻渗氢。</p></div>
+      <div class="step"><b>用混合酸液</b><p>盐酸与硫酸性能各异，按适当比例配成混合液可兼有两者的功能：既提高除锈速度，又降低操作温度。</p></div>
+      <div class="step"><b>多功能高效除油除锈剂</b><p>“二合一”等多种除油除锈剂、快速除锈剂应用较普遍，这是钢铁酸洗工艺的一大进步。</p></div>
+      <div class="step"><b>特殊酸洗工艺</b><p>按工件的形状、用途、热处理状态采取不同工艺——酸洗也应该个性化。</p></div>
+    </div>
+
+    <div class="chem">
+      <div class="eq">Fe + 2HCl == <span class="h2">FeCl₂</span> + <span class="h2">H₂↑</span></div>
+      <div class="bub" id="bubbleBox"></div>
+      <p class="dim" style="margin:.2rem 0 0;font-size:.78rem">氢气气泡把氧化皮“顶”下来 —— 剥落清洁的同时，一部分氢也会渗进钢里</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 6 ================= -->
+  <section class="scene" id="s6" data-scene="6">
+    <h2><span class="num">SCENE 06</span>防氢脆五招</h2>
+    <p>酸洗渗氢是个复杂过程：既有腐蚀的共轭步骤，又有氢在金属表面的吸附、析出、浸入内部的并串联步骤，还牵扯应力腐蚀的深层问题。研究渗氢行为，可行的方法是<em>在酸洗条件下直接做渗氢的电化学测量</em>。<span class="cite" data-cite="11">11</span></p>
+
+    <div class="card">
+      <ol style="margin:0">
+        <li><strong>多功能缓抑剂</strong>　兼具缓蚀与抑雾功能，酸洗速度快，阻抑渗氢能力强，缓蚀率高。</li>
+        <li><strong>控制酸洗条件</strong>　渗氢量与酸度关系不太大，但与酸洗温度成正比、与酸洗时间的平方根成正比。建议“浓度较高、时间很短”；高强度钢（如高速钢淬火件）尤其要注意。</li>
+        <li><strong>关注应力腐蚀</strong>　静载拉应力与特定腐蚀环境联合作用会导致脆性开裂。校直过的淬火件，不论正击反击，<strong>一定先去应力再酸洗</strong>。</li>
+        <li><strong>防止金属杂质污染酸液</strong>　酸液中含有 P、As、Sn、Hg、Pb、Zn、Cd 等杂质时，会促进渗氢量增加，加剧氢脆倾向。</li>
+        <li><strong>驱氢处理</strong>　凡经酸洗的工件，最好进行 <strong>180~200℃ × 3~4h</strong> 驱氢。</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <p style="margin-top:0;font-weight:700">驱氢工艺窗口自检</p>
+      <div class="calc">
+        <div>
+          <label for="dhT">温度（℃）</label>
+          <input id="dhT" type="number" value="190" min="80" max="300" step="5">
+        </div>
+        <div>
+          <label for="dhH">保温时间（h）</label>
+          <input id="dhH" type="number" value="3.5" min="0.5" max="12" step="0.5">
+        </div>
+      </div>
+      <div id="calcOut">输入参数后自动判定</div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 7 ================= -->
+  <section class="scene" id="s7" data-scene="7">
+    <h2><span class="num">SCENE 07</span>HB5067 试验台：6 根试样，200 小时</h2>
+    <p>如果因热处理或表面处理产生了渗氢，应在尽可能短的时间内驱赶，使构件不至于因氢脆破坏失效。已经产生氢脆，也可以通过试验方法测定。原航空部曾制订标准 <strong>HB5067</strong>，用<em>延迟破坏</em>的方法，试验和鉴定抗拉强度 <strong>≥1275MPa</strong> 的结构钢和高强度钢经电镀及化学覆盖工艺处理后的氢脆性能。<span class="cite" data-cite="12">12</span></p>
+
+    <div class="card">
+      <p style="margin-top:0"><strong>方法原理：</strong>结构钢和高强度钢由于氢和应力的作用，在小于屈服强度的静载荷下持续一定时间，就会发生早期脆性断裂。<span class="cite" data-cite="13">13</span></p>
+      <p><strong>试样要点：</strong></p>
+      <ul>
+        <li>材料与产品零件相同，热处理至抗拉强度的上限。</li>
+        <li>按图沿材料顺纤维方向加工；粗加工后热处理，再精加工至规定尺寸。</li>
+        <li>缺口用中软细粒氧化铝砂轮磨制，保证缺口根部半径圆滑，磨削后投影检查。</li>
+        <li>逐根测量缺口根部直径（图中为 <code>φ4.5±0.05mm</code>）并编号记录。</li>
+        <li>镀覆前消除磨削应力：最高温度比回火温度低 10~20℃，并避开回火脆性区。</li>
+      </ul>
+    </div>
+
+    <figure class="fig" data-figure="4">
+      <svg viewBox="0 0 640 190" role="img" aria-label="延迟破坏试样形状示意，缺口根部直径4.5毫米">
+        <rect x="0" y="0" width="640" height="190" fill="none"/>
+        <!-- 夹持端 -->
+        <path d="M60 55 h60 v80 h-60 z" fill="#1b2331" stroke="#4a5a72" stroke-width="1.6" rx="4"/>
+        <path d="M520 55 h60 v80 h-60 z" fill="#1b2331" stroke="#4a5a72" stroke-width="1.6" rx="4"/>
+        <text x="90" y="150" fill="#8b98ad" font-size="11" text-anchor="middle">夹持端</text>
+        <text x="550" y="150" fill="#8b98ad" font-size="11" text-anchor="middle">夹持端</text>
+        <!-- 试样主体 -->
+        <path d="M120 78 h150 l30 17 h40 l30 -17 h100 v34 h-100 l-30 17 h-40 l-30 -17 h-150 z"
+              fill="#22304a" stroke="#6f86a8" stroke-width="1.6" stroke-linejoin="round"/>
+        <!-- 缺口 -->
+        <path d="M270 95 l12 0" stroke="#f5a623" stroke-width="3"/>
+        <path d="M330 95 l12 0" stroke="#f5a623" stroke-width="3"/>
+        <circle cx="306" cy="95" r="5" fill="#0b0e13" stroke="#f5a623" stroke-width="2"/>
+        <!-- 尺寸标注 -->
+        <line x1="306" y1="60" x2="306" y2="44" stroke="#35d6c0" stroke-width="1"/>
+        <text x="306" y="38" fill="#35d6c0" font-size="12" text-anchor="middle">缺口根部 φ4.5±0.05mm</text>
+        <line x1="240" y1="168" x2="372" y2="168" stroke="#8b98ad" stroke-width="1"/>
+        <line x1="240" y1="163" x2="240" y2="173" stroke="#8b98ad" stroke-width="1"/>
+        <line x1="372" y1="163" x2="372" y2="173" stroke="#8b98ad" stroke-width="1"/>
+        <text x="306" y="184" fill="#8b98ad" font-size="11" text-anchor="middle">缺口区（应力集中）</text>
+        <!-- 载荷箭头 -->
+        <path d="M90 30 v-14" stroke="#ff5f56" stroke-width="2" marker-end="url(#ar3)"/>
+        <path d="M550 30 v-14" stroke="#ff5f56" stroke-width="2" marker-end="url(#ar3)"/>
+        <text x="320" y="24" fill="#ff5f56" font-size="12" text-anchor="middle">施加静载荷 = 未镀覆试样缺口抗拉强度的 75%</text>
+        <defs>
+          <marker id="ar3" markerWidth="9" markerHeight="9" refX="4.5" refY="7" orient="auto">
+            <path d="M0 9 L4.5 0 L9 9 z" fill="#ff5f56"/>
+          </marker>
+        </defs>
+      </svg>
+      <figcaption>图 4 ｜ 延迟破坏试样：缺口尺寸是试验成败的关键变量之一</figcaption>
+    </figure>
+
+    <div class="card bench">
+      <p style="margin-top:0;font-weight:700">模拟试验：6 根平等试样，规定载荷下 200h</p>
+      <p class="dim" style="font-size:.85rem">镀层厚度应不小于 12~18μm；镀覆一次完成，不允许退镀或重复电镀；镀后应尽快（<strong>不超过 3h</strong>）除氢。装载按镀覆前缺口根部尺寸计算截面积。未镀覆试样的缺口抗拉强度取 3~5 个试样的平均值。</p>
+      <label class="switch"><input type="checkbox" id="lateDeh"> 假设：除氢拖到了第 6 小时才做（超期）</label>
+      <button class="btn" id="runTest">开始 200h 试验</button>
+      <div class="rods" id="rods"></div>
+      <div id="verdict"></div>
+    </div>
+
+    <div class="guess">
+      <p class="q">先猜：6 根试样，5 根撑过 200h，1 根在 150h 断了，这批算合格吗？</p>
+      <button class="btn peek">看答案</button>
+      <div class="ans"><strong>不合格。</strong>规定载荷下 6 根试样 <strong>200h 都不破断</strong>，才认为该钢经此镀覆工艺氢脆性能合格；只要有<em>一个</em>试样破断时间小于 200h，就判不合格。</div>
+    </div>
+  </section>
+
+  <!-- ================= QUIZ ================= -->
+  <section class="scene" id="quiz">
+    <h2><span class="num">CHECK</span>自测：3 题，看有没有真学会</h2>
+    <div id="quizBox"></div>
+    <div id="score"></div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section class="scene" id="archive">
+    <h2><span class="num">ARCHIVE</span>原文归档（可展开查读）</h2>
+    <details class="archive">
+      <summary>展开全文（与源文档一致）<small>约 2900 字</small></summary>
+      <div class="archiveBody">
+        <h4>1、揭开氢脆断裂之迷</h4>
+        <p>氢脆通常表现为钢材的塑性显著下降，脆性急剧增加，并在静载荷下（往往低于材料的 σb）经过一段时间后发生破裂破坏的趋势。众所周知，氢在钢中有一定的溶解度。</p>
+        <p>炼钢过程中，钢液凝固后，微量的氢还会留在钢中。通常生产的钢，其含氢量在一个很小的范围内。氢在钢中的溶解度随温度下降而迅速降低，过饱和的氢将要析出。氢是在钢铁中扩散速度最快的元素，其原子半径最小，在低温区仍有很强的扩散能力。如果冷却时有足够的时间使钢中的氢逸出表面或钢中的氢含量较低时，则氢脆就不易发生。如果冷却速度快，钢件断面尺寸比较大或钢中氢含量较高时，位于钢件中心部分的氢来不及逸出，过剩的氢将进入钢的一些缺陷中去，如枝晶间隙、气孔内。若缺陷附近由于氢的聚集会产生强大的内压而导致微裂纹的萌生与扩展。这是由于缺陷吸附了氢原子之后，使表面能大大降低，从而导致钢材破坏所需的临界应力也急剧降低。</p>
+        <p>一般的说，钢的氢脆发生在室温附近的 -50~100℃ 之间。温度过低时氢的扩散速度太慢，聚集少不会析出；高温时氢将被“烤”出钢外，氢脆破坏也不大会发生。随着科学的发展，人们又发现氢脆机理的新观点：氢促进了裂纹尖端区塑性变形，而塑性变形，又促进了氢在该区域内浓集，从而降低了该区的断裂应力值，这就促进了微裂的产生，裂纹的扩展也伴随着塑性流变。</p>
+        <h4>2、影响钢氢脆断裂的因素</h4>
+        <p>（1）环境因素：如钢在含氢量较高的环境中，如水、酸、氢气中时，氢通过吸附在钢铁表面扩散，造成钢变脆。同时氢分压对氢裂纹扩展速度有明显的影响，提高氢气压力会增加氢脆敏感性。</p>
+        <p>（2）强度因素：一般来说，钢的强度越高，氢脆敏感性越大。国外一些发达国家明文规定“高强度钢不准酸洗”就是为了防止氢脆。而化学成分是通过强度来影响钢的氢脆断裂，这是因为氢和 S、P 等原子偏析于晶界会引起晶界结合力减弱，从而促使沿晶界首先断裂。</p>
+        <p>（3）热处理：钢的氢脆与其显微组织和热处理有密切的关系，实验和事实标明，该组织在热力学上稳定性愈差，则氢脆的敏感性愈大。例如珠光体、铁素体组织的氢脆倾向远低于马氏体，而且网状分布的高碳马氏体最敏感。</p>
+        <h4>3、热处理防氢脆措施</h4>
+        <p>在热处理产业链上，多道工序需要酸洗，如淬火后回火前的酸洗、回火后喷砂前酸洗、蒸汽处理或氧氮化前酸洗、TiN 等表面强化前的酸洗以及电镀前的酸洗等。酸洗在不同阶段其目的是不一样的，有的是为了去除氧化皮，有的是为了提高工件表面活性，有的是为了缩小尺寸等。传统的酸洗工艺繁琐、流程长、成本高、能耗大、污染严重、劳动条件差等，更为可怕的是对钢材内在质量产生很大的危害——氢脆。为此，改进酸洗工艺，采取防渗氢措施，已成为几代人关注的问题。</p>
+        <p>（1）酸洗工艺的改进：钢铁表面的锈蚀主要是铁的氧化物和氢氧化物等，清除这些锈蚀主要是酸类组分借助表面活性剂等的协同作用来完成的，其作用过程大致是溶解和剥落。为了克服常规酸洗带来的缺陷，可作如下改进。</p>
+        <p>首先，降低酸浓度。一般钢铁件采用 30%~35% HCl（质量分数），除去氧化皮的速度快，但耗量大，酸雾重，对基体的过腐蚀也强，难以保证产品质量。如用低浓度酸洗工艺对降低酸液消耗，改善环境，提高工件表面质量有明显的经济效益和社会效益。该工艺利用氧化皮的多孔性，在润湿剂的作用下使酸液迅速渗透到基体与氧化皮的界面上发生 Fe+2HCl==2FeCl₂+H₂↑ 化学反应，利用氢气的机械剥落作用，达到除去氧化皮清洁表面的作用。由于氧化物在稀酸中的反应缓慢，尿素等缓蚀剂对裸露基体的吸附力强，防止了过腐蚀，降低了酸的无用消耗，同时亦减轻了工件渗氢数量。</p>
+        <p>其次，利用混合酸液的综合特性。生产上常用盐酸或硫酸液除锈，但两者的性能各异，若将盐酸与硫酸按适当比例配制成混合液，能兼有两者的功能，既能提高除锈速度，又降低了操作温度。</p>
+        <p>再次，采用多功能的高效除油除锈剂。近年来出现了“二合一”等多种除油除锈剂和快速除锈剂应用较普遍，这是钢铁酸洗工艺的一大进步。</p>
+        <p>最后，采用特殊的酸洗工艺。针对不同工件的形状、用途、热处理状态采取不同的酸洗工艺，就是说酸洗工艺也应该个性化。</p>
+        <p>（2）防止氢脆的措施：酸洗过程的渗氢是一个相当复杂的过程，即涉及腐蚀的共轭步骤，又涉及氢在金属表吸附和析出的以及浸入金属内部的并、串联步骤，还涉及到应力腐蚀的深层次问题。研究表明，在酸洗条件下，直接进行渗氢的电化学测量是研究酸洗过程渗氢行为的可行方法。为减轻钢铁件渗氢程度，可采取如下一些防渗氢措施。</p>
+        <p>第一，引入多功能的缓抑制。多功能的缓抑剂具有缓蚀与抑雾功能，不仅酸洗速度快，而且阻抑渗氢的功能较强，缓蚀率高。</p>
+        <p>第二，控制酸洗条件。钢铁在酸洗液中的渗氢量与酸度关系不太大，但与酸洗温度成正比，与酸洗时间的平方根成正比，建议采用酸液浓度较高、酸洗时间很短的酸洗方法。高速钢淬火件等高强度钢酸洗更要注意这个问题。具体生产单位，应制订严谨工艺，控制好酸的浓度、酸液温度、酸洗时间三大要素。</p>
+        <p>第三，关注应力腐蚀问题。应力腐蚀开裂是指工件在受到静载拉应力和特定的腐蚀环境联合作用下，导致材料发生脆性开裂的过程。经过校直的淬火件，不管是正击还是反击，凡经校直过的工件一定先去应力再酸洗，否则氢脆致裂或变脆的几率相当大，很多单位都有深刻的教训，但并没有引起足够的重视。</p>
+        <p>第四，防止金属杂质污染酸洗液。业已查明，当酸洗液中含有 P、As、Sn、Hg、Pb、Zn、Cd 等金属杂质时，会促进渗氢量增加，加剧氢脆断裂倾向。</p>
+        <p>第五，驱氢处理。凡是经过酸洗工件，最好进行 180~200℃×3~4h 驱氢处理。</p>
+        <h4>4、氢脆试验方法</h4>
+        <p>如果因热处理或表面处理产生了渗氢，应在尽可能短的时间内驱赶，使构件不至于因氢脆破坏失效。产生了氢脆也可以通过试验方法测定。以前的航空部为测氢脆曾制订过标准（HB5067）可供参考。该标准规定了用延迟破坏的方法，试验和鉴定抗拉强度 ≥1275MPa 的结构钢和高强度钢经电镀和化学覆盖工艺处理后的氢脆性能。</p>
+        <p>（1）方法原理：结构钢和高强度钢由于氢和应力的作用，在小于屈服强度的静载荷下持续一定时间就会发生早期的脆性断裂。</p>
+        <p>（2）氢脆试样的技术要求：主要有四点。第一，试样材料。应用与产品零件相同的材料制作，热处理至抗拉强度的上限（硬度与抗拉强度有一定的对应关系）。第二，试样的形状和尺寸。延迟破坏的试样形状和尺寸应符合下图的规定，除图中已注明的尺寸公差外，其他尺寸公差应符合国家形位公差相关规定。第三，试样的制造。按图沿材料的顺纤维方向加工试样，粗加工后热处理至所要求的抗拉强度，然后精加工至规定尺寸，缺口用中软细粒氧化铝砂轮磨制。磨削时应保证缺口根部半径圆滑。磨削后投影检查，确保缺口尺寸符合图纸要求。逐根测量缺口根部直径（图中为 φ4.5±0.05mm）的尺寸，并做好编号记录。第四，试样在镀盖前都应消除磨削应力。消除应力的最高温度应比该工件的回火温度低 10~20℃，同时要避开材料回火脆性区，以保证消除应力后的试样硬度不会下降。</p>
+        <p>（3）试验方法：按要求的镀覆工艺对试样进行预备处理和镀覆。带有镀层的试样其缺口的镀层厚度应不小于 12~18μm。镀覆层应一次完成，不允许退镀或重复电镀。镀覆后，试样应尽快地（不超过 3h）进行除氢。除氢的规范应符合工件或该钢的镀覆工艺规范的规定。延迟破坏试样根据总载荷可在适当吨位的持久试验机上进行。加载时按镀覆前缺口根部尺寸计算试样的截面积。试样承受的静载荷数为未镀覆试样的缺口抗拉强度的 75%，记录断裂时间。未镀覆试样的缺口抗拉强度应是 3~5 个试样的平均值。</p>
+        <p>（4）结果评定：用 6 根平等的试样进行延时破坏试验，在规定的载荷下 200h 都不破断，则认为该钢经此镀覆工艺氢脆性能合格。如果有一个试样破断时间小于 200h 则认为氢脆性能不合格。</p>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <p>内容依据：《“氢脆”是什么？.pdf》（共 8 页）。全文已归档在页末，关键数据均带原文出处角标。</p>
+    <p>本页为单文件离线页面，无外部依赖；字号、明暗、阅读进度会保存在本机浏览器。</p>
+  </footer>
+</main>
+
+<button class="btn toTop" id="toTop" title="回到顶部">↑</button>
+<div id="citePop"><b>原文出处</b><span id="citeTxt"></span></div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var LS = {
+    get:function(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } },
+    set:function(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  };
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- 原文账本（逐字取自源文档） ---------- */
+  var SOURCES = {
+    "1":"氢脆通常表现为钢材的塑性显著下降，脆性急剧增加，并在静载荷下（往往低于材料的 σb）经过一段时间后发生破裂破坏的趋势。",
+    "2":"氢脆通常表现为钢材的塑性显著下降，脆性急剧增加，并在静载荷下（往往低于材料的 σb）经过一段时间后发生破裂破坏的趋势。",
+    "3":"炼钢过程中，钢液凝固后，微量的氢还会留在钢中。通常生产的钢，其含氢量在一个很小的范围内。",
+    "4":"氢是在钢铁中扩散速度最快的元素，其原子半径最小，在低温区仍有很强的扩散能力。",
+    "5":"若缺陷附近由于氢的聚集会产生强大的内压而导致微裂纹的萌生与扩展。这是由于缺陷吸附了氢原子之后，使表面能大大降低，从而导致钢材破坏所需的临界应力也急剧降低。",
+    "6":"一般的说，钢的氢脆发生在室温附近的 -50~100℃ 之间。温度过低时氢的扩散速度太慢，聚集少不会析出；高温时氢将被“烤”出钢外，氢脆破坏也不大会发生。",
+    "7":"如钢在含氢量较高的环境中，如水、酸、氢气中时，氢通过吸附在钢铁表面扩散，造成钢变脆。同时氢分压对氢裂纹扩展速度有明显的影响，提高氢气压力会增加氢脆敏感性。",
+    "8":"一般来说，钢的强度越高，氢脆敏感性越大。国外一些发达国家明文规定“高强度钢不准酸洗”就是为了防止氢脆。",
+    "9":"例如珠光体、铁素体组织的氢脆倾向远低于马氏体，而且网状分布的高碳马氏体最敏感。",
+    "10":"在热处理产业链上，多道工序需要酸洗，如淬火后回火前的酸洗、回火后喷砂前酸洗、蒸汽处理或氧氮化前酸洗、TiN 等表面强化前的酸洗以及电镀前的酸洗等。",
+    "11":"研究表明，在酸洗条件下，直接进行渗氢的电化学测量是研究酸洗过程渗氢行为的可行方法。",
+    "12":"该标准规定了用延迟破坏的方法，试验和鉴定抗拉强度 ≥1275MPa 的结构钢和高强度钢经电镀和化学覆盖工艺处理后的氢脆性能。",
+    "13":"结构钢和高强度钢由于氢和应力的作用，在小于屈服强度的静载荷下持续一定时间就会发生早期的脆性断裂。"
+  };
+
+  /* 角标交互 */
+  var pop = $('#citePop'), popTxt = $('#citeTxt');
+  document.addEventListener('click', function(e){
+    var c = e.target.closest ? e.target.closest('.cite') : null;
+    if(!c){ pop.style.display='none'; return; }
+    var id = c.getAttribute('data-cite');
+    popTxt.textContent = '「' + (SOURCES[id] || '（未找到出处）') + '」';
+    pop.style.display='block';
+    var r = c.getBoundingClientRect();
+    var top = r.bottom + 8;
+    var left = Math.min(Math.max(8, r.left - 20), window.innerWidth - Math.min(window.innerWidth*0.92, 520) - 12);
+    if(top + 140 > window.innerHeight){ top = Math.max(8, r.top - 150); }
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+  });
+  window.addEventListener('scroll', function(){ pop.style.display='none'; }, {passive:true});
+
+  /* ---------- 阅读进度 + 记忆 ---------- */
+  var prog = $('#progress'), toTop = $('#toTop');
+  var saveTimer = null;
+  function onScroll(){
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    var p = h > 0 ? (window.scrollY / h) : 0;
+    prog.style.width = (p*100).toFixed(2) + '%';
+    toTop.classList.toggle('on', window.scrollY > 900);
+    if(saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      LS.set('h2emb.scrollY', String(Math.round(window.scrollY)));
+      LS.set('h2emb.pct', String(Math.round(p*100)));
+    }, 400);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  toTop.addEventListener('click', function(){ window.scrollTo({top:0, behavior: reduceMotion ? 'auto' : 'smooth'}); });
+
+  /* ---------- 工具栏：目录 ---------- */
+  var toc = $('#toc'), mask = $('#mask');
+  function closeToc(){ toc.classList.remove('on'); mask.classList.remove('on'); }
+  $('#tocBtn').addEventListener('click', function(){
+    toc.classList.toggle('on'); mask.classList.toggle('on', toc.classList.contains('on'));
+  });
+  mask.addEventListener('click', closeToc);
+  $$('#toc a').forEach(function(a){ a.addEventListener('click', closeToc); });
+
+  /* ---------- 搜索 ---------- */
+  var sWrap = $('#searchWrap'), sInput = $('#searchInput'), sInfo = $('#searchInfo');
+  var hits = [], curHit = -1;
+  $('#searchBtn').addEventListener('click', function(){
+    sWrap.classList.toggle('on');
+    if(sWrap.classList.contains('on')) sInput.focus();
+    else clearSearch();
+  });
+  function clearHits(){
+    $$('.hit').forEach(function(el){ el.classList.remove('hit','cur'); });
+    hits = []; curHit = -1; sInfo.textContent='';
+  }
+  function clearSearch(){ sInput.value=''; clearHits(); }
+  function doSearch(){
+    clearHits();
+    var q = sInput.value.trim();
+    if(!q) return;
+    var nodes = $$('main p, main li, main h2, main h3, .flip .head, .archiveBody p, .archiveBody h4');
+    nodes.forEach(function(el){
+      if(el.textContent.indexOf(q) !== -1){ el.classList.add('hit'); hits.push(el); }
+    });
+    if(!hits.length){ sInfo.textContent = '没有匹配内容'; return; }
+    curHit = 0; focusHit();
+  }
+  function focusHit(){
+    if(!hits.length) return;
+    $$('.hit.cur').forEach(function(el){ el.classList.remove('cur'); });
+    var el = hits[curHit];
+    el.classList.add('hit.cur');
+    el.scrollIntoView({block:'center', behavior: reduceMotion ? 'auto' : 'smooth'});
+    sInfo.textContent = (curHit+1) + ' / ' + hits.length + '　（回车跳到下一处）';
+  }
+  var sTimer = null;
+  sInput.addEventListener('input', function(){ if(sTimer) clearTimeout(sTimer); sTimer = setTimeout(doSearch, 220); });
+  sInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); if(hits.length){ curHit = (curHit+1) % hits.length; focusHit(); } else { doSearch(); } }
+    if(e.key === 'Escape'){ sWrap.classList.remove('on'); clearSearch(); }
+  });
+
+  /* ---------- 字号 / 明暗 ---------- */
+  var fs = parseInt(LS.get('h2emb.fs','17'),10) || 17;
+  function applyFs(){ document.documentElement.style.setProperty('--fs', fs + 'px'); }
+  applyFs();
+  $('#fsUp').addEventListener('click', function(){ fs = Math.min(22, fs+1); applyFs(); LS.set('h2emb.fs', String(fs)); });
+  $('#fsDown').addEventListener('click', function(){ fs = Math.max(14, fs-1); applyFs(); LS.set('h2emb.fs', String(fs)); });
+
+  var theme = LS.get('h2emb.theme','dark');
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme', t);
+    $('#themeBtn').textContent = (t === 'dark' ? '明' : '暗');
+  }
+  applyTheme(theme);
+  $('#themeBtn').addEventListener('click', function(){
+    theme = (theme === 'dark' ? 'light' : 'dark');
+    applyTheme(theme); LS.set('h2emb.theme', theme);
+  });
+
+  /* ---------- 温度滑轨 ---------- */
+  var tr = $('#tempRange'), tv = $('#tempVal'), ts = $('#tempState');
+  var BADGE = {cold:'#4aa3ff', hot:'#ff5f56', safe:'#3ddc84'};
+  function renderTemp(){
+    var t = parseInt(tr.value,10);
+    tv.textContent = t > 0 ? '+' + t : String(t);
+    var badge, color, html;
+    if(t < -50){
+      color = BADGE.cold; badge = '低温区';
+      html = '温度过低，氢的扩散速度太慢，聚集少、不会析出 —— 这一侧氢脆不容易发生，但也不代表零件绝对安全。';
+    }else if(t <= 100){
+      color = BADGE.hot; badge = '危险窗口';
+      html = '<strong>这就是主战场。</strong>室温附近氢扩散能力仍然很强，过饱和的氢在缺陷处聚集、产生内压，微裂纹萌生并扩展。工程上绝大多数氢脆失效都落在这一段。';
+    }else{
+      color = BADGE.safe; badge = '高温区';
+      html = '高温下氢被“烤”出钢外，氢脆破坏不大会发生 —— 这也是驱氢处理（180~200℃）的物理依据。';
+    }
+    ts.innerHTML = '<span class="badge" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'66">'+badge+'</span>' + html;
+  }
+  tr.addEventListener('input', renderTemp);
+  renderTemp();
+
+  /* ---------- 翻转卡 ---------- */
+  $$('.flip .head').forEach(function(h){
+    h.addEventListener('click', function(){ h.parentNode.classList.toggle('on'); });
+  });
+
+  /* ---------- 先猜再看 ---------- */
+  $$('.guess').forEach(function(g){
+    var btn = $('.peek', g);
+    btn.addEventListener('click', function(){
+      g.classList.toggle('on');
+      btn.textContent = g.classList.contains('on') ? '收起答案' : '看答案';
+    });
+  });
+
+  /* ---------- 气泡动画 ---------- */
+  var box = $('#bubbleBox');
+  if(box){
+    var n = reduceMotion ? 0 : 14;
+    for(var i=0;i<n;i++){
+      var b = document.createElement('i');
+      b.style.left = (6 + Math.random()*88) + '%';
+      b.style.animationDuration = (2.2 + Math.random()*2.4).toFixed(2) + 's';
+      b.style.animationDelay = (Math.random()*3).toFixed(2) + 's';
+      b.style.width = b.style.height = (4 + Math.random()*6).toFixed(0) + 'px';
+      box.appendChild(b);
+    }
+  }
+
+  /* ---------- 驱氢计算器 ---------- */
+  var dhT = $('#dhT'), dhH = $('#dhH'), calcOut = $('#calcOut');
+  function calc(){
+    var t = parseFloat(dhT.value), h = parseFloat(dhH.value);
+    if(isNaN(t) || isNaN(h)){ calcOut.textContent = '请输入温度与时间'; return; }
+    var tOk = t >= 180 && t <= 200;
+    var hOk = h >= 3 && h <= 4;
+    var color, msg;
+    if(tOk && hOk){ color='var(--green)'; msg='落在推荐规范内（180~200℃ × 3~4h），按原文这是“最好进行”的驱氢处理。'; }
+    else if(t < 180){ color='var(--amber)'; msg='温度偏低：氢的逸出驱动力不足。原文推荐的驱氢规范是 180~200℃ × 3~4h。'; }
+    else if(t > 200){ color='var(--amber)'; msg='温度偏高：注意别影响基体性能与镀层，原文推荐上限为 200℃。'; }
+    else if(h < 3){ color='var(--amber)'; msg='时间偏短：温度达标但保温不足，氢未必跑干净，建议延长到 3~4h。'; }
+    else { color='var(--amber)'; msg='时间偏长：上限 4h 已够，过长只是增加能耗与风险。'; }
+    if(!tOk && !hOk){ msg = '温度与时间都超出推荐区间。' + msg; }
+    calcOut.innerHTML = '<span style="color:'+color+';font-weight:700">'+ (tOk&&hOk ? '✓ 规范内' : '△ 需核对') +'</span>　' + msg;
+  }
+  dhT.addEventListener('input', calc); dhH.addEventListener('input', calc); calc();
+
+  /* ---------- 试验台模拟 ---------- */
+  var rodsBox = $('#rods'), runBtn = $('#runTest'), lateDeh = $('#lateDeh'), verdict = $('#verdict');
+  var RUNNING = false, timers = [];
+  function buildRods(){
+    rodsBox.innerHTML = '';
+    for(var i=1;i<=6;i++){
+      var d = document.createElement('div');
+      d.className = 'rod';
+      d.innerHTML = '<span>试样 ' + i + '</span><span class="rail"><span class="fill"></span></span><span class="t">0 h</span>';
+      rodsBox.appendChild(d);
+    }
+  }
+  buildRods();
+  function clearTimers(){ timers.forEach(function(t){ clearInterval(t); }); timers = []; }
+  function runTest(){
+    if(RUNNING) return;
+    RUNNING = true;
+    clearTimers();
+    verdict.classList.remove('on');
+    verdict.innerHTML = '';
+    buildRods();
+    runBtn.textContent = '试验进行中…';
+    runBtn.disabled = true;
+
+    var rods = $$('.rod', rodsBox);
+    var duration = reduceMotion ? 400 : 7000;   // 200h 压缩进动画
+    var failIdx = lateDeh.checked ? 3 : -1;      // 超期除氢：第 4 根在 152h 断
+    var failAt = 0.76;                            // 152/200
+    var failH = 152;
+
+    rods.forEach(function(rod, i){
+      var fill = $('.fill', rod), tEl = $('.t', rod);
+      var start = Date.now();
+      var iv = setInterval(function(){
+        var ratio = Math.min(1, (Date.now() - start) / duration);
+        if(i === failIdx){
+          var shown = Math.min(ratio, failAt);
+          fill.style.width = (shown*100).toFixed(1) + '%';
+          tEl.textContent = Math.round(shown*200) + ' h';
+          if(ratio >= failAt){
+            clearInterval(iv);
+            fill.classList.add('broken');
+            tEl.innerHTML = '<span style="color:var(--red);font-weight:700">' + failH + 'h 断</span>';
+          }
+        }else{
+          fill.style.width = (ratio*100).toFixed(1) + '%';
+          tEl.textContent = Math.round(ratio*200) + ' h';
+          if(ratio >= 1){
+            clearInterval(iv);
+            tEl.innerHTML = '<span style="color:var(--green)">200h 通过</span>';
+          }
+        }
+      }, 60);
+      timers.push(iv);
+    });
+
+    setTimeout(function(){
+      RUNNING = false;
+      runBtn.textContent = '再跑一次';
+      runBtn.disabled = false;
+      var ok = failIdx === -1;
+      verdict.classList.add('on');
+      verdict.innerHTML = ok
+        ? '<span style="color:var(--green);font-weight:800">判定：合格</span>　6 根试样在规定的载荷下 200h 都不破断，即认为该钢经此镀覆工艺的氢脆性能合格。'
+        : '<span style="color:var(--red);font-weight:800">判定：不合格</span>　第 4 根试样在 152h 破断（&lt; 200h），按 HB5067 只要有<strong>一个</strong>试样破断时间小于 200h，即判氢脆性能不合格。<br><span class="dim">教训：镀覆后应尽快除氢，原文要求不超过 3h。</span>';
+    }, duration + 500);
+  }
+  runBtn.addEventListener('click', runTest);
+
+  /* ---------- Quiz ---------- */
+  var QUIZ = [
+    {
+      q:'钢的氢脆最容易发生在哪个温度区间？',
+      opts:['−50~100℃（室温附近）','200~300℃','−150℃ 以下','600℃ 以上'],
+      a:0,
+      ex:'原文：钢的氢脆发生在室温附近的 -50~100℃ 之间。温度过低氢扩散慢不析出，高温氢被“烤”出钢外。'
+    },
+    {
+      q:'同样含氢，下面哪种组织对氢脆最敏感？',
+      opts:['珠光体','铁素体','网状分布的高碳马氏体','球化退火组织'],
+      a:2,
+      ex:'组织在热力学上稳定性愈差，氢脆敏感性愈大；珠光体、铁素体远低于马氏体，而网状分布的高碳马氏体最敏感。'
+    },
+    {
+      q:'HB5067 延迟破坏试验：6 根试样中 1 根在 150h 断裂，判定是？',
+      opts:['合格，通过率 5/6','不合格，必须 6 根全部 200h 不断','需要补做 6 根再判','合格，只要平均值超过 200h'],
+      a:1,
+      ex:'规定载荷下 6 根试样 200h 都不破断才判合格；只要有一个试样破断时间小于 200h 即判不合格。'
+    }
+  ];
+  var box2 = $('#quizBox'), scoreEl = $('#score'), answered = 0, rightCount = 0;
+  QUIZ.forEach(function(item, qi){
+    var wrap = document.createElement('div');
+    wrap.className = 'quiz';
+    var h = document.createElement('p');
+    h.className = 'qt';
+    h.textContent = 'Q' + (qi+1) + '　' + item.q;
+    wrap.appendChild(h);
+    var ex = document.createElement('p');
+    ex.className = 'explain';
+    ex.textContent = item.ex;
+    item.opts.forEach(function(txt, oi){
+      var b = document.createElement('button');
+      b.className = 'opt';
+      b.type = 'button';
+      b.textContent = txt;
+      b.addEventListener('click', function(){
+        if(wrap.dataset.done) return;
+        wrap.dataset.done = '1';
+        answered++;
+        $$('.opt', wrap).forEach(function(o, k){
+          o.disabled = true;
+          if(k === item.a) o.classList.add('right');
+        });
+        if(oi !== item.a){ b.classList.add('wrong'); }
+        else { rightCount++; }
+        ex.classList.add('on');
+        if(answered === QUIZ.length){
+          scoreEl.textContent = '答对 ' + rightCount + ' / ' + QUIZ.length + '　' + (rightCount === QUIZ.length ? '全部命中，可以去审工艺卡了。' : '回到对应场景再看一眼，就能补上。');
+        }
+      });
+      wrap.appendChild(b);
+    });
+    wrap.appendChild(ex);
+    box2.appendChild(wrap);
+  });
+
+  /* ---------- 恢复阅读位置 ---------- */
+  var savedY = parseInt(LS.get('h2emb.scrollY','0'),10) || 0;
+  var savedPct = parseInt(LS.get('h2emb.pct','0'),10) || 0;
+  if(savedY > 600){
+    var tip = document.createElement('div');
+    tip.className = 'card';
+    tip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(1rem + env(safe-area-inset-bottom));z-index:45;max-width:92vw;display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;font-size:.8rem;box-shadow:var(--shadow)';
+    tip.innerHTML = '<span>上次读到 <b style="color:var(--amber)">' + savedPct + '%</b></span>';
+    var go = document.createElement('button');
+    go.className = 'btn'; go.textContent = '继续';
+    var no = document.createElement('button');
+    no.className = 'btn'; no.textContent = '不用';
+    go.addEventListener('click', function(){
+      window.scrollTo({top: savedY, behavior: reduceMotion ? 'auto' : 'smooth'});
+      tip.remove();
+    });
+    no.addEventListener('click', function(){
+      LS.set('h2emb.scrollY','0'); LS.set('h2emb.pct','0'); tip.remove();
+    });
+    tip.appendChild(go); tip.appendChild(no);
+    document.body.appendChild(tip);
+    setTimeout(function(){ if(tip.parentNode) tip.remove(); }, 9000);
+  }
+
+  onScroll();
+})();
+</script>
+</body>
+</html>

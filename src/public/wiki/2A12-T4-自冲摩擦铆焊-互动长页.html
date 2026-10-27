@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>不打孔也能焊死｜2A12-T4 铝合金自冲摩擦铆焊读解</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#080b12; --bg2:#0e1420; --panel:#121a28; --panel2:#182231;
+    --line:#243044; --txt:#e9eef7; --dim:#98a6bb; --dim2:#6b7a91;
+    --blue:#4ea8ff; --gold:#d9a441; --teal:#35d6c0; --red:#ff6b5e; --green:#3ddc84;
+    --fs:17px; --maxw:920px;
+    --shadow:0 20px 54px rgba(0,0,0,.5);
+    --ink:var(--txt); --accent:var(--gold); --ok:var(--green); --bad:var(--red);
+  }
+  html[data-theme="light"]{
+    --bg:#f5f6f8; --bg2:#eceef2; --panel:#ffffff; --panel2:#f3f5f8;
+    --line:#d8dde6; --txt:#16202f; --dim:#5b697c; --dim2:#8a96a8;
+    --blue:#1069c7; --gold:#a97a1c; --teal:#0e8f80; --red:#c0392b; --green:#1e8e4e;
+    --shadow:0 18px 44px rgba(30,45,70,.14);
+  }
+  html{font-size:var(--fs);scroll-behavior:smooth}
+  body{
+    margin:0;overflow-x:hidden;background:var(--bg);color:var(--txt);line-height:1.85;letter-spacing:.01em;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background-image:radial-gradient(1100px 620px at 12% -12%,rgba(78,168,255,.13),transparent 60%),
+                     radial-gradient(900px 520px at 108% 8%,rgba(217,164,65,.10),transparent 55%);
+    background-attachment:fixed;-webkit-text-size-adjust:100%;
+  }
+  ::selection{background:var(--gold);color:#0a0d14}
+
+  /* ---------- 进度与工具栏 ---------- */
+  #prog{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--blue),var(--gold));z-index:60;transition:width .08s linear}
+  .bar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:.35rem;
+    padding:.55rem .7rem;background:color-mix(in srgb,var(--bg) 84%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  .bar .ttl{font-weight:800;letter-spacing:.05em;font-size:.76rem;color:var(--blue);margin-right:auto;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:inherit}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;min-width:2.2rem;height:2.1rem;padding:0 .55rem;
+    border-radius:.6rem;border:1px solid var(--line);background:var(--panel);color:var(--txt);
+    font-size:.78rem;font-weight:600;cursor:pointer;transition:.18s;white-space:nowrap;font-family:inherit}
+  .btn:hover{border-color:var(--blue);color:var(--blue)}
+  .btn:active{transform:scale(.96)}
+  .btn:disabled{opacity:.45;cursor:default}
+
+  /* ---------- 版心 ---------- */
+  main{max-width:var(--maxw);margin:0 auto;padding:3.6rem 1.05rem 5rem}
+  section{scroll-margin-top:4.2rem}
+  h2{font-size:1.3rem;line-height:1.4;margin:0 0 .9rem}
+  h2 .num{color:var(--blue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;
+    letter-spacing:.14em;display:block;margin-bottom:.25rem}
+  h3{font-size:1rem;margin:1.5rem 0 .5rem;color:var(--gold)}
+  p{margin:.75rem 0}
+  b.hi{color:var(--gold);font-weight:700}
+
+  /* ---------- 首屏 ---------- */
+  .hero{padding:1.2rem 0 .4rem}
+  .hero::after{display:none}
+  .kicker{display:inline-flex;align-items:center;gap:.45rem;font-size:.7rem;letter-spacing:.16em;color:var(--blue);
+    border:1px solid color-mix(in srgb,var(--blue) 45%,transparent);border-radius:999px;padding:.28rem .7rem;
+    margin:0 0 1.1rem;font-family:inherit}
+  .kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--blue);animation:pulse 1.8s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(78,168,255,.5)}50%{opacity:.55;box-shadow:0 0 0 7px rgba(78,168,255,0)}}
+  h1{font-size:clamp(1.9rem,7.2vw,3.3rem);line-height:1.14;margin:0 0 .5rem;letter-spacing:-.02em;font-weight:900}
+  .lede{font-size:1.02rem;color:var(--dim);max-width:38em;margin:0}
+  .lede b{color:var(--gold);font-weight:700}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin:1.5rem 0 .4rem}
+  .kpis>div{background:var(--panel);border:1px solid var(--line);border-radius:.9rem;padding:.85rem .9rem;
+    position:relative;overflow:hidden}
+  .kpis>div::after{content:"";position:absolute;right:-18px;top:-18px;width:58px;height:58px;border-radius:50%;
+    background:radial-gradient(circle,rgba(78,168,255,.25),transparent 70%)}
+  .kpis b{display:block;font-size:1.12rem;color:var(--blue);letter-spacing:-.01em;
+    line-height:1.35;font-variant-numeric:tabular-nums}
+  .kpis span{color:var(--dim2);font-size:.72rem;display:block;margin-top:.15rem}
+
+  /* ---------- 场景 ---------- */
+  .scene{padding:2.4rem 0 .6rem;border-top:1px solid var(--line);margin-top:2rem;position:relative}
+  .scene:first-of-type{border-top:0}
+  .scene::after{content:attr(data-no);position:absolute;top:2.55rem;right:0;
+    font-size:.64rem;letter-spacing:.16em;color:var(--dim2);font-family:inherit}
+  .scene p{margin:.75rem 0}
+  .scene p:last-child{margin-bottom:0}
+  .one{margin:0 0 1.1rem;padding:.7rem .9rem;border-left:3px solid var(--blue);
+    background:var(--panel2);border-radius:.6rem;font-weight:600}
+  .tag{display:inline-block;font-size:.66rem;letter-spacing:.06em;color:var(--teal);
+    border:1px dashed color-mix(in srgb,var(--teal) 45%,transparent);border-radius:.35rem;
+    padding:.05rem .38rem;margin-left:.4rem;vertical-align:.12em}
+
+  /* ---------- 图 ---------- */
+  figure{margin:1.1rem 0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);padding:.8rem}
+  figure svg{display:block;width:100%;height:auto;border-radius:.6rem}
+  figcaption{font-size:.73rem;color:var(--dim2);margin-top:.55rem;text-align:center;line-height:1.6}
+
+  /* ---------- 出处角标 ---------- */
+  sup.cite{display:inline-flex;align-items:center;justify-content:center;min-width:1.05em;height:1.05em;
+    padding:0 .18em;margin-left:.12em;font-size:.62em;font-weight:800;border-radius:.3em;vertical-align:super;
+    background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal);
+    border:1px solid color-mix(in srgb,var(--teal) 45%,transparent);cursor:help;line-height:1;
+    font-family:inherit;user-select:none}
+  sup.cite::after{content:"i";font-size:1em}
+  sup.cite:hover{background:var(--teal);color:#04110f}
+  sup.cite:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+  /* ---------- 卡片组 ---------- */
+  .cards{display:grid;gap:.6rem;margin:1rem 0}
+  .card{background:linear-gradient(165deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:1.1rem;padding:1.05rem;box-shadow:var(--shadow)}
+  .card h3{margin:0 0 .35rem;font-size:.95rem;color:var(--txt)}
+  .card .lab{display:block;font-size:.66rem;letter-spacing:.1em;color:var(--dim2);margin-bottom:.35rem}
+  .card p{margin:0;font-size:.9rem;color:var(--dim);line-height:1.75}
+  .card.good{border-left:3px solid var(--green)}
+  .card.bad1{border-left:3px solid var(--red)}
+  .card.bad2{border-left:3px solid var(--gold)}
+
+  /* ---------- 表格 ---------- */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:.8rem;margin:.9rem 0}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;font-variant-numeric:tabular-nums}
+  th,td{padding:.5rem .55rem;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+  th{background:var(--panel2);color:var(--dim);font-weight:700;font-size:.74rem;letter-spacing:.02em}
+  tr:last-child td{border-bottom:0}
+  td.num{color:var(--txt)}
+
+  /* ---------- 交互台 ---------- */
+  .rig{background:var(--panel2);border:1px solid var(--line);border-radius:.9rem;padding:.95rem;margin:1rem 0}
+  .rig .hd{font-size:.68rem;letter-spacing:.12em;color:var(--dim2);margin-bottom:.6rem}
+  .row{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem}
+  .row>span:first-child{font-size:.82rem;color:var(--dim);min-width:6.4rem}
+  .chip{padding:.42rem .7rem;border-radius:999px;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);font-size:.8rem;cursor:pointer;transition:.18s;font-family:inherit}
+  .chip:hover{border-color:var(--blue)}
+  .chip[aria-pressed="true"]{background:color-mix(in srgb,var(--blue) 18%,transparent);
+    border-color:var(--blue);color:var(--blue);font-weight:700}
+  .readout{border-top:1px dashed var(--line);padding-top:.6rem;font-size:.84rem;line-height:1.9;color:var(--dim)}
+  .readout b{color:var(--blue);font-size:1rem;font-variant-numeric:tabular-nums}
+  .note{font-size:.74rem;color:var(--dim2);margin-top:.5rem;line-height:1.7}
+
+  /* ---------- 先猜再看 ---------- */
+  [data-guess]{border:1px dashed color-mix(in srgb,var(--gold) 55%,transparent);border-radius:1rem;
+    padding:1rem;margin:1.2rem 0;background:color-mix(in srgb,var(--gold) 6%,transparent)}
+  [data-guess] .qh{font-size:.68rem;letter-spacing:.12em;color:var(--gold);margin-bottom:.5rem}
+  [data-guess] p{margin:0 0 .6rem;font-size:.92rem}
+  input[type=range]{-webkit-appearance:none;width:100%;height:32px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:9px;border-radius:6px;
+    background:var(--panel2);border:1px solid var(--line)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;
+    margin-top:-9px;background:var(--panel);border:3px solid var(--blue);
+    box-shadow:0 0 0 4px color-mix(in srgb,var(--blue) 22%,transparent)}
+  .reveal{margin-top:.8rem;padding-top:.8rem;border-top:1px dashed var(--line);font-size:.92rem}
+  .reveal[hidden]{display:none}
+
+  /* ---------- 自测 ---------- */
+  [data-quiz]{border:1px solid var(--line);border-radius:1rem;background:var(--panel);padding:1rem;margin-top:1.4rem}
+  [data-quiz] .qh{font-size:.68rem;letter-spacing:.12em;color:var(--dim2);margin-bottom:.6rem}
+  .q{border-top:1px solid var(--line);padding-top:.9rem;margin-top:.9rem}
+  .q:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .q p{margin:0 0 .5rem;font-weight:700;font-size:.95rem}
+
+  /* ---------- 归档 ---------- */
+  details{border:1px solid var(--line);border-radius:1rem;background:var(--panel);margin:2.6rem 0 0;overflow:hidden}
+  summary{cursor:pointer;padding:1rem 1.1rem;font-weight:700;font-size:.95rem;list-style:none;
+    display:flex;align-items:center;gap:.6rem;min-height:2.6rem}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸";color:var(--blue);transition:.2s}
+  details[open] summary::before{transform:rotate(90deg)}
+  .docs{padding:0 1.1rem 1.4rem;border-top:1px solid var(--line);font-size:.9rem;color:var(--dim)}
+  .docs h3{font-size:.86rem;margin:1.2rem 0 .3rem;color:var(--gold)}
+  .docs h4{font-size:.84rem;margin:1rem 0 .3rem;color:var(--txt)}
+  .docs p{margin:.5rem 0;font-size:.9rem;color:var(--dim);line-height:1.85}
+  .docs table{min-width:460px;font-size:.78rem}
+
+  /* ---------- 出处浮层 ---------- */
+  #citeCard{position:fixed;z-index:80;left:50%;bottom:calc(1.4rem + env(safe-area-inset-bottom));
+    width:min(92vw,560px);max-height:62vh;overflow:auto;background:var(--panel);
+    border:1px solid var(--teal);border-radius:.8rem;padding:.85rem 1rem;
+    box-shadow:var(--shadow);transform:translate(-50%,1.2rem);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease}
+  #citeCard.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+  #citeCard .ch{display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;
+    font-size:.66rem;letter-spacing:.12em;color:var(--teal);margin-bottom:.4rem}
+  #citeCard q{display:block;font-size:.86rem;line-height:1.75;color:var(--txt);quotes:"「" "」";margin-bottom:.4rem}
+  #citeCard .zh{font-size:.78rem;color:var(--dim);margin:0}
+  #citeClose{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:.5rem;
+    padding:.3rem .6rem;font-size:.74rem;cursor:pointer;font-family:inherit}
+
+  /* ---------- 提示 ---------- */
+  .toast{position:fixed;left:50%;bottom:calc(1.4rem + env(safe-area-inset-bottom));z-index:90;
+    transform:translateX(-50%) translateY(-1.2rem);background:var(--panel);border:1px solid var(--blue);
+    color:var(--txt);font-size:.8rem;padding:.5rem .85rem;border-radius:.7rem;box-shadow:var(--shadow);
+    opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:88vw;text-align:center}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(max-width:520px){
+    main{padding-left:.85rem;padding-right:.85rem}
+    .scene::after{position:static;display:block;margin-bottom:.2rem}
+    .row>span:first-child{min-width:100%}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+  }
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<div class="bar">
+  <span class="ttl">F-SPR / 2A12-T4</span>
+  <button class="btn" id="fsDn" aria-label="减小字号">A−</button>
+  <button class="btn" id="fsUp" aria-label="增大字号">A+</button>
+  <button class="btn" id="themeBtn" title="明暗切换">明</button>
+  <button class="btn" id="backBtn" hidden>回到刚才</button>
+</div>
+
+<main>
+
+<!-- ========== 首屏 ========== -->
+<section class="hero" data-hero>
+  <p class="kicker">技术论文读解 · 原始 20 页 · 12 幅插图 · 3 张表</p>
+  <h1>不打孔，也能把两块铝焊死</h1>
+  <p class="lede">航空用的 2A12-T4 铝合金又强又脆，传统做法得先给每块板打孔。这套 <b>自冲摩擦铆焊（F-SPR）</b> 换了顺序：让铆钉<b>一边高速旋转一边扎进去</b>，摩擦热把材料烫软，停转后再一口气压开。孔省了，裂纹也没了。</p>
+
+  <div class="kpis">
+    <div><b>0.62 s</b><span>最短一处用时</span><sup class="cite" data-cite="timespan"></sup></div>
+    <div><b>3.5 mm</b><span>最佳转换深度</span><sup class="cite" data-cite="xGood"></sup></div>
+    <div><b>8.0 kN</b><span>峰值拉剪力</span><sup class="cite" data-cite="peakShear"></sup></div>
+    <div><b>80%</b><span>达母材强度</span><sup class="cite" data-cite="compare"></sup></div>
+  </div>
+
+  <figure data-figure>
+    <svg viewBox="0 0 640 330" role="img" aria-label="F-SPR 接头横截面示意图：铆钉穿过 1.5 毫米上板与 2.5 毫米下板，钉腿张开形成机械互锁">
+      <defs>
+        <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#d9a441"/>
+        </marker>
+        <marker id="arw" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#98a6bb"/>
+        </marker>
+      </defs>
+      <g stroke="#98a6bb" stroke-width="1" fill="none" opacity=".9">
+        <!-- 上板 -->
+        <rect x="80" y="118" width="480" height="26" fill="rgba(120,170,220,.10)"/>
+        <!-- 下板 -->
+        <rect x="80" y="144" width="480" height="46" fill="rgba(120,170,220,.20)"/>
+      </g>
+      <!-- 铆钉 -->
+      <g stroke="#e9eef7" stroke-width="2.4" fill="rgba(233,241,250,.14)">
+        <path d="M290 92 L350 92 L350 116 L290 116 Z"/>
+        <path d="M290 116 L290 156 C290 168 268 174 264 186 L280 191 C292 178 308 178 320 191 L336 186 C332 174 310 168 310 156 L310 116 Z"/>
+      </g>
+      <!-- 固相连接点 -->
+      <g fill="#d9a441">
+        <circle cx="288" cy="140" r="3.4"/><circle cx="312" cy="140" r="3.4"/>
+        <circle cx="276" cy="170" r="3.4"/><circle cx="324" cy="170" r="3.4"/>
+      </g>
+      <!-- 尺寸标注 -->
+      <g stroke="#98a6bb" stroke-width="1" fill="none">
+        <line x1="72" y1="118" x2="72" y2="144" marker-start="url(#arw)" marker-end="url(#arw)"/>
+        <line x1="72" y1="144" x2="72" y2="190" marker-start="url(#arw)" marker-end="url(#arw)"/>
+      </g>
+      <g fill="#98a6bb" font-size="12" font-family="Menlo,monospace">
+        <text x="52" y="136">1.5</text><text x="52" y="172">2.5</text>
+        <text x="16" y="112" font-size="11">mm</text>
+      </g>
+      <!-- 机械互锁量 -->
+      <g stroke="#d9a441" stroke-width="1.3" fill="none">
+        <line x1="310" y1="206" x2="336" y2="196" marker-end="url(#ar)"/>
+        <line x1="310" y1="206" x2="290" y2="206"/>
+        <line x1="310" y1="196" x2="336" y2="196" stroke-dasharray="3 3"/>
+      </g>
+      <text x="342" y="200" fill="#d9a441" font-size="12">机械互锁量 0.31–0.39 mm</text>
+      <!-- 底部厚度 -->
+      <g stroke="#d9a441" stroke-width="1.3" fill="none">
+        <line x1="400" y1="190" x2="400" y2="222" marker-end="url(#ar)"/>
+        <line x1="368" y1="222" x2="400" y2="222"/>
+      </g>
+      <text x="406" y="222" fill="#d9a441" font-size="12">底部厚度 0.83–0.84 mm</text>
+      <!-- 标题栏 -->
+      <g font-family="Menlo,monospace" font-size="10" fill="#98a6bb">
+        <text x="80" y="252">FIG. A</text>
+        <text x="80" y="268">A-A 剖面 · 两板 + 半空心铆钉</text>
+        <text x="80" y="284">铆钉 35CrMo · 板材 2A12-T4</text>
+        <text x="80" y="300">非等比示意 / 尺寸取原文</text>
+      </g>
+      <g stroke="#243044" stroke-width="1" fill="none">
+        <line x1="80" y1="236" x2="560" y2="236"/>
+      </g>
+      <g fill="#e9eef7" font-size="12" font-family="Menlo,monospace" opacity=".75">
+        <text x="452" y="112">铆钉</text>
+        <text x="452" y="134">上板</text>
+        <text x="452" y="168">下板</text>
+      </g>
+    </svg>
+    <figcaption>接头长这样：上板 1.5 mm、下板 2.5 mm，钉腿在下面张开把两块板锁住；钉腿内外两侧与板贴合处形成了固相连接（黄点）。<sup class="cite" data-cite="plateThk"></sup><span class="tag" data-label="示意">示意</span></figcaption>
+  </figure>
+</section>
+
+<!-- ========== 场景 1 ========== -->
+<section class="scene" data-scene="1" data-no="SCENE 01 / 07">
+  <h2><span class="num">01</span>先看老办法的账</h2>
+  <p class="one">三条成熟路线，每条都卡在同一个地方：要么得先打孔，要么保不住 2 系铝合金。</p>
+
+  <div class="cards three">
+    <div class="card bad1">
+      <span class="lab">路线 A · 干涉配合铆接</span>
+      <p>先打孔再镦粗，孔壁与钉杆形成干涉量。代价是单点铆接周期约 10 s，还容易留毛刺、钉板之间有缝。<sup class="cite" data-cite="rivetCycle"></sup></p>
+    </div>
+    <div class="card bad1">
+      <span class="lab">路线 B · 自冲铆接（无孔）</span>
+      <p>孔是省了，但 2 系铝合金延展率低，扎到最底下那层容易开口裂。<sup class="cite" data-cite="sprCu"></sup></p>
+    </div>
+    <div class="card bad2">
+      <span class="lab">路线 C · 搅拌摩擦点焊</span>
+      <p>固相连接、热输入低，可接头中心会留下一个匙孔，承载面积和应力集中都吃亏。<sup class="cite" data-cite="keyhole"></sup></p>
+    </div>
+  </div>
+
+  <p>这就是本文的位置：把 B 的「不打孔」和 C 的「靠摩擦热」拼在一起，用旋转的铆钉自己把材料烫软。<sup class="cite" data-cite="fsprDef"></sup></p>
+
+  <details>
+    <summary>这三条路各自还试过什么补救</summary>
+    <div class="docs">
+      <p>电磁铆接用电磁驱动压铆，铆钉变形更均匀，密封性和疲劳寿命更好，但应变速率高时镦头会出现绝热剪切带，控制不好就是微裂纹；而且预制孔这道工序依然在。</p>
+      <p>自冲铆接想靠感应加热或激光预热消掉底部裂纹，裂纹是没了，工艺周期和设备复杂度又上去了。</p>
+      <p>回填式搅拌摩擦点焊用轴套与搅拌针的相对运动把材料填回去，理论上没有匙孔；国内有研究用它接 2A12，接头里却留下钩状缺陷和弱连接，受载时容易沿界面断。</p>
+    </div>
+  </details>
+</section>
+
+<!-- ========== 场景 2 ========== -->
+<section class="scene" data-scene="2" data-no="SCENE 02 / 07">
+  <h2><span class="num">02</span>把两步合成一秒半</h2>
+  <p class="one">前半程「转着钻」负责烫软，后半程「停转压」负责张开——分界点就是转换深度 x₁。</p>
+
+  <p><b class="hi">阶段Ⅰ 摩擦软化</b>：铆钉以 3600 r/min 高速旋转、以 v₁ 慢速进给，摩擦热软化并刺入上层板。<sup class="cite" data-cite="stage1"></sup></p>
+  <p><b class="hi">阶段Ⅱ 高速镦铆</b>：进给到 x₁ 时停转，改以 10 mm/s 快速压下，钉腿遇到阻力向外张开，到 x₂ 结束。<sup class="cite" data-cite="stage2"></sup></p>
+
+  <figure data-figure>
+    <svg viewBox="0 0 640 280" role="img" aria-label="两阶段工艺示意：左为旋转摩擦软化，右为停转高速镦铆使钉腿张开">
+      <g stroke="#243044" stroke-width="1" fill="none"><line x1="320" y1="20" x2="320" y2="250" stroke-dasharray="4 5"/></g>
+      <!-- 左：阶段 I -->
+      <g stroke="#98a6bb" stroke-width="1" fill="rgba(120,170,220,.10)">
+        <rect x="40" y="120" width="240" height="24"/>
+        <rect x="40" y="144" width="240" height="42" fill="rgba(120,170,220,.20)"/>
+      </g>
+      <g stroke="#e9eef7" stroke-width="2.2" fill="rgba(233,241,250,.12)">
+        <path d="M148 60 L192 60 L192 118 L148 118 Z"/>
+        <path d="M148 118 L148 168 L152 176 L188 176 L192 168 L192 118 Z"/>
+      </g>
+      <!-- 摩擦热区 -->
+      <ellipse cx="170" cy="128" rx="42" ry="16" fill="rgba(255,194,71,.18)" stroke="#d9a441" stroke-width="1" stroke-dasharray="3 3"/>
+      <!-- 旋转箭头 -->
+      <g stroke="#d9a441" stroke-width="1.6" fill="none">
+        <path d="M138 50 A 34 12 0 0 1 202 50" marker-end="url(#ar)"/>
+      </g>
+      <text x="150" y="40" fill="#d9a441" font-size="12" font-family="Menlo,monospace">ω₁ 3600 r/min</text>
+      <g stroke="#98a6bb" stroke-width="1.4"><line x1="228" y1="46" x2="228" y2="96" marker-end="url(#arw)"/></g>
+      <text x="236" y="76" fill="#98a6bb" font-size="12" font-family="Menlo,monospace">v₁ 慢</text>
+      <text x="52" y="205" fill="#d9a441" font-size="12" font-family="Menlo,monospace">阶段Ⅰ 摩擦软化</text>
+
+      <!-- 右：阶段 II -->
+      <g stroke="#98a6bb" stroke-width="1" fill="rgba(120,170,220,.10)">
+        <rect x="360" y="120" width="240" height="24"/>
+        <rect x="360" y="144" width="240" height="42" fill="rgba(120,170,220,.20)"/>
+      </g>
+      <g stroke="#e9eef7" stroke-width="2.2" fill="rgba(233,241,250,.12)">
+        <path d="M468 60 L512 60 L512 118 L468 118 Z"/>
+        <path d="M468 118 L468 150 C468 160 452 164 448 174 L460 178 C472 166 508 166 520 178 L532 174 C528 164 512 160 512 150 L512 118 Z"/>
+      </g>
+      <g fill="#d9a441"><circle cx="466" cy="140" r="3.2"/><circle cx="514" cy="140" r="3.2"/></g>
+      <g stroke="#98a6bb" stroke-width="1.4"><line x1="548" y1="46" x2="548" y2="100" marker-end="url(#arw)"/></g>
+      <text x="556" y="76" fill="#98a6bb" font-size="12" font-family="Menlo,monospace">v₂ 10 mm/s</text>
+      <text x="372" y="205" fill="#d9a441" font-size="12" font-family="Menlo,monospace">阶段Ⅱ 高速镦铆</text>
+      <g fill="#98a6bb" font-size="11" font-family="Menlo,monospace">
+        <text x="40" y="240">x₁ 处停转 · 到 x₂ 结束</text>
+        <text x="360" y="240">钉腿张开 → 机械互锁 + 固相连接</text>
+      </g>
+    </svg>
+    <figcaption>同一颗铆钉，前半程转、后半程压；两段之间的那个位置就是转换深度。<span class="tag" data-label="示意">示意</span></figcaption>
+  </figure>
+
+  <div class="rig">
+    <div class="hd">工艺时间试验台 · 改两个参数，看一个点要多久</div>
+    <div class="row"><span>转换深度 x₁</span>
+      <button class="chip" data-x="5.3" aria-pressed="false">5.3 mm</button>
+      <button class="chip" data-x="3.5" aria-pressed="true">3.5 mm</button>
+      <button class="chip" data-x="1.7" aria-pressed="false">1.7 mm</button>
+    </div>
+    <div class="row"><span>进给速度 v₁</span>
+      <button class="chip" data-v="2" aria-pressed="true">2 mm/s</button>
+      <button class="chip" data-v="5" aria-pressed="false">5 mm/s</button>
+      <button class="chip" data-v="8" aria-pressed="false">8 mm/s</button>
+    </div>
+    <div class="readout" id="labOut">—</div>
+    <p class="note" id="labNote"></p>
+  </div>
+
+  <p>原文实测的 5 组组合里，一个点历时 0.62 到 2.65 s；对照传统干涉配合铆接的单点约 10 s，这是数量级的差别。<sup class="cite" data-cite="timespan"></sup></p>
+</section>
+
+<!-- ========== 场景 3 ========== -->
+<section class="scene" data-scene="3" data-no="SCENE 03 / 07">
+  <h2><span class="num">03</span>什么时候停转，决定成败</h2>
+  <p class="one">停太晚，热得材料乱流；停太早，底下还不够软。三个候选深度里只有一个能用。</p>
+
+  <div data-guess>
+    <div class="qh">先猜再看 · 01</div>
+    <p>作者试了 5.3、3.5、1.7 mm 三个转换深度。你猜哪个才做出无缺陷接头？</p>
+    <div class="row">
+      <button class="chip" data-g="a">5.3 mm</button>
+      <button class="chip" data-g="b">3.5 mm</button>
+      <button class="chip" data-g="c">1.7 mm</button>
+    </div>
+    <button class="btn" id="g1Btn">揭晓</button>
+    <p class="reveal" hidden>答案是 3.5 mm：两个阶段的热力作用被合理分配，前面两个的毛病都没出现，后面继续用这个值。<sup class="cite" data-cite="xGood"></sup></p>
+  </div>
+
+  <div class="cards three">
+    <div class="card bad1">
+      <span class="lab">x₁ = 5.3 mm · 一直转到底</span>
+      <p>全程高速旋转，后期产热过高，母材过度软化自由变形，接头里出现多余物、间隙和钉腿张开不足。<sup class="cite" data-cite="xHigh"></sup></p>
+    </div>
+    <div class="card good">
+      <span class="lab">x₁ = 3.5 mm · 半路停转</span>
+      <p>阶段Ⅰ与阶段Ⅱ的热力作用得到合理控制，上述缺陷全部避开，得到质量良好的接头。<sup class="cite" data-cite="xGood"></sup></p>
+    </div>
+    <div class="card bad2">
+      <span class="lab">x₁ = 1.7 mm · 停得太早</span>
+      <p>阶段Ⅰ摩擦产热不足，下层板延展性没改善，接头内部和底部出现裂纹。<sup class="cite" data-cite="xLow"></sup></p>
+    </div>
+  </div>
+
+  <p>同一个滑块往前推是「烫过头」，往后拉是「没烫透」，能用的区间窄得只剩中间那一档。</p>
+</section>
+
+<!-- ========== 场景 4 ========== -->
+<section class="scene" data-scene="4" data-no="SCENE 04 / 07">
+  <h2><span class="num">04</span>进给越快，腿张得越开</h2>
+  <p class="one">钉腿张开多少（机械互锁量）随进给速度上升，而钉尖底下那层「肉」几乎不变。</p>
+  <p>两个评价形貌的尺子：机械互锁量是钉腿相对原始尺寸张开的距离，越大锁得越牢；底部厚度是钉腿内表面到工件底面的最短距离，越小越容易裂。<sup class="cite" data-cite="interlock"></sup></p>
+
+  <div class="rig">
+    <div class="hd">进给速度 v₁ · 点选看三个指标</div>
+    <div class="row"><span>进给速度</span>
+      <button class="chip" data-f="2" aria-pressed="true">2 mm/s</button>
+      <button class="chip" data-f="5" aria-pressed="false">5 mm/s</button>
+      <button class="chip" data-f="8" aria-pressed="false">8 mm/s</button>
+    </div>
+    <div class="readout" id="fOut">—</div>
+  </div>
+
+  <figure data-figure>
+    <svg viewBox="0 0 640 300" role="img" aria-label="机械互锁量与底部厚度随进给速度变化的两条曲线">
+      <g stroke="#243044" stroke-width="1" fill="none">
+        <line x1="80" y1="50" x2="80" y2="230"/>
+        <line x1="80" y1="230" x2="580" y2="230"/>
+        <line x1="580" y1="50" x2="580" y2="230" stroke-dasharray="3 4"/>
+      </g>
+      <g fill="#98a6bb" font-size="11" font-family="Menlo,monospace">
+        <text x="20" y="58">0.45</text><text x="20" y="152">0.35</text><text x="20" y="226">0.25</text>
+        <text x="18" y="244">互锁 mm</text>
+        <text x="556" y="58">0.90</text><text x="556" y="152">0.84</text><text x="556" y="226">0.78</text>
+        <text x="540" y="244">厚度 mm</text>
+      </g>
+      <!-- 互锁量：0.31 / 0.37 / 0.39 → 0.25-0.45 映射 y: 230-(v-0.25)/0.2*180 -->
+      <polyline id="lockLine" points="166,176 313,122 460,104" fill="none" stroke="#d9a441" stroke-width="2.6"/>
+      <g id="lockDots" fill="#d9a441">
+        <circle cx="166" cy="176" r="5"/><circle cx="313" cy="122" r="5"/><circle cx="460" cy="104" r="5"/>
+      </g>
+      <!-- 底部厚度：0.84/0.83/0.84 → 0.78-0.90 映射 y: 230-(v-0.78)/0.12*180 -->
+      <polyline points="166,140 313,155 460,140" fill="none" stroke="#3ddc84" stroke-width="2.2" stroke-dasharray="6 4"/>
+      <g fill="#3ddc84">
+        <circle cx="166" cy="140" r="4.5"/><circle cx="313" cy="155" r="4.5"/><circle cx="460" cy="140" r="4.5"/>
+      </g>
+      <g fill="#98a6bb" font-size="12" font-family="Menlo,monospace">
+        <text x="156" y="260">2</text><text x="303" y="260">5</text><text x="450" y="260">8</text>
+        <text x="250" y="282">进给速度 mm/s</text>
+      </g>
+      <g font-size="12" font-family="Menlo,monospace">
+        <text x="480" y="100" fill="#d9a441">机械互锁量</text>
+        <text x="480" y="134" fill="#3ddc84">底部厚度</text>
+      </g>
+      <g font-family="Menlo,monospace" font-size="10" fill="#98a6bb">
+        <text x="80" y="36">FIG. B  形貌指标随进给速度变化</text>
+      </g>
+    </svg>
+    <figcaption>黄线一路上扬，绿线几乎躺平：张开量变大，底部厚度守住 0.83 到 0.84 mm。<sup class="cite" data-cite="feedChange"></sup><span class="tag" data-label="读图">读图</span></figcaption>
+  </figure>
+
+  <p>三个进给速度下都没出现明显缺陷、底部厚度无明显变化，只有机械互锁量逐渐增大。<sup class="cite" data-cite="feedChange"></sup></p>
+  <p>原因不难想：进给快了，阶段Ⅰ产热时间变短，软化减轻，铆接阻力反而变大，钉腿被撑得更开。<sup class="cite" data-cite="feedWhy"></sup></p>
+
+  <details>
+    <summary>看原文的完整工艺参数表（5 组）</summary>
+    <div class="docs">
+      <div class="tw">
+        <table>
+          <thead><tr><th>测试</th><th>ω₁ r/min</th><th>v₁ mm/s</th><th>x₁ mm</th><th>ω₂</th><th>v₂ mm/s</th><th>x₂ mm</th><th>用时 s</th></tr></thead>
+          <tbody>
+            <tr><td>#1</td><td class="num">3600</td><td class="num">2</td><td class="num">5.3</td><td class="num">0</td><td class="num">10</td><td class="num">5.3</td><td class="num">2.65</td></tr>
+            <tr><td>#2</td><td class="num">3600</td><td class="num">2</td><td class="num">3.5</td><td class="num">0</td><td class="num">10</td><td class="num">5.3</td><td class="num">1.93</td></tr>
+            <tr><td>#3</td><td class="num">3600</td><td class="num">2</td><td class="num">1.7</td><td class="num">0</td><td class="num">10</td><td class="num">5.3</td><td class="num">1.21</td></tr>
+            <tr><td>#4</td><td class="num">3600</td><td class="num">5</td><td class="num">3.5</td><td class="num">0</td><td class="num">10</td><td class="num">5.3</td><td class="num">0.88</td></tr>
+            <tr><td>#5</td><td class="num">3600</td><td class="num">8</td><td class="num">3.5</td><td class="num">0</td><td class="num">10</td><td class="num">5.3</td><td class="num">0.62</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>测试 #1 到 #3 改 x₁，#2、#4、#5 改 v₁。#4 的用时数字在原 PDF 中被水印压住，按 t = x₁/v₁ + (x₂−x₁)/v₂ 校核为 0.88 s。</p>
+    </div>
+  </details>
+</section>
+
+<!-- ========== 场景 5 ========== -->
+<section class="scene" data-scene="5" data-no="SCENE 05 / 07">
+  <h2><span class="num">05</span>焊住的地方，和变软的地方</h2>
+  <p class="one">钉腿内外两侧的板面是真的连上了；钉腿周围的金属则先被挤硬、再被热软化。</p>
+
+  <div class="cards">
+    <div class="card good">
+      <span class="lab">界面 · A / B 处</span>
+      <p>钉腿外侧两板之间、铆钉空腔内部两板之间，都形成了固相连接：旋转搅拌把氧化膜打碎，两面紧贴，靠原子间作用力形成金属键。<sup class="cite" data-cite="solid"></sup></p>
+    </div>
+    <div class="card good">
+      <span class="lab">界面 · C / D 处</span>
+      <p>钉腿下部与板材交界处无缝贴合——阶段Ⅱ的高速镦铆把板压紧，把同轴度误差带来的钉板间隙挤没了。<sup class="cite" data-cite="noGap"></sup></p>
+    </div>
+  </div>
+
+  <p>密封性正是老铆接的软肋：那里始终留着一道缝。这里把它补上了。<sup class="cite" data-cite="seal"></sup></p>
+
+  <p>硬度断面被分成三块：母材区 <b class="hi">BM</b> 约 145 HV；紧贴钉腿的 <b class="hi">HZ</b> 被搅拌加挤压，发生动态再结晶和加工硬化，变硬；再往外的 <b class="hi">SZ</b> 基本不受力、只受热，强化相溶解，变软。<sup class="cite" data-cite="hv"></sup></p>
+  <p>进给越快，钉腿周围硬化越重<sup class="cite" data-cite="hvTrend"></sup>；同时热输入变少，软化区的软化反而减轻<sup class="cite" data-cite="hvSoften"></sup>。</p>
+
+  <details>
+    <summary>三个进给速度下的软化区实际宽度</summary>
+    <div class="docs">
+      <p>按硬度云图读出的 SZ 宽度：v₁ = 2 mm/s 时 2.3 mm；5 mm/s 时 1.0 mm；8 mm/s 时 1.5 mm。云图色标范围 104 至 164 HV。</p>
+      <p>上面这组对应关系是读图所得，正文没有逐档列出，请对照原文图 8 核对。</p>
+    </div>
+  </details>
+</section>
+
+<!-- ========== 场景 6 ========== -->
+<section class="scene" data-scene="6" data-no="SCENE 06 / 07">
+  <h2><span class="num">06</span>拉剪：坏在下面那块板</h2>
+  <p class="one">拉剪时铆钉不会被剪断，它带着一小块母材从下板被拽出来，身体从 6° 转到 36°。<sup class="cite" data-cite="angle6"></sup></p>
+
+  <div data-guess>
+    <div class="qh">先猜再看 · 02</div>
+    <p>进给速度 8 mm/s 时，接头的峰值拉剪力能到多少千牛？</p>
+    <input type="range" id="g2Range" min="1" max="12" step="0.5" value="5" aria-label="猜测峰值拉剪力">
+    <p>你的猜测：<output id="g2Out">5.0 kN</output></p>
+    <button class="btn" id="g2Btn">揭晓</button>
+    <p class="reveal" hidden>原文给出 8.0 kN、断裂吸能 32.1 J，都是三个进给速度里的最大值。<sup class="cite" data-cite="peakShear"></sup></p>
+  </div>
+
+  <p>三个进给速度下，峰值拉剪力与断裂吸能都随速度上升，8 mm/s 时最高，分别为 8.0 kN 和 32.1 J。<sup class="cite" data-cite="peakShear"></sup></p>
+  <p>失效模式一致：下板开裂——铆钉连同钉腿尖端附着的下层母材被一起从下板拉出。<sup class="cite" data-cite="failMode"></sup></p>
+  <p>底部厚度既然守住了，决定峰值力的就换成底部母材的硬度；硬度随进给速度上升，力也就跟着涨。<sup class="cite" data-cite="failWhy"></sup></p>
+
+  <figure data-figure>
+    <svg viewBox="0 0 640 250" role="img" aria-label="拉剪失效三阶段示意：铆钉初始、旋转 6 度达峰值、旋转 36 度完全失效">
+      <!-- c -->
+      <g stroke="#98a6bb" stroke-width="1" fill="rgba(120,170,220,.12)">
+        <rect x="30" y="80" width="130" height="18"/>
+        <rect x="30" y="98" width="130" height="30" fill="rgba(120,170,220,.22)"/>
+      </g>
+      <rect x="88" y="60" width="16" height="60" fill="rgba(233,241,250,.25)" stroke="#e9eef7"/>
+      <text x="30" y="160" fill="#98a6bb" font-size="11" font-family="Menlo,monospace">c 点 · 0° 未破坏</text>
+
+      <!-- d -->
+      <g stroke="#98a6bb" stroke-width="1" fill="rgba(120,170,220,.12)">
+        <rect x="250" y="80" width="130" height="18"/>
+        <rect x="250" y="98" width="130" height="30" fill="rgba(120,170,220,.22)"/>
+      </g>
+      <g transform="rotate(-6 322 92)">
+        <rect x="314" y="58" width="16" height="62" fill="rgba(233,241,250,.25)" stroke="#e9eef7"/>
+      </g>
+      <path d="M330 112 q14 6 22 2" stroke="#ff6b5e" stroke-width="2" fill="none"/>
+      <text x="250" y="160" fill="#d9a441" font-size="11" font-family="Menlo,monospace">d 点 · 6° 峰值 + 下板开裂</text>
+
+      <!-- e -->
+      <g stroke="#98a6bb" stroke-width="1" fill="rgba(120,170,220,.12)">
+        <rect x="470" y="80" width="130" height="18"/>
+        <rect x="470" y="98" width="130" height="30" fill="rgba(120,170,220,.22)"/>
+      </g>
+      <g transform="rotate(-36 542 92)">
+        <rect x="534" y="58" width="16" height="62" fill="rgba(233,241,250,.25)" stroke="#e9eef7"/>
+      </g>
+      <circle cx="560" cy="112" r="9" fill="none" stroke="#ff6b5e" stroke-width="1.6" stroke-dasharray="3 3"/>
+      <text x="470" y="160" fill="#ff6b5e" font-size="11" font-family="Menlo,monospace">e 点 · 36° 完全脱出</text>
+
+      <g font-family="Menlo,monospace" font-size="10" fill="#98a6bb">
+        <text x="30" y="200">FIG. C  下板开裂失效过程（简化）</text>
+        <text x="30" y="218">旋转角取自原文 6° / 36°；板与钉比例为示意</text>
+      </g>
+    </svg>
+    <figcaption>越拉越转，力先猛涨、再变缓，到 6° 时下板薄处裂开，之后靠钉腔里的固相连接顶住，36° 才彻底脱出。<sup class="cite" data-cite="angle36"></sup><span class="tag" data-label="示意">示意</span></figcaption>
+  </figure>
+
+  <p>曲线在上升段就开始打锯齿：这是 2A12 这类铝铜合金受拉时的 PLC 效应（波特文-勒夏特利埃效应），母材屈服后反复的应力跌落；后段那些规则锯齿，则来自钉尖与周围母材之间的摩擦。<sup class="cite" data-cite="plc"></sup></p>
+</section>
+
+<!-- ========== 场景 7 ========== -->
+<section class="scene" data-scene="7" data-no="SCENE 07 / 07">
+  <h2><span class="num">07</span>换个方向拉，结论反过来</h2>
+  <p class="one">正拉时坏的是上面那块板，铆钉钉在下板一动没动；横向一比，它是母材的八成。<sup class="cite" data-cite="compare"></sup></p>
+
+  <p>峰值正拉力与断裂吸能同样随进给速度上升，8 mm/s 时最高：3.9 kN、29.3 J。<sup class="cite" data-cite="peakCT"></sup></p>
+  <p>失效模式是上板被拉出——铆钉始终插在下板里，只把上板从钉端拉脱。<sup class="cite" data-cite="ctMode"></sup></p>
+  <p>这次决定峰值力的是上层母材的硬度：HZ 与 SZ 都随进给速度变硬，力就跟着涨。<sup class="cite" data-cite="ctWhy"></sup></p>
+  <p>过程里上板以铆钉为中心往上折，先折到 35°，最终 39° 完全脱出，铆钉全程插在下板不动。<sup class="cite" data-cite="ctAngle"></sup></p>
+
+  <div data-guess>
+    <div class="qh">先猜再看 · 03</div>
+    <p>把 F-SPR 接头的拉剪强度与母材比，它相对电磁铆接高出多少？</p>
+    <input type="range" id="g3Range" min="0" max="200" step="10" value="60" aria-label="猜测相对提升百分比">
+    <p>你的猜测：<output id="g3Out">60%</output></p>
+    <button class="btn" id="g3Btn">揭晓</button>
+    <p class="reveal" hidden>相对电磁铆接提高 128.6%，相对自动压铆提高 116.2%。<sup class="cite" data-cite="compare"></sup></p>
+  </div>
+
+  <svg viewBox="0 0 640 190" role="img" aria-label="三种工艺接头拉剪强度占母材强度的比例对比柱状图" style="width:100%;height:auto;display:block">
+    <g font-family="Menlo,monospace" font-size="12" fill="#98a6bb">
+      <text x="10" y="26">F-SPR</text><text x="10" y="76">自动压铆</text><text x="10" y="126">电磁铆接</text>
+    </g>
+    <g>
+      <rect x="90" y="12" width="432" height="22" fill="#d9a441"/>
+      <rect x="90" y="62" width="200" height="22" fill="#5d86b8"/>
+      <rect x="90" y="112" width="189" height="22" fill="#5d86b8"/>
+    </g>
+    <g font-family="Menlo,monospace" font-size="13" fill="#e9eef7">
+      <text x="530" y="28">80%</text><text x="298" y="78">37%</text><text x="287" y="128">35%</text>
+    </g>
+    <g font-family="Menlo,monospace" font-size="10" fill="#98a6bb">
+      <text x="90" y="166">以 2A12-T4 母材拉剪强度为 100%</text>
+    </g>
+    <line x1="90" y1="150" x2="560" y2="150" stroke="#243044"/>
+  </svg>
+
+  <div data-quiz>
+    <div class="qh">你答得上来吗 · 3 题</div>
+
+    <div class="q">
+      <p>1. 转换深度为什么定在 3.5 mm？</p>
+      <div class="row">
+        <button class="chip" data-q="q1a">因为它最省时间</button>
+        <button class="chip" data-q="q1b">因为热力作用被合理分配</button>
+      </div>
+      <p class="reveal" hidden>后者。两端分别是「热过头」和「热不够」，中间这档同时避开了多余物、间隙与裂纹。<sup class="cite" data-cite="xGood"></sup></p>
+    </div>
+
+    <div class="q">
+      <p>2. 拉剪时先坏的是哪一层？</p>
+      <div class="row">
+        <button class="chip" data-q="q2a">上层板被拉出</button>
+        <button class="chip" data-q="q2b">下板开裂</button>
+      </div>
+      <p class="reveal" hidden>下板开裂：铆钉带着钉腿尖端的下层母材一起被拉出。<sup class="cite" data-cite="failMode"></sup></p>
+    </div>
+
+    <div class="q">
+      <p>3. 它达到母材拉剪强度的多少？</p>
+      <div class="row">
+        <button class="chip" data-q="q3a">约 35%</button>
+        <button class="chip" data-q="q3b">约 60%</button>
+        <button class="chip" data-q="q3c">约 80%</button>
+      </div>
+      <p class="reveal" hidden>80%，而电磁铆接是 35%、自动压铆是 37%。<sup class="cite" data-cite="compare"></sup></p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 全文归档 ========== -->
+<details>
+  <summary>原文全文与三张表（20 页转录，可查读）</summary>
+  <div class="docs">
+    <h3>引言</h3>
+    <p>2A12 铝合金具有比强度高、耐腐蚀性好和可热处理强化等优点，被广泛用于飞机、火箭和导弹等大型构件的制造中。然而，在航天薄壁结构制造中，当前的技术条件还难以实现大型构件的整体成形，数以万计的铝合金零部件必须依赖连接技术实现装配。</p>
+    <p>干涉配合铆接技术是航空航天领域 2 系铝合金构件装配的重要工艺：在板材上预制通孔，铆接时铆杆在压铆力作用下镦粗，孔壁与钉杆形成一定干涉量，同时在铆孔以外部分形成墩头。但预制孔工序增加了工艺复杂度，单点铆接周期长约 10 s，制孔易产生毛刺等多余物，且铆钉与被连接材料之间存在间隙，接头密封性降低。</p>
+    <p>预制孔路线近年提出电磁铆接，铆钉变形更均匀，有利密封性与疲劳寿命；但应变速率高，墩头会形成绝热剪切带，控制不当产生微裂纹，且仍需预制孔。</p>
+    <p>无预制孔路线以自冲铆接为代表：半空心铆钉受冲压刺穿上层板，在凹模作用下向下层板扩张，形成机械互锁。该工艺已广泛用于汽车用 5 系、6 系铝合金，但 2 系铝合金延展率低，接头底部容易开裂；靠感应加热或激光预热可以消裂纹，但工艺周期与设备复杂度上升。</p>
+    <p>固相连接路线中的搅拌摩擦点焊热输入低、无材料熔化，但传统工艺会留下匙孔，降低有效承载面积并造成应力集中。回填式搅拌摩擦点焊通过轴套与搅拌针相对运动回填材料消除匙孔，已有研究用它连接 2A12 获得无匙孔接头，但搅拌针往复运动产生的钩状缺陷与弱连接，使接头受载时易界面断裂。</p>
+    <p>针对预制孔问题，Li 等提出机械-固相复合连接技术，即自冲摩擦铆焊（F-SPR）：半空心铆钉在刺入工件的同时高速旋转，用摩擦热软化低延展性材料抑制开裂，并通过控制摩擦热使铆钉与工件之间形成固相连接，最终得到无裂纹的机械-固相复合接头。已有研究用 F-SPR 连接铝镁，观察到金属间化合物；也研究过旋转与进给速度对成形和力学性能的影响，并提出两段式工艺。</p>
+    <p>总体而言，F-SPR 已成功连接汽车用 5 系、6 系、7 系铝合金及 AZ31B 镁合金，但空天领域 2 系铝合金尚缺乏研究。因此本文针对 2A12-T4 板材，采用两段式 F-SPR 工艺：先分析不同转换深度的缺陷特征确定合适值，再在不同进给速度下分析宏观形貌与微观组织，然后分析力学行为与断裂机理，最后与两种现用干涉配合铆接接头比较拉剪性能。</p>
+
+    <h3>1 试验准备</h3>
+    <h4>1.1 试验材料</h4>
+    <p>板材为 1.5 mm 与 2.5 mm 厚 2A12-T4 铝合金，半空心铆钉由 35CrMo 中碳钢制成、表面无镀层。铆钉钉体尺寸参考传统自冲铆接工艺，钉盖设计为外驱动齿和内定位孔结构，便于传递扭矩，实现高精度旋转驱动。</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>表1 化学成分 wt%</th><th>Si</th><th>Mn</th><th>Mg</th><th>Cu</th><th>Zn</th><th>Ti</th><th>Cr</th><th>Mo</th><th>C</th><th>Fe</th><th>Al</th></tr></thead>
+        <tbody>
+          <tr><td>2A12-T4</td><td class="num">0.50</td><td class="num">0.55</td><td class="num">0.90</td><td class="num">4.65</td><td class="num">0.25</td><td class="num">0.15</td><td class="num">0.10</td><td>—</td><td>—</td><td class="num">0.50</td><td>其余</td></tr>
+          <tr><td>35CrMo</td><td class="num">0.3</td><td class="num">0.75</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="num">1.05</td><td class="num">0.2</td><td class="num">0.34</td><td>其余</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>表2 力学特性</th><th>密度 kg/m³</th><th>杨氏模量 GPa</th><th>屈服 MPa</th><th>抗拉 MPa</th><th>延展率 %</th></tr></thead>
+        <tbody>
+          <tr><td>2A12-T4</td><td class="num">2780</td><td class="num">73</td><td class="num">325</td><td class="num">472</td><td class="num">10</td></tr>
+          <tr><td>35CrMo</td><td class="num">7750</td><td class="num">211</td><td class="num">835</td><td class="num">985</td><td class="num">≥12</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>图 1 展示铆钉截面尺寸与实物形貌，标注 Φ7.8、7.3、5.3、4.6、Φ5.3、Φ3.4（mm）。</p>
+
+    <h4>1.2 试验系统</h4>
+    <p>F-SPR 试验原型系统由 C 型框架、试验平台和控制单元三部分组成。试验台安装在 C 型框架开口下端，板材通过平台凹槽与夹紧装置固定于凹模上方，半空心铆钉通过驱动齿与驱动头啮合共同置于板材上方。</p>
+
+    <h3>2 试验方法</h3>
+    <h4>2.1 工艺介绍</h4>
+    <p>工艺流程包含摩擦软化与高速镦铆两个阶段，涉及旋转速度 ω、进给速度 v、进给深度 x 三个参数。阶段Ⅰ：驱动头驱动铆钉以 ω₁ 高速旋转、以 v₁ 慢速进给，产生摩擦热软化并刺入上层板。阶段Ⅱ：进给 x₁ 时停止旋转，以 v₂ 快速刺入下层板，钉腿受较大进给阻力向外张开，进给到 x₂ 时结束，获得机械-固相复合接头。</p>
+    <p>表 3 中，测试 #1 至 #3 改变 x₁，研究其对成形质量的影响；确定 x₁ 后，测试 #2、#4、#5 将 v₁ 控制为单一变量，研究其对形貌、硬度及力学性能的影响。整个工艺过程持续约 0.62 至 2.65 s。</p>
+    <h4>2.2 接头质量评价</h4>
+    <p>从宏观形貌、微观形貌、硬度、拉剪性能及正拉性能 5 个方面评价。接头经镶嵌、研磨、抛光后，用 Leica 光学显微镜观察宏微观形貌。宏观形貌有两个指标：机械互锁量（钉腿相对原始尺寸张开的距离，越大互锁越强）与底部厚度（钉腿内表面到工件底部表面的最短距离，越小开裂风险越大）。用 WILSON VH1102 维氏硬度计以 0.1 kgf 压力测母材硬度并生成云图。</p>
+    <p>拉剪测试：两片 130 mm × 38 mm 工件搭接，搭接区 38 mm × 38 mm，铆接位于中心；为避免两板轴线与拉力不平行产生的旋转扭矩，用 2.5 mm 与 1.5 mm 垫片交叉垫置在 1.5 mm 和 2.5 mm 铝板夹持端。正拉测试：两片 100 mm × 38 mm 工件正交搭接，铆接位于中心，两端开两个距离 66 mm 的圆孔用于夹持。</p>
+    <p>拉剪与正拉均在 SUNS UTM5504X 电子试验机上进行，拉伸速率 3.0 mm/min，每个参数重复测试 3 次。</p>
+
+    <h3>3 试验结果及讨论</h3>
+    <h4>3.1.1 转换深度影响</h4>
+    <p>转换深度通过影响两阶段的转换时间影响热力作用，最终影响成形质量。x₁ 取 5.3、3.5、1.7 mm（测试 #1 至 #3）：5.3 mm 时铆钉始终高速旋转进给，后期产热过高，母材过度软化自由变形，接头出现多余物、间隙及钉腿张开不足；1.7 mm 时阶段Ⅰ产热不足，下层板延展性改善不足，接头内部及底部出现裂纹；3.5 mm 时两阶段热力作用得到合理控制，缺陷得以避免。后续试验 x₁ 确定为 3.5 mm。</p>
+    <h4>3.1.2 进给速度影响</h4>
+    <p>v₁ 取 2、5、8 mm/s（测试 #2、#4、#5）。三个速度下均获得无明显缺陷的接头；随 v₁ 增加，底部厚度无明显变化，机械互锁量逐渐增大。原因是进给速度增大使阶段Ⅰ产热时间缩短、软化作用减轻、铆接阻力增大，钉腿受张力张开更明显。</p>
+    <h4>3.2 接头微观形貌</h4>
+    <p>取测试 #2 接头观察各界面：A 处（钉腿外侧两板间）与 B 处（铆钉空腔内部两板间）均实现固相连接——阶段Ⅰ铆钉搅拌使界面氧化膜破碎、板材紧密接触，通过原子间作用力形成金属键。C、D 处（钉腿下部与板材交界面）钉腿内外侧与板材无缝连接——阶段Ⅱ高速镦铆将板材压紧，使同轴度误差导致的钉板间隙消失。工艺实现了紧密机械-固相复合连接，解决了干涉配合铆接接头中铆钉与板材的间隙问题，提高密封性。</p>
+    <h4>3.3 接头硬度分布</h4>
+    <p>硬度分为母材区 BM、硬化区 HZ 和软化区 SZ。BM 约 145 HV。HZ 分布在钉腿周围，母材受钉腿剧烈搅拌发生塑性变形，晶粒在热作用下动态再结晶，并在钉腿挤压下加工硬化，综合表现为硬化；随进给速度增大，硬化更严重。SZ 紧邻 HZ，基本不受力、只在热作用下晶粒动态再结晶，强化相溶解导致硬度降低，表现为软化；随进给速度增大，热输入减少，软化减轻。</p>
+    <h4>3.4 接头力学性能</h4>
+    <p>三个进给速度下，峰值拉剪力与断裂吸能均随速度增加而增大，8 mm/s 时最大，为 8.0 kN 与 32.1 J。拉剪失效模式均为下板开裂：铆钉连同附着在钉腿尖端的下层母材被同时从下板拉出。在底部厚度基本一致的情况下，底部母材硬度成为影响峰值力的最重要因素。</p>
+    <p>图 10（c）至（e）还原断裂演化：拉剪力首先急剧上升，c 处未明显破坏；随位移增加，上下板相对运动使接头产生弯矩、铆钉旋转，旋转降低刚度使力的增长率减小；随旋转角增加，钉腿尖从下板滑出，力主要由机械互锁提供；d 位置旋转达 6°，力至最大，底部较薄铝母材开裂；此后底部母材沿圆周逐渐破裂，钉腔中两板间固相连接提供额外阻力，接头仍能长时间承受较大力；e 位置铆钉完全脱离下板，旋转 36°，接头完全失效。</p>
+    <p>力-位移曲线出现两次锯齿波动：峰值载荷处的锯齿与材料特性有关，2A12 受拉时在特定应力范围内发生非均质塑性变形的连续流动，即 PLC 效应；母材屈服后继续被拉动时，钉尖与周围母材的较大摩擦使曲线后段仍有规则锯齿。</p>
+    <p>正拉方面，峰值正拉力与断裂吸能同样随进给速度增加而增大，8 mm/s 时最大，为 3.9 kN 与 29.3 J。失效模式均为上板拉出：铆钉始终插入下板，仅上板从钉端拉出。上层母材硬度成为影响峰值力的最重要因素，HZ 与 SZ 硬度均随进给速度增加而提高。图 12（b）至（e）：受力初期上板刚度大、正拉力快速上升，c 点基本无破坏；随位移增加，上板两端以铆钉为中心快速向上弯折，d 点弯折 35°；继续弯折直至完全失效，上板完全从钉端拉出，弯折 39°，铆钉全程插入下板保持不动。</p>
+    <p>最后把两段式 F-SPR 接头拉剪性能与两种现用干涉配合铆接接头和母材比较：F-SPR 接头拉剪强度可达 2A12-T4 母材拉剪强度的 80%，相对电磁铆接（35%）及自动压铆（37%）分别提高 128.6% 及 116.2%。</p>
+
+    <h3>4 结论（原文 5 条）</h3>
+    <p>1）采用自冲摩擦铆焊工艺解决低延展率、中高强度航空铝合金的连接问题，通过调控工艺过程中的热力作用，在无需预制孔的前提下实现板材的可靠连接。</p>
+    <p>2）转换深度 5.3 mm 时热输入过高，出现多余物、间隙及张开不足；1.7 mm 时下层板材软化不足，出现裂纹；3.5 mm 可有效避免上述缺陷。</p>
+    <p>3）接头中铆钉内外侧上下两板间均形成固相连接，进一步增加密封性。进给速度增加会使机械自锁量增大，上下板硬度增加。</p>
+    <p>4）拉剪失效发生在钉腿内侧较薄的下板处，正拉失效发生在铆钉端部上板位置，随进给速度增加，两种力学强度及断裂吸能均逐渐增大。</p>
+    <p>5）拉剪强度达 2A12-T4 铝合金母材抗拉强度的 80%，明显高于电磁铆接（35%）及自动压铆（37%）。</p>
+
+    <h3>转录说明</h3>
+    <p>原 PDF 共 20 页，标题起于正文引言，无题名页、摘要、关键词与参考文献表；正文上标引用编号为 [1] 至 [28]，文献条目无法还原。图 13 在正文被引用但 PDF 中无对应插图。第 4、5、8、11、13、17 页正文以位图嵌入，经 320 dpi 渲染后 OCR 转录。</p>
+  </div>
+</details>
+
+<p style="font-size:13px;color:var(--dim);margin:24px 0 0;line-height:1.7">
+  读法：论证拆解（问题 → 方法 → 证据 → 结论），主交互为工艺参数试验台与失效过程示意。原文中未放入首屏的内容（文献综述细节、测试设备型号、显微照片描述）已收进上方折叠层。带数字的说法请点角标核对原句。
+</p>
+
+</main>
+
+<div id="citeCard" role="dialog" aria-modal="false" aria-label="原文出处">
+  <div class="ch"><span id="ccPage">P—</span><button id="citeClose">关闭</button></div>
+  <q id="ccQuote"></q>
+  <p class="zh" id="ccZh"></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SOURCES = {
+  rivetCycle:{page:1,quote:"然而，预制孔工序无形中增加了工艺复杂程度，单点铆接周期长约 10 s，导致工艺成本大幅提升，且制孔过程易产生毛刺等多余物，影响产品服役性能。",zh:"传统铆接要先打孔，一个点约 10 秒，还会留毛刺和缝隙"},
+  sprCu:{page:2,quote:"但是，由于 2 系铝合金的延展率低，在自冲铆接时接头底部容易出现开裂。",zh:"2 系铝合金太脆，自冲铆接时底部容易裂"},
+  keyhole:{page:2,quote:"但是，传统的搅拌摩擦点焊工艺会在接头中留下一个匙孔",zh:"搅拌摩擦点焊会留匙孔，降低承载面积"},
+  fsprDef:{page:2,quote:"在 F-SPR 过程中，半空心铆钉在刺入工件的同时做高速旋转运动。通过铆钉旋转产生的摩擦热软化低延展性材料，抑制开裂。",zh:"F-SPR 让铆钉边转边扎，靠摩擦热软化材料"},
+  timespan:{page:6,quote:"根据所用工艺参数的不同，整个工艺过程持续约 0.62~2.65 s。",zh:"整套工艺 0.62 到 2.65 秒"},
+  stage1:{page:6,quote:"1）阶段Ⅰ，摩擦软化阶段，凹模、板材、半空心铆钉及驱动头就位，驱动头驱动铆钉以 ω₁ 高速旋转，同时以 v₁ 慢速进给，产生摩擦热软化并刺入上层板材。",zh:"阶段Ⅰ 高速转、慢速进，靠摩擦热软化"},
+  stage2:{page:6,quote:"2）阶段Ⅱ，高速镦铆阶段，当铆钉进给 x₁ 时停止旋转，并以 v₂ 快速刺入下层板，钉腿受到较大的进给阻力而向外张开变形，当铆钉进给到 x₂ 时工艺结束。",zh:"阶段Ⅱ 停转、快速压下，钉腿张开"},
+  xHigh:{page:9,quote:"当 x₁ 为 5.3 mm 时，铆钉始终保持高速旋转进给运动，导致整个过程尤其是工艺后期产热过高，使母材过度软化自由变形，在形成接头中出现多余物、间隙及钉腿张开不足等多种缺陷。",zh:"5.3 mm 时热过头，出现多余物、间隙、张开不足"},
+  xLow:{page:9,quote:"当 x₁ 为 1.7 mm 时，阶段Ⅰ中摩擦产热不足，对下层板材延展性改善不足，最终在接头内部及底部出现裂纹缺陷。",zh:"1.7 mm 时热不够，接头内部和底部裂开"},
+  xGood:{page:9,quote:"而当 x₁ 为 3.5 mm 时，阶段Ⅰ与阶段Ⅱ的热力作用得到合理控制，铆接完成后获得的接头中避免了上述缺陷，获得了质量良好的接头。因此，在后面试验中，转换深度 x₁ 确定为 3.5 mm。",zh:"3.5 mm 时热力作用均衡，得到无缺陷接头"},
+  feedChange:{page:10,quote:"可以看到，3 个进给速度下均获得了无明显缺陷的 F-SPR 接头，且随着 v₁ 的增加，底部厚度无明显变化，而机械互锁量逐渐增大。",zh:"三个速度都没缺陷，互锁量增大、底部厚度基本不变"},
+  feedWhy:{page:10,quote:"这是因为进给速度的增大导致阶段Ⅰ的产热时间缩短，对材料的软化作用减轻，相应的铆接阻力增大，钉腿受力张开更明显，从而机械互锁量增大。",zh:"产热时间短了、软化轻了，阻力大反而张得更开"},
+  interlock:{page:7,quote:"机械互锁量表示钉腿相对于原始尺寸张开的距离，机械互锁量越大，表示铆钉与工件之间的机械互锁越强。",zh:"机械互锁量就是钉腿张开的距离"},
+  solid:{page:12,quote:"在 A 处和 B 处，即钉腿外侧两板间和铆钉空腔内部两板间，均实现了固相连接。这是因为在阶段Ⅰ中，铆钉搅拌作用使界面处氧化膜破碎进而实现板材的紧密接触，并通过原子间作用力形成金属键，最终形成固态焊合。",zh:"A、B 两处真焊上了：氧化膜被搅碎、原子间成键"},
+  noGap:{page:12,quote:"此外，在 C 和 D 处，即钉腿下部与板材的交界面上，钉腿内外侧与板材实现了无缝连接，这是因为在阶段Ⅱ中的铆钉高速镦铆运动将板材压紧，使由于铆钉同轴度误差而产生的钉板间隙消失。",zh:"C、D 处无缝：高速镦铆把间隙压没了"},
+  seal:{page:13,quote:"综上，F-SPR 工艺实现了紧密机械-固相复合连接，解决了现用干涉配合铆接接头中铆钉与板材间隙问题，提高了接头的密封性。",zh:"补上了老铆接一直有的那道缝"},
+  hv:{page:14,quote:"可以看到，每个接头的硬度分为母材区（BM）、硬化区（HZ）和软化区（SZ）3 个区域。其中，BM 区硬度大约 145 HV。",zh:"硬度分 BM/HZ/SZ 三区，母材约 145 HV"},
+  hvTrend:{page:14,quote:"且随着进给速度的增大，铆钉周围母材硬化更严重。",zh:"进给越快，钉腿周围硬化越重"},
+  hvSoften:{page:14,quote:"且随着进给速度的增大，热输入减少，软化现象相应减轻。",zh:"热输入减少，软化反而减轻"},
+  peakShear:{page:15,quote:"可以看到，二者均随进给速度的增加而增大，且在进给速度为 8 mm/s 时达到最大，分别为 8.0 kN 和 32.1 J。",zh:"8 mm/s 时峰值拉剪力 8.0 kN、吸能 32.1 J"},
+  failMode:{page:15,quote:"如图 10（a）所示，接头拉剪失效模式均为下板开裂失效，即在拉剪过程中铆钉连同附着在钉腿尖端的下层母材被同时从下层板拉出。",zh:"拉剪时下板开裂，铆钉带一块母材被拽出"},
+  failWhy:{page:15,quote:"因此，在接头底部厚度基本一致的情况下，底部母材的硬度成为影响峰值力的最重要因素，由于底部硬度随着进给速度增大而增加，因此导致峰值力和断裂吸能增大。",zh:"底部厚度差不多，决定峰值力的就是底部硬度"},
+  angle6:{page:16,quote:"到达 d 位置时，铆钉旋转角度达到 6°，此时拉剪力达到最大，接头底部较薄的铝母材开裂。",zh:"转到 6° 时力最大，底部薄处裂开"},
+  angle36:{page:16,quote:"当到达 e 位置时，铆钉完全脱离下板束缚，此时铆钉旋转 36°，接头完全失效。",zh:"转到 36° 才彻底脱离"},
+  plc:{page:16,quote:"作为一种铝铜系合金，当 2A12 铝合金受拉时，在特定的应力范围内会发生非均质塑性变形的连续流动，具体表现为多次应力降低，这种锯齿状屈服现象被称为波特文-勒夏特利埃（PLC）效应。",zh:"锯齿是 PLC 效应，合金受拉时的连续塑性流动"},
+  peakCT:{page:17,quote:"可以看到，二者均随进给速度增加而增大，且在进给速度为 8 mm/s 时达到最大，分别为 3.9 kN 和 29.3 J。",zh:"正拉 8 mm/s 时 3.9 kN、吸能 29.3 J"},
+  ctMode:{page:17,quote:"如图 12（a）所示，接头的正拉失效模式均为上板拉出失效，即在正拉过程中铆钉始终插入下板中，仅上板从铆钉端部拉出。",zh:"正拉时上板被拉出，铆钉钉在下板不动"},
+  ctWhy:{page:17,quote:"因此，上层母材硬度成为影响峰值力的最重要因素，由于上层母材处 HZ 和 SZ 硬度均随进给速度增大而增加，因此导致正拉峰值力和断裂吸能增大。",zh:"决定正拉峰值力的是上层母材硬度"},
+  ctAngle:{page:18,quote:"随着正拉位移继续增加，上板两端以铆钉为中心快速向上弯折，到达 d 点时，上板弯折达 35°。随后，上板继续弯折直到接头完全失效，此时上板完全从铆钉端部拉出，弯折达 39°。",zh:"上板先折 35°，最终 39° 脱出"},
+  compare:{page:19,quote:"可见，自冲摩擦铆焊工艺接头拉剪强度可达 2A12-T4 铝合金母材拉剪强度的 80%，相对于电磁铆接（35%）及自动压铆（37%）工艺，分别提高 128.6% 及 116.2%。",zh:"达母材 80%，比电磁铆接高 128.6%、比自动压铆高 116.2%"},
+  plateThk:{page:4,quote:"试验所用板材分别为 1.5 mm 和 2.5 mm 厚 2A12-T4 铝合金，半空心铆钉由 35CrMo 中碳钢制成且表面无镀层处理。",zh:"上板 1.5 mm、下板 2.5 mm，铆钉 35CrMo"}
+};
+
+const motionOK = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+
+/* ---------- 角标 ---------- */
+const card = document.getElementById("citeCard");
+const ccPage = document.getElementById("ccPage");
+const ccQuote = document.getElementById("ccQuote");
+const ccZh = document.getElementById("ccZh");
+let lastY = 0;
+
+function openCite(id){
+  const s = SOURCES[id];
+  if(!s) return;
+  lastY = window.scrollY;
+  ccPage.textContent = "P" + s.page + " · 原文";
+  ccQuote.textContent = s.quote;
+  ccZh.textContent = "转述：" + s.zh;
+  card.classList.add("on");
+}
+function closeCite(){
+  card.classList.remove("on");
+}
+document.addEventListener("click", function(e){
+  const s = e.target.closest("sup.cite");
+  if(s){ openCite(s.dataset.cite); return; }
+});
+document.getElementById("citeClose").addEventListener("click", closeCite);
+document.addEventListener("keydown", function(e){
+  if(e.key === "Escape") closeCite();
+});
+
+/* ---------- 主题 ---------- */
+const themeBtn = document.getElementById("themeBtn");
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  themeBtn.textContent = t === "dark" ? "明" : "暗";
+  store.set("fsp.theme", t);
+}
+applyTheme(store.get("fsp.theme") || "dark");
+themeBtn.addEventListener("click", function(){
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+});
+
+/* ---------- 字号 ---------- */
+let fs = parseInt(store.get("fsp.fs") || "17", 10);
+function applyFs(){ document.documentElement.style.setProperty("--fs", fs + "px"); store.set("fsp.fs", fs); }
+applyFs();
+document.getElementById("fsUp").addEventListener("click", function(){ if(fs < 22){ fs += 1; applyFs(); } });
+document.getElementById("fsDn").addEventListener("click", function(){ if(fs > 14){ fs -= 1; applyFs(); } });
+
+/* ---------- 进度与续读 ---------- */
+const prog = document.getElementById("prog");
+function onScroll(){
+  const h = document.documentElement.scrollHeight - innerHeight;
+  const p = h > 0 ? Math.min(1, scrollY / h) : 0;
+  prog.style.width = (p * 100) + "%";
+  store.set("fsp.scrollY", String(Math.round(scrollY)));
+  store.set("fsp.pct", String(Math.round(p * 100)));
+}
+addEventListener("scroll", onScroll, {passive:true});
+
+const toast = document.getElementById("toast");
+function say(msg){
+  toast.textContent = msg;
+  toast.classList.add("on");
+  clearTimeout(say.t);
+  say.t = setTimeout(function(){ toast.classList.remove("on"); }, 3200);
+}
+(function resume(){
+  const y = parseInt(store.get("fsp.scrollY") || "0", 10);
+  const pct = parseInt(store.get("fsp.pct") || "0", 10);
+  if(y > 600 && pct > 5){
+    setTimeout(function(){ say("上次读到约 " + pct + "% 处，往下就能接上"); }, 700);
+  }
+})();
+
+/* ---------- 返回键 ---------- */
+const backStack = [];
+const backBtn = document.getElementById("backBtn");
+function jumpTo(sel){
+  const el = document.querySelector(sel);
+  if(!el) return;
+  backStack.push(scrollY);
+  history.pushState({y: scrollY}, "");
+  el.scrollIntoView({behavior: motionOK() ? "smooth" : "auto", block:"start"});
+  backBtn.hidden = false;
+}
+function goBack(){
+  const y = backStack.pop();
+  if(y != null) scrollTo({top:y, behavior: motionOK() ? "smooth" : "auto"});
+  backBtn.hidden = backStack.length === 0;
+}
+backBtn.addEventListener("click", goBack);
+addEventListener("popstate", function(e){
+  if(e.state && e.state.y != null){ backStack.pop(); scrollTo(0, e.state.y); }
+});
+
+/* ---------- 键盘切场景 ---------- */
+addEventListener("keydown", function(e){
+  if(e.target.matches("input, button, summary, textarea")) return;
+  const secs = Array.prototype.slice.call(document.querySelectorAll("[data-scene]"));
+  if(!secs.length) return;
+  if(e.key === "ArrowRight" || e.key === "ArrowLeft"){
+    let idx = 0, best = Infinity;
+    secs.forEach(function(s, i){
+      const d = Math.abs(s.getBoundingClientRect().top - 80);
+      if(d < best){ best = d; idx = i; }
+    });
+    const next = secs[Math.max(0, Math.min(secs.length - 1, idx + (e.key === "ArrowRight" ? 1 : -1)))];
+    next.scrollIntoView({behavior: motionOK() ? "smooth" : "auto", block:"start"});
+  }
+});
+
+/* ---------- 先猜再看 ---------- */
+document.querySelectorAll("[data-guess]").forEach(function(g){
+  const btn = g.querySelector("button.btn");
+  if(!btn) return;
+  const chips = g.querySelectorAll(".chip");
+  chips.forEach(function(c){
+    c.addEventListener("click", function(){
+      chips.forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+      c.setAttribute("aria-pressed","true");
+    });
+  });
+  btn.addEventListener("click", function(){
+    g.querySelectorAll(".reveal").forEach(function(r){ r.hidden = false; });
+    btn.disabled = true;
+    btn.textContent = "已揭晓";
+  });
+});
+
+const g2Range = document.getElementById("g2Range");
+const g2Out = document.getElementById("g2Out");
+if(g2Range){ g2Range.addEventListener("input", function(){ g2Out.textContent = parseFloat(g2Range.value).toFixed(1) + " kN"; }); }
+const g3Range = document.getElementById("g3Range");
+const g3Out = document.getElementById("g3Out");
+if(g3Range){ g3Range.addEventListener("input", function(){ g3Out.textContent = g3Range.value + "%"; }); }
+
+/* ---------- 自测 ---------- */
+document.querySelectorAll("[data-quiz] .q").forEach(function(q){
+  const chips = q.querySelectorAll(".chip");
+  const rev = q.querySelector(".reveal");
+  chips.forEach(function(c){
+    c.addEventListener("click", function(){
+      chips.forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+      c.setAttribute("aria-pressed","true");
+      if(rev) rev.hidden = false;
+    });
+  });
+});
+
+/* ---------- 工艺时间试验台 ---------- */
+const X2 = 5.3, V2 = 10;
+let curX = 3.5, curV = 2;
+const TEAM = {
+  "5.3-2": 2.65, "3.5-2": 1.93, "1.7-2": 1.21, "3.5-5": 0.88, "3.5-8": 0.62
+};
+function heatVerdict(x){
+  if(x >= 5.3) return "阶段Ⅰ 一直转到底：后期产热过高，母材过度软化自由变形，易出多余物、间隙与钉腿张开不足。";
+  if(x <= 1.7) return "停得太早：下层板软化不足，接头内部与底部容易出现裂纹。";
+  return "两阶段热力作用均衡，是原文确定的转换深度。";
+}
+function renderLab(){
+  const key = curX + "-" + curV;
+  const measured = TEAM[key];
+  const calc = curX / curV + (X2 - curX) / V2;
+  const out = document.getElementById("labOut");
+  const note = document.getElementById("labNote");
+  const t = measured != null ? measured : calc;
+  let html = "工艺时间 t = x₁/v₁ + (x₂−x₁)/v₂ = <b>" + t.toFixed(2) + " s</b>";
+  html += "<br><span style='color:var(--dim)'>" + (measured != null ? "与原文表 3 实测值一致" : "该组合原文未做，属换算") + "</span>";
+  html += "<br><span style='color:var(--dim)'>阶段Ⅰ 用 " + (curX / curV).toFixed(2) + " s，阶段Ⅱ 用 " + ((X2 - curX) / V2).toFixed(2) + " s</span>";
+  out.innerHTML = html;
+  note.innerHTML = heatVerdict(curX) + (measured == null ? " <span class='tag' data-label='推算'>推算</span>" : "");
+  document.querySelectorAll("[data-x]").forEach(function(b){ b.setAttribute("aria-pressed", String(parseFloat(b.dataset.x) === curX)); });
+  document.querySelectorAll("[data-v]").forEach(function(b){ b.setAttribute("aria-pressed", String(parseFloat(b.dataset.v) === curV)); });
+}
+document.querySelectorAll("[data-x]").forEach(function(b){
+  b.addEventListener("click", function(){ curX = parseFloat(b.dataset.x); renderLab(); });
+});
+document.querySelectorAll("[data-v]").forEach(function(b){
+  b.addEventListener("click", function(){ curV = parseFloat(b.dataset.v); renderLab(); });
+});
+renderLab();
+
+/* ---------- 进给速度看板 ---------- */
+const F = {
+  "2": {lock:0.31, thk:0.84, sz:2.3, hz:"最轻"},
+  "5": {lock:0.37, thk:0.83, sz:1.0, hz:"中等"},
+  "8": {lock:0.39, thk:0.84, sz:1.5, hz:"最重"}
+};
+function renderF(v){
+  const d = F[v];
+  document.getElementById("fOut").innerHTML =
+    "机械互锁量 <b>" + d.lock.toFixed(2) + " mm</b>　·　底部厚度 <b>" + d.thk.toFixed(2) + " mm</b>" +
+    "<br><span style='color:var(--dim)'>钉腿周围硬化程度：" + d.hz + "　软化区 SZ 约 " + d.sz.toFixed(1) + " mm</span>" +
+    "<br><span style='color:var(--dim)'>v₁ = " + v + " mm/s</span>";
+  document.querySelectorAll("[data-f]").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.f === v)); });
+  const dots = document.querySelectorAll("#lockDots circle");
+  if(dots.length === 3){
+    const idx = {"2":0, "5":1, "8":2}[v];
+    dots.forEach(function(c, i){ c.setAttribute("r", i === idx ? "8" : "5"); });
+  }
+}
+document.querySelectorAll("[data-f]").forEach(function(b){
+  b.addEventListener("click", function(){ renderF(b.dataset.f); });
+});
+renderF("2");
+
+onScroll();
+</script>
+</body>
+</html>
