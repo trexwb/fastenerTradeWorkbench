@@ -694,7 +694,7 @@ function _wikiCard(d){
         :(isRemote?'<span class="wiki-card-meta">'+icon('link','12')+' 线上文章</span>'
           :'<span class="wiki-card-meta">互动长页 · 单文件离线可读</span>'))
       +(!isRemote&&meta.lastReadAt?'<span class="wiki-card-meta wiki-card-last">上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+'</span>':'')
-      +'<span class="wiki-card-go">'+(isRemote?'应用内打开':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
+      +'<span class="wiki-card-go">'+(isRemote?'查看详情':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
     +'</div>'
     +'</article>';
 }
