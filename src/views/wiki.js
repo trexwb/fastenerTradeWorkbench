@@ -72,6 +72,22 @@ let _wikiRemoteScript = null;
 let _wikiRemoteList = null;
 /** list.json 加载状态：idle | loading | ready | error */
 let _wikiRemoteListState = 'idle';
+/** 最近一次 list 加载错误信息（用于 UI 排错） */
+let _wikiRemoteListError = '';
+/** 加载进度阶段：'connecting' | 'downloading' | 'parsing' | 'done' | 'error' */
+let _wikiListStage = 'connecting';
+/** 进度开始的时间戳（用于进度条动画） */
+let _wikiListStartedAt = 0;
+/** 已拉取到的字节数（Content-Length 已知时） */
+let _wikiListBytesLoaded = 0;
+/** 总字节数（Content-Length） */
+let _wikiListBytesTotal = 0;
+/** 进度态心跳定时器（loading 期间每秒刷新一次，驱动 elapsed 文案更新） */
+let _wikiListHeartbeat = null;
+/** 空态超时提示阈值（ms）—— loading 超过此时段显示「卡住」提示 + 重试 */
+const WIKI_EMPTY_STALE_MS = 15000;
+/** 首次进入空态的时间戳（用于判定 stale） */
+let _wikiEmptySince = 0;
 
 /**
  * 拼接文档（或索引）的绝对 URL。
@@ -180,41 +196,65 @@ function _loadWikiRemote(cb){
 }
 
 /**
- * 从 list.json 加载远程文章列表（fetch，与 index.js 互动文档合并展示）。
- * list.json 每条含 title / url / updated_at，转换为与 index.js docs 同构的对象，
- * 额外带 url 字段以区分远程文章（新窗口打开）与本地互动文档（iframe 阅读）。
- * file:// 下 fetch 可能受 CORS 限制，失败静默不影响本地文档展示。
+ * 从 list.json 加载远程文章列表（与 index.js 互动文档合并展示）。
+ * 直接 fetch（CORS 已在服务端开启：Access-Control-Allow-Origin: *）。
+ * 简化版：不使用流式读取，直接 resp.json()，更稳定可靠。
  * @returns {void}
  */
 function _fetchWikiList(){
   if(!WIKI_REMOTE_BASE)return;
   if(_wikiRemoteListState==='loading')return;
   _wikiRemoteListState='loading';
+  _wikiRemoteListError='';
+  _wikiListBytesLoaded=0;
+  _wikiListBytesTotal=0;
+  _wikiListStage='connecting';
+  _wikiListStartedAt=Date.now();
+  _wikiEmptySince=Date.now();
+
   const ctrl=new AbortController();
-  const timer=setTimeout(function(){ctrl.abort();},10000);
-  fetch(WIKI_REMOTE_BASE+'list.json?t='+Date.now(),{signal:ctrl.signal}).then(function(resp){
+  const timeoutMs=15000;
+  const timer=setTimeout(function(){ctrl.abort();},timeoutMs);
+
+  _wikiListStage='downloading';
+  if(view==='wiki')render();
+
+  fetch(WIKI_REMOTE_BASE+'list.json?t='+Date.now(),{signal:ctrl.signal,cache:'no-store'})
+  .then(function(resp){
     clearTimeout(timer);
     if(!resp.ok)throw new Error('HTTP '+resp.status);
+    _wikiListStage='parsing';
     return resp.json();
-  }).then(function(list){
+  })
+  .then(function(list){
+    if(_wikiListHeartbeat){clearInterval(_wikiListHeartbeat);_wikiListHeartbeat=null;}
     if(!Array.isArray(list))throw new Error('格式非法');
     _wikiRemoteList=list.filter(function(e){return e&&e.title&&e.url;}).map(function(e){
       return {
         title:String(e.title),
         url:String(e.url),
         file:'',
-        desc:'',
+        desc:e.desc||'',
         category:e.category||'',
-        tags:[],
-        size:0,
+        tags:Array.isArray(e.tags)?e.tags:[],
+        size:Number(e.size)||0,
         updated_at:e.updated_at||''
       };
     });
+    _wikiListStage='done';
     _wikiRemoteListState='ready';
+    _wikiRemoteListError='';
     if(view==='wiki')render();
-  }).catch(function(){
+  })
+  .catch(function(e){
     clearTimeout(timer);
+    if(_wikiListHeartbeat){clearInterval(_wikiListHeartbeat);_wikiListHeartbeat=null;}
     _wikiRemoteListState='error';
+    _wikiListStage='error';
+    const name=e&&e.name?e.name:'';
+    const msg=e&&e.message?e.message:String(e);
+    _wikiRemoteListError=name==='AbortError'?'请求超时（'+(timeoutMs/1000)+'s）':msg;
+    if(view==='wiki')render();
   });
 }
 
@@ -653,7 +693,21 @@ function _wikiToolbar(docs){
 function openWikiExternal(encodedUrl){
   let url=String(encodedUrl||'');
   try{url=decodeURIComponent(url);}catch(e){}
-  if(url)window.open(url,'_blank','noopener');
+  if(!url)return;
+  // 尝试 window.open，若被浏览器拦截则降级为 location 跳转（会离开当前应用）
+  const opened=window.open(url,'_blank','noopener');
+  if(!opened || opened.closed || typeof opened.closed==='undefined'){
+    // 弹窗被拦截：创建临时 <a> 点击
+    const a=document.createElement('a');
+    a.href=url;
+    a.target='_blank';
+    a.rel='noopener';
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){document.body.removeChild(a);},100);
+    if(typeof toast==='function')toast('若新窗口未弹出，请检查浏览器弹窗拦截设置','info');
+  }
 }
 
 /**
@@ -742,6 +796,9 @@ function _viewWikiReader(){
     +'</div>';
 }
 
+/** 知识库自动同步是否已触发（避免 render 循环重复触发） */
+let _wikiKbAutoSyncTriggered = false;
+
 /**
  * 专业解读视图入口（router 的 switch 分发调用）。
  * @returns {string} 视图 HTML
@@ -755,33 +812,57 @@ function viewWiki(){
     return _viewWikiReader();
   }
 
+  // 云端索引：本地 index.js 存在则加载（互动文档 iframe），否则跳过
   if(!_wikiIndex){
     loadWikiIndex(function(){ if(view==='wiki')render(); });
-    return '<div class="card"><div class="empty-state">'
-      +'<div class="es-title">正在载入文档索引…</div>'
-      +'<div class="es-desc">首次进入需要读取 wiki/index.js</div>'
-      +'</div></div>';
   }
-
-  // 云端索引幂等重试：ready/loading 时空转，error 冷却期（60s）过后重新拉取
+  // 云端文章清单（list.js / list.json）：与本地互动文档合并展示
   _loadWikiRemote(function(){ if(view==='wiki'&&_wikiRemote)render(); });
-  // list.json 远程文章列表：fetch 加载，与 index.js 互动文档合并展示
   if(_wikiRemoteListState!=='ready'&&_wikiRemoteListState!=='loading')_fetchWikiList();
+
+  // 知识库自动同步：当 WikiKB 文章为空且未同步时，自动触发（首次进入 / 清空后）
+  // 仅触发一次，避免 sync 失败后 render 循环重复触发
+  if(!_wikiKbAutoSyncTriggered && typeof WikiKB!=='undefined' && WikiKB.state && !WikiKB.state.articles.length && !WikiKB.state.syncing && WikiKB.state.enabled){
+    _wikiKbAutoSyncTriggered = true;
+    console.log('[wiki] 知识库为空，自动触发同步（仅一次）');
+    WikiKB.sync().then(function(r){
+      console.log('[wiki] 知识库同步完成:', r);
+      if(view==='wiki')render();
+    }).catch(function(e){
+      console.warn('[wiki] 知识库同步失败:', e);
+    });
+  }
 
   // 列表渲染以生效索引为准（云端就绪优先，离线/失败回退本地内置）
   const active=_wikiActiveIndex();
   const isCloud=!!(_wikiRemote&&_wikiRemote.docs.length);
   const docs=active.docs||[];
   if(!docs.length){
-    const failed=_wikiState==='error';
+    const localFailed=_wikiState==='error';
+    const listFailed=_wikiRemoteListState==='error';
+    let title,desc,retryBtn='',progressHtml='';
+    if(listFailed){
+      title='云端文章清单加载失败';
+      const errHint=_wikiRemoteListError?(' 原因：'+escHtml(_wikiRemoteListError)):'';
+      desc='list.json 不可用'+errHint+'。请确认服务端为 list.json 配 <code>Access-Control-Allow-Origin: *</code>。';
+      retryBtn='<button type="button" class="btn sm" style="margin-top:12px" onclick="_wikiManualRefresh(this)">'+icon('refresh','14')+' 重试</button>';
+    }else if(localFailed && _wikiRemoteListState!=='loading'){
+      title='本地互动文档索引缺失';
+      desc='本地 wiki/index.js 缺失，且云端清单未启动加载。';
+    }else{
+      title='正在从云端加载文章列表…';
+      desc='连接 wiki.edtib.com，读取文章清单。';
+      progressHtml=_wikiListProgressHtml();
+    }
     return '<div class="card"><div class="empty-state">'
       +'<div class="es-icon">'+icon('fileText','28')+'</div>'
-      +'<div class="es-title">'+(failed?'未找到文档索引':'暂无专业解读文档')+'</div>'
-      +'<div class="es-desc">'+(failed
-        ? '索引文件 wiki/index.js 加载失败。请在项目根目录执行 <code>npm run wiki:index</code> 重新生成后刷新。'
-        : '把单文件 HTML 放入 <code>src/public/wiki/</code> 目录，索引会自动收录并展示在这里。')+'</div>'
+      +'<div class="es-title">'+title+'</div>'
+      +'<div class="es-desc">'+desc+'</div>'
+      +progressHtml
+      +retryBtn
       +'</div></div>';
   }
+  _wikiEmptySince=0;
 
   const list=_wikiFilterDocs(docs);
   const terms=_wikiQueryTerms(_wikiSearch);
@@ -822,6 +903,34 @@ function viewWiki(){
  * 手动刷新：重置 list.json 与云端 index.js 缓存，重新拉取后重渲染。
  * 用于校对本地文档与线上文章是否一致。
  */
+/**
+ * 渲染文章清单加载进度条：阶段文案 + 字节进度（已知 Content-Length 时）+ 动画条。
+ * @returns {string} HTML 片段
+ */
+function _wikiListProgressHtml(){
+  const stageMap={
+    'connecting':'连接云端…',
+    'downloading':'下载文章清单…',
+    'parsing':'解析清单数据…',
+    'done':'完成',
+    'error':'失败'
+  };
+  const label=stageMap[_wikiListStage]||'准备中…';
+  let pct=-1;
+  if(_wikiListStage==='parsing'){
+    pct=95;
+  }else if(_wikiListStage==='connecting'){
+    pct=10;
+  }
+  const barStyle=pct>=0
+    ?'<div class="wiki-progress"><div class="wiki-progress-bar" style="width:'+pct+'%"></div></div>'
+    :'<div class="wiki-progress wiki-progress-indeterminate"><div class="wiki-progress-bar"></div></div>';
+  return '<div class="wiki-progress-wrap">'
+    +'<div class="wiki-progress-label">'+icon('cloud','14')+' '+label+'</div>'
+    +barStyle
+    +'</div>';
+}
+
 function _wikiManualRefresh(btn){
   if(btn)btn.disabled=true;
   _wikiRemoteList=null;
@@ -829,6 +938,11 @@ function _wikiManualRefresh(btn){
   _wikiRemote=null;
   _wikiRemoteState='idle';
   _wikiRemoteFailAt=0;
+  _wikiRemoteListError='';
+  _wikiListStage='connecting';
+  _wikiListBytesLoaded=0;
+  _wikiListBytesTotal=0;
+  if(_wikiListHeartbeat){clearInterval(_wikiListHeartbeat);_wikiListHeartbeat=null;}
   _fetchWikiList();
   _loadWikiRemote(function(){
     if(view==='wiki')render();

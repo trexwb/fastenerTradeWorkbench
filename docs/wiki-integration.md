@@ -70,26 +70,47 @@ AIGC:
 
 ### 机制
 
-- `src/views/wiki.js` 先加载本地 `wiki/index.js` 渲染（保证 file:// 双击与离线可用），随后异步加载 `https://wiki.edtib.com/wiki/index.js?t=时间戳`；
-- 云端索引加载成功且 `docs` 非空 → 列表整体切换为云端（标题旁显示绿色「云端」tag 与同步日期），文档 iframe 直连线上 URL，「复制链接」复制的是**可分享的线上地址**；
-- 云端不可用（离线 / 断网 / 未部署）→ **静默回退本地内置**，零打扰；失败后 60 秒冷却，再次进入页面自动重试；
-- 跨域加载用动态 `<script src>`（与本地索引同机制，**服务端无需任何 CORS 头**）；iframe 跨域展示天然允许。
+- `src/views/wiki.js` 进入「专业解读」时**直接拉取云端文章清单**：`https://wiki.edtib.com/wiki/list.js?t=时间戳`（`<script src>` 注入，免 CORS）；
+- 同时幂等尝试本地 `wiki/index.js`（互动文档索引，可选，缺失不影响云端文章展示）与云端 `index.js`；
+- `list.js` 加载失败时降级 fetch `list.json`（仅在服务端配了 CORS 或同源时生效），再失败则显示错误态与排错提示；
+- 云端清单与本地互动文档合并展示，按标题去重（清单优先）；远程文章新标签页打开，本地互动文档 iframe 阅读；
+- 跨域加载用动态 `<script src>`（与本地索引同机制，**服务端无需任何 CORS 头**）；iframe 跨域展示天然允许；
+- 失败后 60 秒冷却，再次进入页面自动重试；「更新」按钮可手动触发重新拉取。
 
 ### 线上目录约定（https://wiki.edtib.com/wiki/）
 
 ```
 /wiki/
-├── index.js                        ← 必须有：索引清单（gen-wiki-index.mjs 的同一产物）
-├── 17-4ph-fastener.html
-├── 2A12-高锁螺母-收口裂纹-互动长页.html
-└── …                               ← 文档与 index.js 同目录
+├── list.js                         ← 必须有：文章清单（window.__WIKI_LIST=[...]）
+├── list.json                       ← 可选：list.js 失败时的 fetch 兜底（需服务端配 CORS）
+├── index.js                        ← 可选：本地互动文档索引（gen-wiki-index.mjs 产物）
+├── 17-4ph-fastener.html            ← 可选：本地互动文档
+└── …                               ← 其它云端文章 HTML
+```
+
+`list.js` 格式（把 `list.json` 的数组包一层全局赋值即可）：
+
+```javascript
+window.__WIKI_LIST = [
+  {
+    "title": "文章标题",
+    "url": "https://wiki.edtib.com/技术科普/分类/文章.html",
+    "category": "失效分析",
+    "updated_at": "2026-10-28T03:11:52.538Z"
+  },
+  ...
+];
 ```
 
 ### 更新资料的线上流程（免发版）
 
-1. 上传新的 `.html` 到 `https://wiki.edtib.com/wiki/`；
-2. 重建索引并上传：把线上目录的 HTML 同步到本地 `src/public/wiki/` 后执行 `npm run wiki:index`，将生成的 `index.js` 一并上传（或在服务器上对 wiki 目录跑同一脚本）；
-3. 完成。用户下次打开「专业解读」即见新内容（索引请求带时间戳，不会被浏览器缓存卡住）。
+1. 上传新的文章 `.html` 到 `https://wiki.edtib.com/wiki/`（或子目录，URL 写进 list.json 即可）；
+2. 更新 `list.json`（服务端维护的文章清单源）；
+3. 把 `list.json` 转成 `list.js` 并上传：
+   - 本地开发机：`node scripts/gen-wiki-list.mjs https://wiki.edtib.com/wiki/list.json`（默认写到 `src/public/wiki/list.js`，再上传）
+   - 或服务端直接：`echo "window.__WIKI_LIST = $(cat list.json);" > list.js`
+4. （可选）如有本地互动文档更新，同步上传 HTML 与 `index.js`（`npm run wiki:index` 产物）；
+5. 完成。用户下次打开「专业解读」或点击「更新」按钮即见新内容（请求带时间戳，不会被浏览器缓存卡住）。
 
 ### 服务器要求
 
@@ -97,14 +118,14 @@ AIGC:
 | --- | --- | --- |
 | `Content-Type` | `.js` 需返回 `application/javascript` / `text/javascript` | nginx 默认正确；`nosniff` 下类型错误会导致 script 拒绝执行 |
 | CORS | **不需要** | `<script src>` 与 iframe 均不受同源限制 |
-| 目录列表 | **不依赖** | app 只读 `index.js` 清单，从不解析目录列表页 |
-| 缓存 | `index.js` 建议短缓存（如 `Cache-Control: no-cache` 或 max-age ≤ 300） | 前端已带 `?t=` 时间戳兜底，双保险 |
+| 目录列表 | **不依赖** | app 只读 `list.js` / `index.js` 清单，从不解析目录列表页 |
+| 缓存 | `index.js` / `list.js` 建议短缓存（如 `Cache-Control: no-cache` 或 max-age ≤ 300） | 前端已带 `?t=` 时间戳兜底，双保险 |
 | 协议 | 必须 HTTPS | 混合内容限制 |
 
 ### 语义注意
 
-- 云端成功后列表**全量以云端为准**：线上下架的文档本地也不再显示（本地文件仍保留作离线兜底）；
-- 云端 `docs` 为空数组视为部署异常，**不会**切换（防止误清空列表）；
+- 文章清单以 `list.js` 为准：`list.js` 下架的文章不再显示；
+- 本地互动文档（`index.js`）为可选增强：缺失不影响云端文章展示；
 - 桌面端已放开 CSP：`script-src` / `frame-src` 均已加 `https://wiki.edtib.com`（`src-tauri/tauri.conf.json`），需随下个桌面版发布生效。
 
 ## 八、排错清单
@@ -112,6 +133,7 @@ AIGC:
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 列表显示「未找到文档索引」 | `src/public/wiki/index.js` 缺失或加载失败 | 执行 `npm run wiki:index` 后刷新 |
+| 「更新」按钮一直「加载中…」且只显示 3 篇本地文档 | 服务端 `list.js` 未部署，且 `list.json` 未配 CORS（fetch 被浏览器拦截） | 把 `list.json` 转成 `list.js`（`echo "window.__WIKI_LIST = $(cat list.json);" > list.js`）后上传到 `/wiki/`；或为 `list.json` 配 `Access-Control-Allow-Origin: *` |
 | 桌面端 iframe 空白，控制台报 CSP | `frame-src` 仍为 `'none'` | 改 `tauri.conf.json` 并重新打包 |
 | 离线/部署后 iframe 显示应用首页 | SW 把文档请求当导航回退 | 确认 `sw.js` 的 `/wiki/` 放行分支存在，并清一次缓存（版本号变更会自动换缓存名） |
 | 中文文件名 404 | 未编码 | 前端已 `encodeURI`；手工拼链接时同样需要编码 |

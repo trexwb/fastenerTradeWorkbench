@@ -59,8 +59,8 @@ window.WikiKB=(function(){
       return new Promise(function(res,rej){
         const tx=db.transaction(STORE,'readonly');
         const r=tx.objectStore(STORE).get(key);
-        r.onsuccess=function(){res(r.result!==undefined?r.result:null);};
-        r.onerror=function(){rej(r.error);};
+        r.onsuccess=function(){db.close();res(r.result!==undefined?r.result:null);};
+        r.onerror=function(){db.close();rej(r.error);};
       });
     }catch(e){return null;}
   }
@@ -70,8 +70,8 @@ window.WikiKB=(function(){
       return new Promise(function(res,rej){
         const tx=db.transaction(STORE,'readwrite');
         tx.objectStore(STORE).put(val,key);
-        tx.oncomplete=function(){res();};
-        tx.onerror=function(){rej(tx.error);};
+        tx.oncomplete=function(){db.close();res();};
+        tx.onerror=function(){db.close();rej(tx.error);};
       });
     }catch(e){}
   }
@@ -247,6 +247,7 @@ window.WikiKB=(function(){
       let newCount=0;
       let updatedCount=0;
 
+      const needFetch=[];
       for(let i=0;i<list.length;i++){
         const entry=list[i];
         if(!entry||!entry.url||!entry.title)continue;
@@ -265,33 +266,43 @@ window.WikiKB=(function(){
         if(old)updatedCount++;
         else newCount++;
 
-        const text=await fetchArticleContent(url);
-        if(text===null){
-          if(old)newArticles.push(old);
-          continue;
-        }
+        needFetch.push({i:i,entry:entry,url:url,title:title,updatedAt:updatedAt,old:old||null});
+      }
 
-        const id='wiki_'+i;
-        const trimmed=text.length>MAX_ARTICLE_CHARS?text.slice(0,MAX_ARTICLE_CHARS):text;
-        const blockTexts=splitBlocks(trimmed);
-        const blocks=blockTexts.map(function(bt,bi){
-          return {id:id+':'+bi,articleId:id,index:bi,text:bt};
+      // 分批并行拉取文章正文（每批 5 篇）
+      const WIKI_FETCH_BATCH=5;
+      for(let bi=0;bi<needFetch.length;bi+=WIKI_FETCH_BATCH){
+        const batch=needFetch.slice(bi,bi+WIKI_FETCH_BATCH);
+        const results=await Promise.all(batch.map(async function(item){
+          const text=await fetchArticleContent(item.url);
+          return {item:item,text:text};
+        }));
+        results.forEach(function(res){
+          const item=res.item;const text=res.text;
+          if(text===null){
+            if(item.old)newArticles.push(item.old);
+            return;
+          }
+          const id='wiki_'+item.i;
+          const trimmed=text.length>MAX_ARTICLE_CHARS?text.slice(0,MAX_ARTICLE_CHARS):text;
+          const blockTexts=splitBlocks(trimmed);
+          const blocks=blockTexts.map(function(bt,bi){
+            return {id:id+':'+bi,articleId:id,index:bi,text:bt};
+          });
+          const article={
+            id:id,
+            title:item.title,
+            url:item.url,
+            updatedAt:item.updatedAt,
+            text:trimmed,
+            chars:trimmed.length,
+            blocks:blocks,
+            syncedAt:Date.now()
+          };
+          newArticles.push(article);
+          blocksByArticle[id]=blocks;
+          totalChars+=trimmed.length;
         });
-
-        const article={
-          id:id,
-          title:title,
-          url:url,
-          updatedAt:updatedAt,
-          text:trimmed,
-          chars:trimmed.length,
-          blocks:blocks,
-          syncedAt:Date.now()
-        };
-
-        newArticles.push(article);
-        blocksByArticle[id]=blocks;
-        totalChars+=trimmed.length;
       }
 
       const allBlocks=[];

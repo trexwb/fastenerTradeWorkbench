@@ -229,7 +229,7 @@ function render(){
   if(curOrder&&view==='orders'){
     crumb='<a href="javascript:void(0)" onclick="go(\'orders\')" style="color:var(--pri);text-decoration:none">采购订单</a>'+
       '<span style="color:var(--line);margin:0 6px">/</span>'+
-      '<span>'+(curOrderView?'查看订单':'编辑订单')+' · '+escHtml(DB.orders.find(function(o){return o.id===curOrder})?.id||'')+'</span>';
+      '<span>'+(curOrderView?'查看订单':'编辑订单')+' · '+escHtml((curOrder&&curOrder.id)||'')+'</span>';
   }else if(view==='settle-receipt')crumb='对账结算 / 收款记录';
   else if(view==='settle-payment')crumb='对账结算 / 付款记录';
   else if(view==='inv-issue')crumb='发票管理 / 开票记录';
@@ -247,7 +247,7 @@ function render(){
     case 'settle-receipt':content=viewSettlements('receipt');break;
     case 'settle-payment':content=viewSettlements('payment');break;
     case 'settlements':
-      _settleTab = _settleTab || (view==='settle-payment'?'payment':'receipt');
+      _settleTab = _settleTab || 'receipt';
       _settleSubTab = _settleSubTab || 'unpaid';
       _settlePage = _settlePage || 1;
       content=viewSettlements(_settleTab);
@@ -599,7 +599,14 @@ function goOrderView(id){curOrderView=id;curOrder=null;view='orders';updateHash(
  * 跳转到订单编辑视图
  * @param {string} id - 订单ID
  */
-function goOrder(id){curOrderView=id;curOrder=null;view='orders';updateHash();render();}
+function goOrder(id){
+  const o=DB.orders.find(function(x){return x.id===id;});
+  curOrder=o?JSON.parse(JSON.stringify(o)):null;
+  curOrderView=null;
+  view='orders';
+  updateHash();
+  render();
+}
 
 
 

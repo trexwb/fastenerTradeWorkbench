@@ -144,6 +144,8 @@ let syncDirHandle=null;    // 同步目录句柄（网页版用于展示「数�
 let fileSync=false;        // true=已绑定且有权, 'pending'=已绑定但需重新授权, false=未绑定
 let fileLastSave='';       // 最后写入时间
 let bindingInProgress=false; // true=正在执行绑定流程，禁止一切文件写入（防止竞态覆盖）
+const BINDING_SAFETY_MS=30000; // 绑定流程安全超时：超时自动释放锁，防止永久阻塞文件写入
+let _bindingSafetyTimer=0;
 /**
  * 绑定目录时在目录中查找/创建的固定数据文件名
  * @type {string}
@@ -317,6 +319,10 @@ async function _doBindDirectory(){
     // 绑定流程保护：读取/合并/导入完成前禁止任何文件写入（saveToFile 会检查 bindingInProgress），
     // 杜绝「绑定过程中其他事件（定时器/输入回调等）触发保存、用当前库覆盖目标文件」的竞态清空问题
     bindingInProgress=true;
+    clearTimeout(_bindingSafetyTimer);
+    _bindingSafetyTimer=setTimeout(function(){
+      if(bindingInProgress){bindingInProgress=false;toast('绑定流程超时，已自动解锁','warning');}
+    },BINDING_SAFETY_MS);
     fileHandle=handle;
     // 读取目标文件内容，区分三种情况：合法对象 / 非空但解析失败 / 空文件（刚创建的或原本就空）
     let fileData=null, fileHasAny=false;
@@ -332,7 +338,7 @@ async function _doBindDirectory(){
     // 文件有内容但无法解析为合法对象：绝不能开启同步，否则当前库会反向覆盖文件，回滚并取消绑定
     if(fileHasAny&&!fileData){
       fileHandle=null;
-      bindingInProgress=false;
+      clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
       toast('目标文件解析失败，已取消绑定，请检查「'+BIND_FILE_NAME+'」的格式','error');
       return;
     }
@@ -360,7 +366,7 @@ async function _doBindDirectory(){
     syncDirHandle=dirHandle;
     await fhSave(handle);
     await fhStoreKey(KEY_SYNC_DIR,dirHandle);
-    bindingInProgress=false;
+    clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
     // 将合并/导入/当前的 DB 写回文件，确保文件与 IndexedDB 一致；
     // 由于合并模式下写入的是 IndexedDB ∪ 文件数据的并集，绝不发生「清空目标文件」
     await saveToFile();
@@ -368,7 +374,7 @@ async function _doBindDirectory(){
     toast('已绑定目录：'+dirHandle.name+'，数据文件：'+handle.name+'，将自动同步'+tip,'success');
     render();
   }catch(e){
-    bindingInProgress=false;
+    clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
     if(e.name!=='AbortError')toast('绑定失败：'+e.message,'error');
   }
 }
@@ -679,21 +685,20 @@ function idbOpen(){return new Promise((res,rej)=>{
  */
 async function idbSave(){
   if(IS_TAURI_RUNTIME){
-    // 桌面版主存储：写入应用数据目录 data.json（WKWebView 自定义协议下 IndexedDB 不可靠）
     try{
       await window.__TAURI__.core.invoke('data_file_save',{content:JSON.stringify(DB)});
       idbStatus='ok';return;
-    }catch(e){console.error('Tauri data save error:',e);idbStatus='error';return;}
+    }catch(e){console.error('Tauri data save error:',e);idbStatus='error';throw e;}
   }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{
       const tx=db.transaction(IDB_STORE,'readwrite');
       tx.objectStore(IDB_STORE).put(DB,IDB_KEY);
-      tx.oncomplete=()=>{idbStatus='ok';res();};
-      tx.onerror=()=>{idbStatus='error';rej(tx.error);};
+      tx.oncomplete=()=>{db.close();idbStatus='ok';res();};
+      tx.onerror=()=>{db.close();idbStatus='error';rej(tx.error);};
     });
-  }catch(e){console.error('IDB save error:',e);idbStatus='error';}
+  }catch(e){console.error('IDB save error:',e);idbStatus='error';throw e;}
 }
 
 /**
@@ -703,24 +708,23 @@ async function idbSave(){
  */
 async function idbLoad(){
   if(IS_TAURI_RUNTIME){
-    // 桌面版主存储：从应用数据目录 data.json 读取
     try{
       const txt=await window.__TAURI__.core.invoke('data_file_load');
       if(!txt)return null;
       const d=JSON.parse(txt);
       idbStatus='ok';
       return d&&typeof d==='object'&&!Array.isArray(d)?d:null;
-    }catch(e){console.error('Tauri data load error:',e);idbStatus='error';return null;}
+    }catch(e){console.error('Tauri data load error:',e);idbStatus='error';throw e;}
   }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{
       const tx=db.transaction(IDB_STORE,'readonly');
       const r=tx.objectStore(IDB_STORE).get(IDB_KEY);
-      r.onsuccess=()=>{idbStatus='ok';res(r.result||null);};
-      r.onerror=()=>{idbStatus='error';rej(r.error);};
+      r.onsuccess=()=>{db.close();idbStatus='ok';res(r.result||null);};
+      r.onerror=()=>{db.close();idbStatus='error';rej(r.error);};
     });
-  }catch(e){console.error('IDB load error:',e);idbStatus='error';return null;}
+  }catch(e){console.error('IDB load error:',e);idbStatus='error';throw e;}
 }
 
 /* 存储用量估算 */
@@ -781,7 +785,6 @@ async function initApp(){
       // 2. 恢复文件同步（必须在渲染前完成，确保 fileSync 状态正确）
       await initFileHandle();
       // 数据加载完成，调用 onAppReady 恢复 hash 路由
-      autoPurgeTrash();  // 回收站自动清理（超保留期条目，启动时触发）
       if(typeof onAppReady==='function')onAppReady();else render();
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
@@ -1057,11 +1060,18 @@ function autoPurgeTrash(force){
       return 0;
     }
     // 关联 aiOps：标记 autoPurged，UI 不再提供回滚
-    expired.forEach(t=>{
-      (DB.aiOps||[]).forEach(op=>{
-        if(!op.undone&&!op.autoPurged&&op.op==='delete'&&op.type===t.type&&op.targetId===t.originalId){
-          op.autoPurged=true;op.undoneAt=nowTs;
-        }
+    // 预建索引：按 (type, targetId) 分组未完成的 delete 操作，避免逐条嵌套遍历
+    const opsByKey={};
+    (DB.aiOps||[]).forEach(function(op){
+      if(!op.undone&&!op.autoPurged&&op.op==='delete'){
+        const k=op.type+':'+op.targetId;
+        (opsByKey[k]=opsByKey[k]||[]).push(op);
+      }
+    });
+    expired.forEach(function(t){
+      const k=t.type+':'+t.originalId;
+      (opsByKey[k]||[]).forEach(function(op){
+        op.autoPurged=true;op.undoneAt=nowTs;
       });
     });
     DB.trash=DB.trash.filter(t=>t&&t.deletedAt>=cutoff);

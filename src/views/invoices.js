@@ -11,6 +11,16 @@ let _invStatusFilter=''; // 开票/收票状态筛选
 /** 发票编辑保存防重锁 */
 let _invEditSaving=false;
 
+/** syncInvoices 脏标记：数据变更时置 true，同步完成后置 false */
+let _invSyncDirty=true;
+const _origSaveDBForInv=typeof saveDB==='function'?saveDB:null;
+if(_origSaveDBForInv){
+  saveDB=function(){
+    _invSyncDirty=true;
+    return _origSaveDBForInv.apply(this,arguments);
+  };
+}
+
 const INV_ISSUE_STATUS=['未开票','已开票'];
 const INV_RECEIVE_STATUS=['未收票','已收票'];
 /** 发票保存防重锁释放延时（ms） */
@@ -42,6 +52,8 @@ const DRAWER_BIND_DELAY_MS=50;
  * @returns {boolean} 是否有数据变更
  */
 function syncInvoices(){
+  if(!_invSyncDirty && DB.invoices && DB.invoices.length) return;
+  _invSyncDirty=false;
   DB.invoices=DB.invoices||[];
   let lookup={};
   DB.invoices.forEach(function(inv){lookup[inv.settleId]=inv;});

@@ -120,17 +120,19 @@ function settleUnitOrderDetails(unitId,type){
   let result=[];
   let settlements=(DB.settlements||[]).filter(function(s){return s.type===type&&s.unitId===unitId;});
 
+  // 预计算 orderId → 结算金额合计，避免逐订单重复遍历结算列表
+  const amountByOrderId={};
+  settlements.forEach(function(s){
+    (s.orders||[]).forEach(function(so){
+      amountByOrderId[so.orderId]=(amountByOrderId[so.orderId]||0)+(so.amount||0);
+    });
+  });
+
   if(type==='receipt'){
     orders.forEach(function(o){
       if(o.buyerId!==unitId)return;
       let total=orderSales(o);
-      // 汇总该订单已收金额
-      let received=0;
-      settlements.forEach(function(s){
-        (s.orders||[]).forEach(function(so){
-          if(so.orderId===o.id)received+=so.amount||0;
-        });
-      });
+      let received=amountByOrderId[o.id]||0;
       // v1.0.56（审计 M3）：意向价未填（应收为 0）时标注「未定价」，避免对账误解
       result.push({orderId:o.id,total:total,received:received,status:o.status,unpriced:(type==='receipt'&&total<=0&&(o.items||[]).length>0)});
     });
@@ -141,13 +143,7 @@ function settleUnitOrderDetails(unitId,type){
         opts.forEach(function(op){
           if(op.supplierId!==unitId)return;
           let cost=(op.price||0)*(op.allocQty||0);
-          // 汇总该订单该供应商已付金额
-          let paid=0;
-          settlements.forEach(function(s){
-            (s.orders||[]).forEach(function(so){
-              if(so.orderId===o.id)paid+=so.amount||0;
-            });
-          });
+          let paid=amountByOrderId[o.id]||0;
           // 按订单聚合（供应商可能在同一个订单内有多项）
           let exist=result.find(function(r){return r.orderId===o.id;});
           if(exist){exist.total+=cost;}
@@ -188,9 +184,8 @@ function settleRecords(unitId,type){
  */
 function viewSettlements(type){
   if(type)_settleTab=type;
-  let receiptData=settleReceiptData();
-  let paymentData=settlePaymentData();
-  let activeData=_settleTab==='receipt'?receiptData:paymentData;
+  let tabAllData=_settleTab==='receipt'?settleReceiptData():settlePaymentData();
+  let activeData=tabAllData;
 
   // 子Tab过滤（四舍五入到2位小数，与fmt显示精度对齐）
   let unpaidActiveData=activeData.filter(function(d){
@@ -221,8 +216,7 @@ function viewSettlements(type){
   if(_settlePage>totalPages)_settlePage=totalPages;
   let pageData=activeData.slice((_settlePage-1)*PAGE_SIZE,_settlePage*PAGE_SIZE);
 
-  // 当前Tab统计
-  let tabAllData=_settleTab==='receipt'?receiptData:paymentData;
+  // 当前Tab统计（tabAllData 已在函数顶部赋值）
   let tabTotal=0,tabDone=0;
   tabAllData.forEach(function(d){
     tabTotal+=(_settleTab==='receipt'?d.totalReceivable:d.totalPayable);
