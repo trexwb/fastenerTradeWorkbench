@@ -787,7 +787,7 @@ function renderOpsHistory(){
     const target=op.targetId?escHtml(String(op.targetId)):'—';
     const batchIdShort=op.batchId?escHtml(op.batchId.slice(0,8)):'—';
     const undoneTag=op.undone?'<span class="tag gray">已回滚</span>':(op.autoPurged?'<span class="tag gray">已自动清理</span>':'');
-    const undoBtn=(op.undone||op.autoPurged||op.op==='export')?'':'<button class="btn sm" onclick="undoAiOp(\''+escAttr(op.id)+'\');render();toast(\'已回滚\',\'info\');">回滚</button>';
+    const undoBtn=(op.undone||op.autoPurged||op.op==='export')?'':'<button class="btn sm" onclick="undoAiOpSafe(\''+escAttr(op.id)+'\')">回滚</button>';
     // 同批次多条未回滚操作时显示「整批回滚」按钮
     const batchBtn=(!op.undone&&op.batchId&&(batchUndoneCount[op.batchId]||0)>1)
       ?'<button class="btn sm" style="margin-left:4px" onclick="undoBatchConfirm(\''+escAttr(op.batchId)+'\');">整批回滚('+(batchUndoneCount[op.batchId])+')</button>'
@@ -839,6 +839,10 @@ function renderTrash(){
     html+='</tbody></table></div>';
   });
   return html+'</div>';
+}
+function undoAiOpSafe(id){
+  try{undoAiOp(id);render();toast('已回滚','info');}
+  catch(e){render();toast('回滚失败：'+(e&&e.message||e),'error');}
 }
 function restoreTrashItem(trashId){
   try{restoreFromTrash(trashId);toast('已恢复','success');render();}

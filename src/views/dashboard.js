@@ -83,7 +83,8 @@ function viewDashboard(){
   // 单次遍历单位：同时统计供应商和采购商
   let suppliers=0, buyers=0;
   for(let j=0;j<DB.units.length;j++){
-    const r=DB.units[j].roles;
+    /* v1.0.57 修复：roles 缺失（导入脏数据）时裸调 .includes 报 TypeError 整页白屏，补空数组兑底 */
+    const r=DB.units[j].roles||[];
     if(r.includes('供应商'))suppliers++;
     if(r.includes('采购商'))buyers++;
   }
@@ -97,7 +98,7 @@ function viewDashboard(){
       '<td>'+escHtml(fmtDelivery(o.delivery))+'</td>'+
       '<td><span class="tag '+STATUS_COLORS[o.status]+'">'+escHtml(o.status)+'</span></td>'+
       '<td>'+(o.status==='完成'||(o.status!=='未成交'&&o.status!=='取消'&&o.items.every(i=>isItemSourced(i)))?fmt(orderProfit(o)):'-')+'</td>'+
-      '<td><button class="btn sm" onclick="goOrder(\''+escJsStr(o.id)+'\')">'+icon('fileText')+'查看</button></td>'+
+      '<td><button class="btn sm" onclick="goOrderView(\''+escJsStr(o.id)+'\')">'+icon('fileText')+'查看</button></td>'+
     '</tr>';
   }).join('');
 

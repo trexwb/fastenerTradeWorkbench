@@ -1416,7 +1416,9 @@ const AIT=(function(){
       if(o.status!=='送货中'&&(args.deliveryDate!==undefined||args.deliveryAddress!==undefined)){
         return {ok:false,error:'仅「送货中」状态订单可修改交期/送货地址，当前状态（'+o.status+'）只读锁定'};
       }
-      const before=_snap({buyerId:o.buyerId,project:o.project,deliveryDate:(o.delivery&&(o.delivery.date||o.delivery.time))||'',buyerContact:o.buyerContact});
+      /* v1.0.57 修复：before 由 4 字段部分快照改为整对象快照——旧快照在 undoAiOp 的 update 分支
+         会被整行替换回订单对象，回滚后订单丢 id/status/items 等全部字段（数据损毁）；与其余 update 执行器口径一致 */
+      const before=_snap(o);
       if(args.buyerId!==undefined)o.buyerId=args.buyerId;
       if(args.project!==undefined)o.project=args.project;
       if(args.deliveryDate!==undefined){o.delivery=o.delivery||{};o.delivery.date=args.deliveryDate;o.delivery.time=args.deliveryDate;}
@@ -1438,7 +1440,9 @@ const AIT=(function(){
       const o=DB.orders.find(x=>x.id===args.orderId);
       const it=(o.items||[]).find(x=>x.id===args.itemId);
       const before=_snap(it);
-      const patch=Object.assign({},args);delete patch.orderId;delete patch.itemId;
+      /* v1.0.57 修复：字段白名单——旧写法 Object.assign(args) 会把模型附带的多余字段（options/id/status 等）
+         原样覆盖进明细，破坏寻货分配数据（对照 update_settlement 的 _pick 口径） */
+      const patch=_pick(args,['name','spec','qty','salePrice','quotePrice','usage','remark']);
       Object.assign(it,patch);o.updatedAt=now();
       saveDB();
       const op=recordAiOp({op:'update',type:'order_item',targetId:it.id,before,after:_snap(it),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1466,10 +1470,11 @@ const AIT=(function(){
       const it=(o.items||[]).find(x=>x.id===args.itemId);
       // 查找或创建关联单位（复用 manualSupplier 逻辑）
       let unit=DB.units.find(u=>u.name===args.unitName);
+      let createdUnit=false;
       if(!unit){
         unit={id:uid('U'),name:args.unitName,roles:['供应商'],rating:'',term:'',contacts:[],invoice:{},createdAt:today()};
         if(args.contact)unit.contacts.push({name:args.contact,phone:'',side:'供应',sides:['供应']});
-        DB.units.push(unit);
+        DB.units.push(unit);createdUnit=true;
       }
       // 同步价格库（与 manualSupplier 一致）
       const price={id:uid('PR'),unitId:unit.id,bomSku:it.bomSku||'',spec:it.spec||'',type:it.type||'',standard:it.standard||'',diameter:it.diameter||'',hardness:it.hardness||'',surface:it.surface||'',material:it.material||'',price:Number(args.price),validFrom:today(),contact:args.contact||'',remark:'AI 手动录入',createdAt:today()};
@@ -1480,6 +1485,9 @@ const AIT=(function(){
       it.options.push({id:uid('Q'),supplierId:unit.id,contact:args.contact||'',price:Number(args.price),allocQty:Number(args.allocQty),stockNote:args.stockNote||'手动录入',source:'manual',status:'已选'});
       o.updatedAt=now();
       saveDB();
+      /* v1.0.57 修复：自动创建的单位与同步的价格库补记 aiOps（同 batchId）——否则整批撤销后残留孤儿数据 */
+      if(createdUnit)recordAiOp({op:'create',type:'unit',targetId:unit.id,before:null,after:_snap(unit),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
+      recordAiOp({op:'create',type:'price',targetId:price.id,before:null,after:_snap(price),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
       const op=recordAiOp({op:'update',type:'order_item',targetId:it.id,before,after:_snap(it),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
       return {ok:true,summary:'已手动录入供应商 '+unit.name+' · '+fmtN(args.allocQty)+' @ ¥'+args.price,opRecord:op};
     },
@@ -1918,7 +1926,7 @@ const AIT=(function(){
   }
 
   return {
-    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,WIKI_KB_TOOL_NAMES,
+    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,WIKI_KB_TOOL_NAMES,FILE_TOOL_NAMES,
     validateOp,executeOp,executeOps,buildToolResponse,unitNameSafe,runQuery,runFlow
   };
 })();

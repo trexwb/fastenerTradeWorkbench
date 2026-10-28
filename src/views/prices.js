@@ -240,8 +240,11 @@ function editPrice(id){
     const uVal=uEl?uEl.dataset.val:'';
     if(uVal){
       const cEl=document.getElementById('ps_contact');
-      cEl.innerHTML=contactOpts(uVal,'供应商');
-      if(p.contact)cEl.value=p.contact;
+      /* v1.0.57 修复：cEl 判空——抽屉被快速关闭后定时器仍触发时元素已不存在，防 TypeError 中断后续绑定 */
+      if(cEl){
+        cEl.innerHTML=contactOpts(uVal,'供应商');
+        if(p.contact)cEl.value=p.contact;
+      }
     }
   },50);
 }
@@ -420,6 +423,8 @@ function closePriceDropdown(){
 /* ---- 批量导入报价（Excel 粘贴） ---- */
 /** 打开批量导入报价抽屉（粘贴解析流程说明+文本框） */
 function openPriceBatchAdd(){
+  /* v1.0.57 修复：重置批量缓冲——旧代码跨会话残留，下次打开批量导入时旧行经 mergeBatchRows 再次累加入库 */
+  window._batchPriceData=[];
   let body='<div class="batch-intro">'+
     '<div class="batch-steps">'+
       '<div class="bs-step"><span class="bs-n">①</span><span>从 Excel 复制报价数据（<b>Ctrl+A → Ctrl+C</b>）</span></div>'+

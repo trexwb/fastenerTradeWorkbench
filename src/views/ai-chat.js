@@ -664,7 +664,10 @@ async function sendAIMessage(message,snapshot,options){
     if(res.wfId){
       liveMsg.wf={id:res.wfId};
       saveDB();
-      if(typeof render==='function')render();
+      /* v1.0.57 修复：AI 抽屉打开中推迟全量 render（render 重建 #app 会销毁抽屉，计划卡永不显示），
+         改在抽屉关闭时补刷（closeDrawer 钩子）；抽屉未开则照常立即渲染 */
+      if(document.querySelector('.drawer-wrap'))window._pendingRenderOnDrawerClose=true;
+      else if(typeof render==='function')render();
       const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');
       if(art)art.outerHTML=aiMessageHTML(liveMsg);
       return;
@@ -682,7 +685,12 @@ async function sendAIMessage(message,snapshot,options){
         const bidStr=escAttr(batchIds.join(','));
         undoBar='<div class="ai-undo-bar" data-batch="'+bidStr+'"><span class="ai-undo-info">'+icon('check','13')+' 已执行 '+okN+' 条</span><button type="button" class="ai-undo-btn" onclick="undoAIBatch(\''+bidStr+'\',this)">'+icon('cornerUpLeft','13')+' 撤销本轮改动</button><span class="ai-undo-hint">可在数据管理-操作历史查看</span></div>';
       }
-      if(typeof render==='function'&&okN>0)render();
+      /* v1.0.57 修复：同 wfId——render 全量重建 #app 会销毁打开中的 AI 抽屉，撤销条 DOM 随之丢失
+         （undoAIBatch 主路径死功能）；先插撤销条，背景刷新推迟到抽屉关闭 */
+      if(okN>0){
+        if(document.querySelector('.drawer-wrap'))window._pendingRenderOnDrawerClose=true;
+        else if(typeof render==='function')render();
+      }
     }
     // 更新弹窗内气泡为最终态；undoBar 紧随其后插入（弹窗未开则跳过，内容已落盘，重开可见）
     const art=document.querySelector('[data-ai-id="'+liveMsg.id+'"]');

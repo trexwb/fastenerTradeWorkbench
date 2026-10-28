@@ -134,6 +134,9 @@ function syncInvoices(){
     else if(!orphan&&inv.orphan){delete inv.orphan;changed=true;}
   });
   if(changed)saveDB();
+  /* v1.0.57 修复：syncInvoices 自身的 saveDB 会经包装器把脏标记重新置真，
+     导致守卫失效、每次渲染全量重跑三次；同步收尾后复位，仅外部数据变更再置脏 */
+  _invSyncDirty=false;
 }
 
 /* ---- 开票数据（按采购商聚合） ---- */
@@ -332,6 +335,8 @@ function viewInvoices(type){
       '<input id="invSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_invSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onInvSearch(this.value)">'+
       '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onInvSearch(\'\')">×</button>'+
     '</div>'+
+    /* v1.0.57 修复：补渲染单位筛选 combo 容器——此前 #invUnitFilter 从未渲染，bindView 绑定悬空（照报价页惯例） */
+    '<div id="invUnitFilter" class="combo filt-combo" data-placeholder="全部单位" data-val="'+escAttr(_invUnitFilter)+'"></div>'+
     '<div class="spacer"></div>'+
   '</div>'+
   '<div class="stats">'+
@@ -526,20 +531,26 @@ function openInvEdit(invId){
     if(_invEditSaving){toast('正在保存中，请稍候...','info');return;}
     _invEditSaving=true;
     setTimeout(function(){_invEditSaving=false;},INV_SAVE_LOCK_MS);
-    inv.settleNote=document.getElementById('invEdit_remark').value.trim();
-    inv.invoiceNumber=document.getElementById('invEdit_number').value.trim();
+    /* v1.0.57 修复：先读全部输入并校验、全部通过后再一次性写 inv——旧代码先改内存后校验，
+       拦截后脏写仍会被后续 saveDB 持久化（如「已开票」无日期绕过校验） */
+    const _note=document.getElementById('invEdit_remark').value.trim();
+    const _num=document.getElementById('invEdit_number').value.trim();
     if(isIssue){
-      inv.invoiceDate=document.getElementById('invEdit_date').value;
-      inv.taxTitle=document.getElementById('invEdit_title').value.trim();
-      inv.invoiceStatus=document.getElementById('invEdit_status').value;
-      if(inv.invoiceStatus==='已开票' && !inv.invoiceDate){
+      const _date=document.getElementById('invEdit_date').value;
+      const _title=document.getElementById('invEdit_title').value.trim();
+      const _status=document.getElementById('invEdit_status').value;
+      if(_status==='已开票' && !_date){
         toast('已开票状态必须填写开票时间','error');
         return;
       }
+      inv.settleNote=_note;inv.invoiceNumber=_num;
+      inv.invoiceDate=_date;inv.taxTitle=_title;inv.invoiceStatus=_status;
     }else{
-      inv.receiveStatus=document.getElementById('invEdit_status').value;
-      inv.receiveDate=document.getElementById('invEdit_recvDate').value||'';
-      if(inv.receiveStatus==='已收票' && !inv.receiveDate){
+      const _status=document.getElementById('invEdit_status').value;
+      const _recvDate=document.getElementById('invEdit_recvDate').value||'';
+      inv.settleNote=_note;inv.invoiceNumber=_num;
+      inv.receiveStatus=_status;inv.receiveDate=_recvDate;
+      if(_status==='已收票' && !_recvDate){
         toast('建议填写收票日期（当前已收票）','warn');
       }
     }

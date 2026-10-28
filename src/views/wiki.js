@@ -89,6 +89,11 @@ const WIKI_EMPTY_STALE_MS = 15000;
 /** 首次进入空态的时间戳（用于判定 stale） */
 let _wikiEmptySince = 0;
 
+/** 串行加载步骤：0=未开始, 1=本地索引, 2=云端索引, 3=文章清单, 4=知识库同步, 5=全部完成 */
+let _wikiLoadStep = 0;
+/** 串行加载是否正在执行中（防止重复触发） */
+let _wikiLoadRunning = false;
+
 /**
  * 拼接文档（或索引）的绝对 URL。
  * 以 document.baseURI 为基准：dev 为 http://localhost:1421/，构建后为 dist 目录
@@ -176,6 +181,7 @@ function _loadWikiRemote(cb){
       _wikiRemote=null;
       _wikiRemoteState='error';
       _wikiRemoteFailAt=Date.now();
+      console.warn('[wiki] 云端索引加载失败：服务器返回无效数据（可能是 404 HTML 页面）');
     }
     if(_wikiRemoteScript && _wikiRemoteScript.parentNode) _wikiRemoteScript.parentNode.removeChild(_wikiRemoteScript);
     _wikiRemoteScript=null;
@@ -193,6 +199,9 @@ function _loadWikiRemote(cb){
   s.onerror=function(){finish(false);};
   _wikiRemoteScript=s;
   document.head.appendChild(s);
+  /* v1.0.57 修复：连接被防火墙吞包时 onload/onerror 均不触发，loading 态永不冷却，云端增强整个会话不再重试；
+     10s 超时兑底（finish 有 done 门闩幂等，可安全与 onload/onerror 竞争） */
+  setTimeout(function(){ if(!done) finish(false); },10000);
 }
 
 /**
@@ -256,6 +265,73 @@ function _fetchWikiList(){
     _wikiRemoteListError=name==='AbortError'?'请求超时（'+(timeoutMs/1000)+'s）':msg;
     if(view==='wiki')render();
   });
+}
+
+/**
+ * 串行加载：一步完成后再启动下一步，避免并发触发服务器限流。
+ * 步骤：1=文章清单 (list.json) → 2=知识库同步
+ * 每步失败后暂停，显示错误 + 重试按钮，用户点击后从失败步骤继续。
+ * 注：云端只有 list.json，没有 index.js（本地互动文档）。
+ */
+function _wikiSequentialLoad(){
+  if(!WIKI_REMOTE_BASE || _wikiLoadStep >= 5){
+    _wikiLoadRunning = false;
+    return;
+  }
+
+  // Step 1: 加载文章清单 (list.json) — 云端只有这个文件
+  if(_wikiLoadStep === 0){
+    _wikiLoadStep = 1;
+    _wikiListStage = 'connecting';
+    _wikiListStartedAt = Date.now();
+    if(view==='wiki')render();
+    _fetchWikiList();
+    // 监听加载完成（通过轮询状态）
+    const checkComplete = setInterval(function(){
+      if(_wikiRemoteListState === 'ready'){
+        clearInterval(checkComplete);
+        _wikiLoadRunning = false;
+        _wikiLoadStep = 2;
+        if(view==='wiki')render();
+        setTimeout(function(){ _wikiLoadRunning = true; _wikiSequentialLoad(); }, 300);
+      }else if(_wikiRemoteListState === 'error'){
+        clearInterval(checkComplete);
+        _wikiLoadRunning = false;
+        // 停留在 step 1，显示错误 + 重试按钮
+        if(view==='wiki')render();
+      }
+    }, 200);
+    return;
+  }
+
+  // Step 2: 知识库同步
+  if(_wikiLoadStep === 2){
+    _wikiLoadStep = 5;
+    _wikiLoadRunning = false;
+    if(!_wikiKbAutoSyncTriggered && typeof WikiKB!=='undefined' && WikiKB.state && !WikiKB.state.articles.length && !WikiKB.state.syncing && WikiKB.state.enabled){
+      _wikiKbAutoSyncTriggered = true;
+      console.log('[wiki] 知识库同步启动（串行最后一步）');
+      WikiKB.sync().then(function(r){
+        console.log('[wiki] 知识库同步完成:', r);
+        if(view==='wiki')render();
+      }).catch(function(e){
+        console.warn('[wiki] 知识库同步失败:', e);
+      });
+    }
+    return;
+  }
+
+  _wikiLoadRunning = false;
+}
+
+/**
+ * 手动重试：从当前失败步骤继续加载。
+ */
+function _wikiRetryLoad(){
+  if(_wikiLoadRunning)return;
+  _wikiRemoteListError = '';
+  _wikiLoadRunning = true;
+  _wikiSequentialLoad();
 }
 
 /**
@@ -517,6 +593,20 @@ function openWikiDoc(key){
   window.scrollTo(0,0);
 }
 
+/**
+ * 打开远程文章（应用内 iframe 打开）。
+ * @param {string} key - encodeURIComponent 后的 URL
+ */
+function openWikiDocRemote(key){
+  let url=String(key||'');
+  try{ url=decodeURIComponent(url); }catch(e){}
+  if(!url)return;
+  _wikiFlushNote();
+  _wikiDoc=url;  // 远程文章用 URL 作为 doc key
+  render();
+  window.scrollTo(0,0);
+}
+
 /** 关闭文档，回到列表 */
 function closeWikiDoc(){ _wikiFlushNote(); _wikiDoc=null; render(); }
 
@@ -584,13 +674,15 @@ function _wikiCard(d){
   const timeTxt=isRemote
     ?(d.updated_at?'<span style="color:var(--gray);font-size:12px">'+escHtml(String(d.updated_at).slice(0,10))+'</span>':'')
     :_wikiReadTime(d.size);
-  const clickFn=isRemote?'openWikiExternal('+attr+')':'openWikiDoc('+attr+')';
+  // 远程文章：默认应用内打开（iframe），提供浏览器打开按钮
+  const clickFn=isRemote?'openWikiDocRemote('+attr+')':'openWikiDoc('+attr+')';
   const keyFn=isRemote
-    ?'if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiExternal('+attr+');}'
+    ?'if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiDocRemote('+attr+');}'
     :'if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiDoc('+attr+');}';
   return '<article class="wiki-card" tabindex="0" role="link" aria-label="'+(isRemote?'查看':'打开')+'《'+escHtml(d.title)+'》" '
     +'onclick="'+clickFn+'" onkeydown="'+keyFn+'">'
     +(!isRemote?'<button type="button" class="wiki-star'+(meta.star?' on':'')+'" aria-label="'+(meta.star?'取消收藏':'收藏')+'" title="'+(meta.star?'取消收藏':'收藏')+'" onclick="event.stopPropagation();toggleWikiStar('+attr+')">'+icon('star','16')+'</button>':'')
+    +(isRemote?'<button type="button" class="wiki-open-external" aria-label="在浏览器中打开" title="在浏览器中打开" onclick="event.stopPropagation();openWikiExternal('+attr+')">'+icon('externalLink','14')+'</button>':'')
     +'<div class="wiki-card-top"><span class="tag info">'+(isRemote?icon('globe','12')+' ':'')+escHtml(catLabel)+'</span>'
       +(!isRemote&&unread?'<span class="tag warn">未读</span>':'')
       +(!isRemote&&meta.notes?'<span class="tag purple">笔记</span>':'')
@@ -602,7 +694,7 @@ function _wikiCard(d){
         :(isRemote?'<span class="wiki-card-meta">'+icon('link','12')+' 线上文章</span>'
           :'<span class="wiki-card-meta">互动长页 · 单文件离线可读</span>'))
       +(!isRemote&&meta.lastReadAt?'<span class="wiki-card-meta wiki-card-last">上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+'</span>':'')
-      +'<span class="wiki-card-go">'+(isRemote?'查看原文':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
+      +'<span class="wiki-card-go">'+(isRemote?'应用内打开':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
     +'</div>'
     +'</article>';
 }
@@ -614,12 +706,15 @@ function _wikiCard(d){
  * @returns {string} HTML
  */
 function _wikiHitRow(d,terms){
-  const attr=_wikiAttr(d.file);
+  /* v1.0.57 修复：线上文章（list.json）file 为空串，openWikiDoc('') 直接 return——点击/回车无反应；分流 openWikiExternal */
+  const isRemote=!!d.url;
+  const attr=_wikiAttr(isRemote?d.url:d.file);
+  const openFn=isRemote?'openWikiExternal':'openWikiDoc';
   const info=_wikiHitInfo(d,terms);
   const meta=_wikiMetaGet(d.file)||{};
   const tags=(d.tags||[]).map(function(t){return '<span class="tag">'+escHtml(t)+'</span>';}).join('');
   return '<article class="wiki-hit-row" tabindex="0" role="link" aria-label="打开《'+escHtml(d.title)+'》" '
-    +'onclick="openWikiDoc('+attr+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openWikiDoc('+attr+');}">'
+    +'onclick="'+openFn+'('+attr+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+openFn+'('+attr+');}">'
     +'<div class="wiki-hit-title"><span>'+_wikiHi(d.title,terms)+'</span>'
       +'<span class="tag info">'+escHtml(d.category||'专业解读')+'</span>'
       +(meta.star?'<span class="tag warn">已收藏</span>':'')+tags
@@ -695,7 +790,8 @@ function openWikiExternal(encodedUrl){
   try{url=decodeURIComponent(url);}catch(e){}
   if(!url)return;
   // 尝试 window.open，若被浏览器拦截则降级为 location 跳转（会离开当前应用）
-  const opened=window.open(url,'_blank','noopener');
+  /* v1.0.57 修复：去掉 'noopener' 第三参——该写法下返回值恒为 null，每次都误判被拦截并弹提示 toast */
+  const opened=window.open(url,'_blank');
   if(!opened || opened.closed || typeof opened.closed==='undefined'){
     // 弹窗被拦截：创建临时 <a> 点击
     const a=document.createElement('a');
@@ -754,20 +850,29 @@ function _wikiEmptyFilter(){
  * @returns {string} HTML
  */
 function _viewWikiReader(){
+  // 判断是否为远程文章（URL）
+  const isRemoteUrl = _wikiDoc && (_wikiDoc.startsWith('http://') || _wikiDoc.startsWith('https://'));
+  
   // 元数据查找：先当前生效索引（云端优先），再本地索引兜底，均未命中用文件名兜底
   const activeDocs=_wikiActiveIndex().docs||[];
   const localDocs=(_wikiIndex&&_wikiIndex.docs)||[];
   let doc=activeDocs.find(function(d){return d.file===_wikiDoc;});
   if(!doc) doc=localDocs.find(function(d){return d.file===_wikiDoc;});
-  if(!doc) doc={file:_wikiDoc,title:_wikiDoc,desc:'',size:0,category:'专业解读'};
-  const attr=_wikiAttr(doc.file);
-  const url=_wikiDocUrl(doc.file);
-  const meta=_wikiMetaGet(doc.file)||{};
+  // 远程文章：按 URL 查找
+  if(!doc && isRemoteUrl) doc=activeDocs.find(function(d){return d.url===_wikiDoc;});
+  if(!doc) doc={file:_wikiDoc,title:_wikiDoc,desc:'',size:0,category:'专业解读',url:isRemoteUrl?_wikiDoc:''};
+  const attr=_wikiAttr(isRemoteUrl?doc.url:doc.file);
+  const url=isRemoteUrl?doc.url:_wikiDocUrl(doc.file);
+  const meta=isRemoteUrl?{}:(_wikiMetaGet(doc.file)||{});
   const subBits=[];
   if(doc.category)subBits.push(escHtml(doc.category));
-  subBits.push(meta.lastReadAt
-    ?'上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+(meta.readCount?' · 已读 '+meta.readCount+' 次':'')
-    :'首次阅读');
+  if(!isRemoteUrl){
+    subBits.push(meta.lastReadAt
+      ?'上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+(meta.readCount?' · 已读 '+meta.readCount+' 次':'')
+      :'首次阅读');
+  }else{
+    subBits.push('线上文章');
+  }
   return '<div class="wiki-reader">'
     +'<div class="wiki-bar">'
       +'<button type="button" class="btn" onclick="closeWikiDoc()">'+icon('chevronLeft','16')+'<span>返回列表</span></button>'
@@ -776,15 +881,15 @@ function _viewWikiReader(){
         +'<div class="wiki-bar-sub">'+subBits.join(' · ')+'</div>'
       +'</div>'
       +'<div class="wiki-bar-acts">'
-        +'<button type="button" class="btn wiki-star'+(meta.star?' on':'')+'" id="wikiStarBtn" '
+        +(!isRemoteUrl?'<button type="button" class="btn wiki-star'+(meta.star?' on':'')+'" id="wikiStarBtn" '
           +'onclick="toggleWikiStar('+attr+')" title="'+(meta.star?'取消收藏':'收藏')+'" aria-pressed="'+(meta.star?'true':'false')+'">'
-          +icon('star','14')+'<span>'+(meta.star?'已收藏':'收藏')+'</span></button>'
+          +icon('star','14')+'<span>'+(meta.star?'已收藏':'收藏')+'</span></button>':'')
         +'<button type="button" class="btn" onclick="copyWikiLink('+attr+')">'+icon('copy','14')+'<span>复制链接</span></button>'
         +'<a class="btn" href="'+escHtml(url)+'" target="_blank" rel="noopener">'+icon('link','14')+'<span>独立窗口</span></a>'
       +'</div>'
     +'</div>'
     +'<iframe class="wiki-frame" src="'+escHtml(url)+'" title="'+escHtml(doc.title)+'" loading="lazy"></iframe>'
-    +'<div class="wiki-notes">'
+    +(!isRemoteUrl?'<div class="wiki-notes">'
       +'<div class="wiki-notes-hd">'+icon('edit','14')+'<span>我的笔记</span>'
         +'<span class="wiki-notes-stat" id="wikiNoteStat">'+(meta.notes?'停止输入后自动保存':'记录阅读要点，自动保存')+'</span>'
         +'<button type="button" class="btn sm" onclick="saveWikiNote()"><span>保存笔记</span></button>'
@@ -792,7 +897,7 @@ function _viewWikiReader(){
       +'<textarea id="wikiNoteTA" class="wiki-notes-ta" aria-label="本篇文档的阅读笔记" '
         +'placeholder="记录这篇解读的要点、疑问或与订单相关的线索…（停止输入约 1 秒后自动保存）" '
         +'oninput="onWikiNoteInput()">'+escHtml(meta.notes||'')+'</textarea>'
-    +'</div>'
+    +'</div>':'')
     +'</div>';
 }
 
@@ -816,21 +921,10 @@ function viewWiki(){
   if(!_wikiIndex){
     loadWikiIndex(function(){ if(view==='wiki')render(); });
   }
-  // 云端文章清单（list.js / list.json）：与本地互动文档合并展示
-  _loadWikiRemote(function(){ if(view==='wiki'&&_wikiRemote)render(); });
-  if(_wikiRemoteListState!=='ready'&&_wikiRemoteListState!=='loading')_fetchWikiList();
-
-  // 知识库自动同步：当 WikiKB 文章为空且未同步时，自动触发（首次进入 / 清空后）
-  // 仅触发一次，避免 sync 失败后 render 循环重复触发
-  if(!_wikiKbAutoSyncTriggered && typeof WikiKB!=='undefined' && WikiKB.state && !WikiKB.state.articles.length && !WikiKB.state.syncing && WikiKB.state.enabled){
-    _wikiKbAutoSyncTriggered = true;
-    console.log('[wiki] 知识库为空，自动触发同步（仅一次）');
-    WikiKB.sync().then(function(r){
-      console.log('[wiki] 知识库同步完成:', r);
-      if(view==='wiki')render();
-    }).catch(function(e){
-      console.warn('[wiki] 知识库同步失败:', e);
-    });
+  // 串行加载：一步完成后再启动下一步，避免并发触发限流
+  if(WIKI_REMOTE_BASE && !_wikiLoadRunning && _wikiLoadStep < 5){
+    _wikiLoadRunning = true;
+    _wikiSequentialLoad();
   }
 
   // 列表渲染以生效索引为准（云端就绪优先，离线/失败回退本地内置）
@@ -841,19 +935,35 @@ function viewWiki(){
     const localFailed=_wikiState==='error';
     const listFailed=_wikiRemoteListState==='error';
     let title,desc,retryBtn='',progressHtml='';
-    if(listFailed){
-      title='云端文章清单加载失败';
+
+    if(!WIKI_REMOTE_BASE){
+      title='暂无本地文档';
+      desc='云端同步已禁用，且本地 wiki/index.js 无文档。请将 .html 文件放入 src/public/wiki/ 后运行 npm run wiki:index。';
+    }else if(_wikiLoadStep === 1 && listFailed){
+      // Step 1 失败：文章清单加载失败
+      title='文章清单加载失败';
       const errHint=_wikiRemoteListError?(' 原因：'+escHtml(_wikiRemoteListError)):'';
-      desc='list.json 不可用'+errHint+'。请确认服务端为 list.json 配 <code>Access-Control-Allow-Origin: *</code>。';
-      retryBtn='<button type="button" class="btn sm" style="margin-top:12px" onclick="_wikiManualRefresh(this)">'+icon('refresh','14')+' 重试</button>';
-    }else if(localFailed && _wikiRemoteListState!=='loading'){
-      title='本地互动文档索引缺失';
-      desc='本地 wiki/index.js 缺失，且云端清单未启动加载。';
+      desc='list.json 不可用'+errHint+'。';
+      retryBtn='<button type="button" class="btn sm" style="margin-top:12px" onclick="_wikiRetryLoad()">'+icon('refresh','14')+' 重试</button>';
+    }else if(_wikiLoadStep > 0 && _wikiLoadStep < 5){
+      // 正在加载中，显示进度
+      const stepLabels = {
+        1: '正在加载文章清单…',
+        2: '正在同步知识库…'
+      };
+      const stepDescs = {
+        1: '连接 wiki.edtib.com，读取文章清单（list.json）。',
+        2: '抓取文章正文，构建本地知识库。'
+      };
+      title = stepLabels[_wikiLoadStep] || '加载中…';
+      desc = stepDescs[_wikiLoadStep] || '';
+      progressHtml = _wikiListProgressHtml();
     }else{
       title='正在从云端加载文章列表…';
       desc='连接 wiki.edtib.com，读取文章清单。';
       progressHtml=_wikiListProgressHtml();
     }
+
     return '<div class="card"><div class="empty-state">'
       +'<div class="es-icon">'+icon('fileText','28')+'</div>'
       +'<div class="es-title">'+title+'</div>'
@@ -932,7 +1042,13 @@ function _wikiListProgressHtml(){
 }
 
 function _wikiManualRefresh(btn){
+  if(!WIKI_REMOTE_BASE){
+    if(typeof toast==='function')toast('云端同步已禁用，仅显示本地文档','info');
+    if(btn)btn.disabled=false;
+    return;
+  }
   if(btn)btn.disabled=true;
+  // 重置所有状态
   _wikiRemoteList=null;
   _wikiRemoteListState='idle';
   _wikiRemote=null;
@@ -942,10 +1058,12 @@ function _wikiManualRefresh(btn){
   _wikiListStage='connecting';
   _wikiListBytesLoaded=0;
   _wikiListBytesTotal=0;
+  _wikiLoadStep=0;
+  _wikiLoadRunning=false;
+  _wikiKbAutoSyncTriggered=false;
   if(_wikiListHeartbeat){clearInterval(_wikiListHeartbeat);_wikiListHeartbeat=null;}
-  _fetchWikiList();
-  _loadWikiRemote(function(){
-    if(view==='wiki')render();
-  });
+  // 重新启动串行加载
+  _wikiLoadRunning=true;
+  _wikiSequentialLoad();
   if(typeof toast==='function')toast('正在更新文章列表…','info');
 }

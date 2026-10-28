@@ -579,32 +579,32 @@ function itemProfit(it){return Math.round(itemOpts(it).reduce((a,o)=>a+(itemQuot
  * @param {Object} o - 订单对象
  * @returns {number} 订单总利润
  */
-function orderProfit(o){return Math.round(o.items.reduce((a,it)=>a+itemProfit(it),0)*100)/100;}
+function orderProfit(o){return Math.round((o.items||[]).reduce((a,it)=>a+itemProfit(it),0)*100)/100;}
 /**
  * 计算订单的总销售额（各行项目售价 * 数量之和）。
  * @param {Object} o - 订单对象
  * @returns {number} 总销售额
  */
-function orderSales(o){return o.items.reduce((a,it)=>a+itemQuotePrice(it)*it.qty,0);}
+function orderSales(o){return (o.items||[]).reduce((a,it)=>a+itemQuotePrice(it)*(it.qty||0),0);}
 /**
  * 计算订单的总采购成本（各行项目已选寻源选项成本之和）。
  * @param {Object} o - 订单对象
  * @returns {number} 总采购成本
  */
-function orderCost(o){return o.items.reduce((a,it)=>a+itemOpts(it).reduce((s,o)=>s+(o.price||0)*(o.allocQty||0),0),0);}
+function orderCost(o){return (o.items||[]).reduce((a,it)=>a+itemOpts(it).reduce((s,o)=>s+(o.price||0)*(o.allocQty||0),0),0);}
 /**
  * 计算订单的意向金额（数量 × 意向价）。
  * 意向价是采购商最初期望的价格，salePrice 字段。
  * @param {Object} o - 订单对象
  * @returns {number} 意向金额
  */
-function orderIntent(o){return o.items.reduce((a,it)=>a+(it.salePrice||0)*(it.qty||0),0);}
+function orderIntent(o){return (o.items||[]).reduce((a,it)=>a+(it.salePrice||0)*(it.qty||0),0);}
 /**
  * 渲染角色标签 HTML，采购商显示蓝色 info 标签，其他角色显示灰色 gray 标签。
  * @param {Array<string>} roles - 角色数组（如 ['采购商']）
  * @returns {string} 角色标签 HTML 片段
  */
-function roleBadge(roles){return roles.map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+escHtml(r)+'</span>').join(' ');}
+function roleBadge(roles){return (roles||[]).map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+escHtml(r)+'</span>').join(' ');}
 /**
  * 将日期字符串（YYYY-MM-DD）转换为 Date 对象，时间归零。
  * @param {string} s - 日期字符串
@@ -813,7 +813,11 @@ function combo(el,options,onSelect,placeholder,allowCreate){
       e.preventDefault();
       if(activeIdx>=0&&activeIdx<hits.length){select(hits[activeIdx]);}
       else{const raw=inp.value.trim();const hit=options.find(o=>o.label===raw||(o.label+'').toLowerCase()===raw.toLowerCase());if(hit){select(hit);}else if(raw&&allowCreate){select({id:raw,label:raw,isCustom:true});}}
-    }else if(e.key==='Escape'){closeDrop();}
+    }else if(e.key==='Escape'){
+      /* v1.0.57 修复：阻断冒泡——否则 Esc 在关下拉的同时冒泡到 mask/drawer 的 Esc 处理器，
+         连带关闭整个弹窗/抽屉，已填内容全部丢失 */
+      e.preventDefault();e.stopPropagation();closeDrop();
+    }
   });
   inp.addEventListener('blur',()=>setTimeout(closeDrop,150));
 /** 关闭 combo 下拉列表，重置激活索引和展开状态 */

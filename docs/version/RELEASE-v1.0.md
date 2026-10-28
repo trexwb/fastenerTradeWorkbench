@@ -6,6 +6,61 @@
 
 ---
 
+## 未发布 · 🛡 全量操作逻辑审查与修复（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57；同日同批次审查修复）
+> **日期**: 2026-10-28
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 7 路并行静态审查（订单/资金/档案/数据知识/AI/基础设施/导出）+ 主线程逐条核实；共修复 P0×5、P1×17、P2×28，涉及 22 个源文件 + 入口 HTML；另有一批 P2 仅记录待后续处理
+> **详细清单**: `docs/audit/2026-10-28-operation-logic-audit.md`（附录含 7 份分模块审查明细 `audit-tmp/*.md`）
+
+### 一、P0（卡死/数据丢失）
+
+- **编辑模式产品链无限递归**：`persistSourcingChange→refreshProductList→persistOrderItems` 反向重入，寻货分配/产品增删必触发（页面冻结后 RangeError，多选供应商只进第 1 家）——orders.js 重入门闩
+- **概览页入口串单覆盖**：`goOrder` 不设 `_fMode/_fOrderId/_fItems`，「处理/查看」落空白新建页或渲染上一张编辑中的订单（保存会整单覆盖错误订单）——转调 `goOrderEdit` 并补齐状态四件套
+- **回收站恢复假成功**：所属订单已不存在时恢复明细静默丢弃数据仍提示「已恢复」——改为抛错保留回收站条目
+- **AI 回滚毁单**：`update_order_meta` 的 before 为 4 字段部分快照，回滚时整行替换订单丢 id/status/items——改为整对象快照
+- **导出双卡死**：SheetJS 动态加载无超时（网络挂起时 `_exportBusy` 永久 true）+ `downloadWorkbook` 用 async executor 吞同步异常（外层 Promise 永远 pending）——加 10s 超时 + 改 async 函数整段 try/catch
+
+### 二、P1（功能无法操作/死链）
+
+- **单位筛选整条死功能**：结算页/发票页 `#settleUnitFilter`/`#invUnitFilter` 从未渲染，bindView 绑定悬空——照报价页 `filt-combo` 惯例补渲染容器（combo 自动从 data-val 回填）
+- **⌘K 订单结果永远落列表**（curOrderView 被 go() 清空）→ 改 `goOrderView`
+- **wiki 全文搜索命中线上文章无反应**（`openWikiDoc('')` 直接 return）→ 按 `d.url` 分流 `openWikiExternal`
+- **操作历史假回滚**：order_item 更新类（assign_supplier 等 4 工具）静默跳过却标已回滚；spec/order_item 的 create 回滚必抛错被行内 onclick 吞掉——undoAiOp 补定向真回滚 + `undoAiOpSafe` 包装错误提示
+- **confirmModal 右上角 × 不走 onCancel**——导入/恢复确认框点 × 后 await 永挂、按钮 loading 永不清除；× 改为模拟点击取消键
+- **首会话删除静默失效**：initApp 三个空库分支缺 `trash/aiOps/wikiMeta` 且未调 ensureDBFields——三处补调
+- **modal() 兜底关闭破坏校验契约**：价格库匹配/手动供应商校验失败时错误提示随弹窗销毁、输入全丢——onOk 返回 false 不再兜底关窗，两个校验方改 `return false`
+- **combo Esc 冒泡连带关闭宿主弹窗/抽屉**——补 preventDefault+stopPropagation
+- **BOM 六维筛选选中即失效**（render 全量重建清空 data-val）——改 `refreshBOMTable` 局部刷新 + `_bfVals` 状态持久
+- **单位联系人删中间行后保存交叉错乱**（name 按位置、其余按 data-i）——readContacts 改按行容器收集
+- **BOM 批量导入空列压缩致字段左移错位**——保留空位，与 units.js 导入对齐
+- **结算记录无删除入口**（delSettlement 全仓无调用点）——明细抽屉「结算记录」表补删除列（含发票级联勾选随之生效）
+- **新建结算幽灵单位**（单位 combo allowCreate 可自由输入，金额从聚合消失、发票页出现孤儿）——禁自由新建 + 提交前存在性校验
+- **read_local_file 分流断裂**（v1.0.57 桌面版新工具落 writeOps 必报「未知工具」）——ai.js 分流 queryOps + AIT 导出 FILE_TOOL_NAMES
+- **AI 写入后 render 销毁抽屉**：「撤销本轮改动」条与执行计划卡永不显示——抽屉打开中推迟 render，关闭时补刷
+- **桌面版停止无效**（Tauri 无中止命令）——丢弃后续块 + invoke 返回后 AbortError 收尾
+- **`_sourcingCtx` 未声明**：未开过寻货抽屉时首次读取 ReferenceError，编辑模式产品变更不落库——补 `let` 声明
+
+### 三、P2（健壮性，28 条，摘要）
+
+导出 loading 反馈与取消尊重；ensureDBFields 补订单 items 数组（导出六分支 TypeError 免疫）；utils 订单聚合/roleBadge、dashboard roles 裸调等 `||[]` 防护；saveDB unhandled rejection；备份/恢复/列表目录授权守卫（fhPerm）替代 NotAllowedError 原文；keyboard Esc 链（Coach 蒙层守卫、模拟点取消）+ ⌥ 弹层守卫 + ⌘S 文案纠偏；search-panel Esc 阻断冒泡；restoreFromHash 放行 wiki + 无 oid 订单清理模式残留；goOrderEdit 补 updateHash 与 curOrder 克隆（面包屑单号恢复）；render 重置 body 滚动锁；结算行 onclick escJsStr、抽屉定时器判空；openInvEdit 先校验后写；_invSyncDirty 同步后复位；报价批量缓冲重置；单位删除引用提示补结算/发票、编辑态不再写草稿；specs 隐藏死元素移除；订单批量预览 salePrice 错位、批量缓冲提交后清空、列表筛选 UI 失同步、toast 'warn' 无效类型、data-id escAttr；AI 首块前停止误报连接失败、上下文压缩失败降级截断、update_order_item 字段白名单、add_manual_supplier 副产物补记 aiOps；AF.ensureXLSX 就绪门对齐 style_version；KB 取消选择器捕获、索引防并发；wiki 外链 noopener 误判、云端索引 10s 超时；index.html 加载文案白屏兜底。
+
+### 四、仅记录待后续（未改）
+
+订单状态机双轨（UI 流转未接 canFlowOrderStatus、NEXT_STATUS 无反向边）、订单草稿单键互覆、新建订单 hash 不可恢复、settle 0 应收标红、WikiKB id 按下标生成、wiki 全量同步无进度、KB 目录读取失败误报、Coach 子路由归并与重看入口、specs 三遍引用统计性能、AI 附件 Excel 同步解析阻塞、`__rfCache` 无上限——详见审查报告第 5 节。
+
+### 五、验证
+
+- 按用户长期工作方式约定：**本轮未运行构建/类型检查/lint/测试等验证**；已完成全部改动落盘核对（grep）与关键结构性改动回读
+- 如实声明：以上修复**未构建验证**——全部业务 JS 经 App.vue 拼接单次间接 eval，任何一处语法错误都会导致启动失败；建议交付前 `npm run vite:build` 一次并双击 `dist/index.html` 冒烟（订单编辑寻货、⌘K 跳订单、导出、BOM 筛选为重点路径）
+
+### 六、变更文件
+
+`src/views/{orders,settlements,invoices,prices,bom,units,specs,dashboard,search-panel,keyboard,wiki,data,ai-chat}.js`、`src/core/{router,ui,utils,store,exporter,kb,ai,ai-tools,ai-files}.js`、`src/index.html`、`docs/version/RELEASE-v1.0.md`、`docs/audit/2026-10-28-operation-logic-audit.md`
+
+---
+
 ## 未发布 · ☁️ 专业解读云端同步 + list.json 文章清单接入（不推进版本号）
 
 > **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57；同一模块持续开发）

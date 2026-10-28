@@ -800,8 +800,18 @@ window.KB=(function(){
         state.error='当前浏览器不支持批量选择文件（需 Chrome/Edge），请使用桌面版或 Chrome/Edge 打开';
         return {ok:false,error:state.error};
       }
-      const handles=await window.showOpenFilePicker({multiple:true,
-        types:[{description:'知识库文件',accept:{'application/pdf':['.pdf'],'text/markdown':['.md','.markdown'],'text/plain':['.txt','.log'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}]});
+      const handles=await (async function(){
+        /* v1.0.57 修复：用户取消选择器（AbortError）旧代码未捕获，控制台 Uncaught 且无反馈；
+           返回 cancelled 与 chooseDir 语义对齐（data.js 已处理 r.cancelled） */
+        try{
+          return await window.showOpenFilePicker({multiple:true,
+            types:[{description:'知识库文件',accept:{'application/pdf':['.pdf'],'text/markdown':['.md','.markdown'],'text/plain':['.txt','.log'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}]});
+        }catch(e){
+          if(e&&e.name==='AbortError')return {__cancelled:true};
+          throw e;
+        }
+      })();
+      if(handles&&handles.__cancelled)return {ok:false,cancelled:true};
       for(const h of handles){
         const f=await h.getFile();
         found.push({name:f.name||h.name,rel:f.name||h.name,handle:h,size:f.size||0});
@@ -943,6 +953,8 @@ window.KB=(function(){
     return r;
   }
   async function rescan(){
+    /* v1.0.57 修复：索引进行中禁止重复触发——旧代码无守卫，可并发起两趟 indexDir 互相覆盖状态 */
+    if(state.indexing)return {ok:false,error:'索引进行中，请稍候'};
     if(!dirHandle||dirHandle._snapshot===true){
       const d=await kbGet(K_DIR);if(d&&!d._snapshot)dirHandle=d;
     }
