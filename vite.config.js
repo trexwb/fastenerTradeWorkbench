@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
+import { generateWikiIndex } from './scripts/gen-wiki-index.mjs'
 
 // ═══════════════════════════════════════════════════════════════════
 // 紧固件贸易工作台 Vue3 构建 — 统一外置资源产物（可双击运行）
@@ -62,10 +63,43 @@ function injectSwVersion(outDir) {
   }
 }
 
+// 专业解读文档索引：扫描 src/public/wiki/*.html → 生成 src/public/wiki/index.js
+//   - dev：启动时生成一次，并监听 wiki 目录内 .html 的增删，自动重建并刷新页面
+//   - build：buildStart 重建，保证 dist/wiki/index.js 与文档始终一致
+// 单独手动重建：npm run wiki:index
+function wikiIndex() {
+  const rebuild = (passive) => {
+    try {
+      generateWikiIndex({ silent: passive })
+    } catch (e) {
+      if (!passive) throw e
+    }
+  }
+  return {
+    name: 'ftwb-wiki-index',
+    buildStart() {
+      rebuild(false)
+    },
+    configureServer(server) {
+      rebuild(true)
+      const dir = resolve(import.meta.dirname, 'src/public/wiki')
+      server.watcher.add(dir)
+      const onChange = (file) => {
+        if (!/[\\/]wiki[\\/][^\\/]+\.html$/i.test(file)) return
+        rebuild(true)
+        server.ws.send({ type: 'full-reload' })
+      }
+      server.watcher.on('add', onChange)
+      server.watcher.on('unlink', onChange)
+      server.watcher.on('change', onChange)
+    },
+  }
+}
+
 export default defineConfig({
   root: 'src',
   base: './',
-  plugins: [vue(), injectSwVersion('dist'), demoteModuleScripts()],
+  plugins: [vue(), wikiIndex(), injectSwVersion('dist'), demoteModuleScripts()],
   build: {
     outDir: '../dist',
     emptyOutDir: true,

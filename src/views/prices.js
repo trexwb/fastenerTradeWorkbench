@@ -240,8 +240,11 @@ function editPrice(id){
     const uVal=uEl?uEl.dataset.val:'';
     if(uVal){
       const cEl=document.getElementById('ps_contact');
-      cEl.innerHTML=contactOpts(uVal,'供应商');
-      if(p.contact)cEl.value=p.contact;
+      /* v1.0.57 修复：cEl 判空——抽屉被快速关闭后定时器仍触发时元素已不存在，防 TypeError 中断后续绑定 */
+      if(cEl){
+        cEl.innerHTML=contactOpts(uVal,'供应商');
+        if(p.contact)cEl.value=p.contact;
+      }
     }
   },50);
 }
@@ -356,28 +359,31 @@ function batchDeletePrices(){
   const checks=document.querySelectorAll('.price-check:checked');
   const ids=[];
   checks.forEach(function(c){ids.push(c.dataset.id);});
-  // 订单寻源引用检查
+  // 订单寻源引用检查：先展平一次，避免逐报价重复遍历
+  const allOptions=[];
+  (DB.orders||[]).forEach(function(o){
+    (o.items||[]).forEach(function(it){
+      (it.options||[]).forEach(function(opt){
+        allOptions.push({orderId:o.id,opt:opt,item:it});
+      });
+    });
+  });
   const useRefs=[];
   ids.forEach(function(pId){
     const p=DB.prices.find(x=>x.id===pId);
     if(!p)return;
     const hitOrders=[];
-    (DB.orders||[]).forEach(function(o){
-      (o.items||[]).forEach(function(it){
-        (it.options||[]).forEach(function(opt){
-          if(opt.supplierId!==p.unitId)return;
-          // 匹配 bomSku 或 6 维规格属性完全一致
-          const skuMatch=(p.bomSku||'')&&(it.bomSku||'')&&p.bomSku===it.bomSku;
-          let specMatch=true;
-          for(let i=0;i<SPEC_FIELDS.length;i++){
-            const k=SPEC_FIELDS[i];
-            if((p[k]||'')!==(it[k]||'')){specMatch=false;break;}
-          }
-          if(skuMatch||specMatch){
-            if(hitOrders.indexOf(o.id)<0)hitOrders.push(o.id);
-          }
-        });
-      });
+    allOptions.forEach(function(entry){
+      if(entry.opt.supplierId!==p.unitId)return;
+      const skuMatch=(p.bomSku||'')&&(entry.item.bomSku||'')&&p.bomSku===entry.item.bomSku;
+      let specMatch=true;
+      for(let i=0;i<SPEC_FIELDS.length;i++){
+        const k=SPEC_FIELDS[i];
+        if((p[k]||'')!==(entry.item[k]||'')){specMatch=false;break;}
+      }
+      if(skuMatch||specMatch){
+        if(hitOrders.indexOf(entry.orderId)<0)hitOrders.push(entry.orderId);
+      }
     });
     if(hitOrders.length>0){
       useRefs.push(escHtml(pName(p.unitId))+' 报价 被 订单 '+hitOrders.join('/')+' 使用');
@@ -417,6 +423,8 @@ function closePriceDropdown(){
 /* ---- 批量导入报价（Excel 粘贴） ---- */
 /** 打开批量导入报价抽屉（粘贴解析流程说明+文本框） */
 function openPriceBatchAdd(){
+  /* v1.0.57 修复：重置批量缓冲——旧代码跨会话残留，下次打开批量导入时旧行经 mergeBatchRows 再次累加入库 */
+  window._batchPriceData=[];
   let body='<div class="batch-intro">'+
     '<div class="batch-steps">'+
       '<div class="bs-step"><span class="bs-n">①</span><span>从 Excel 复制报价数据（<b>Ctrl+A → Ctrl+C</b>）</span></div>'+

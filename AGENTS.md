@@ -30,7 +30,7 @@
 > - **版本回退规则**：当用户要求"回退到 X.Y.Z"时，以上三处必须**同时**改写成用户指定的值，且本回合内不得再以"我刚才做了修改所以要 +1"为由推进。
 > - **不推进版本号时仍必须写更新日志**：每次修复追加到 `docs/version/RELEASE-v{主版本}.md` 对应分节，标注日期并明确"不推进版本号"。发布日志只增不改。
 
-当前基准版本：**v1.0.57**。
+当前基准版本：**v1.1.0**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -67,7 +67,7 @@
 
 ### 4. 架构约定
 
-- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → ai-files → kb → validators → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,keyboard,ai-chat,search-panel} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor` 原样复制到 dist/
+- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → ai-files → kb → validators → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,wiki,keyboard,ai-chat,search-panel} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor|wiki` 原样复制到 dist/（`wiki/` 为专业解读互动文档 + 自动生成的 `index.js` 索引）
 - **存储体系**：IndexedDB（主存储，`DB` 对象） + localStorage（表单草稿，`DRAFT_PREFIX='wb_fastener_draft_'`） + 本地 JSON 文件（File System Access API 备份）
 - **状态管理**：全局变量控制视图（`view`、`curOrder`、`curOrderView`、`_fMode`、`_fOrderId`、`_fItems`）
 - **渲染函数**：`render()` 统一调度，`orders` 分支路由：`curOrder ? viewOrderEdit() : curOrderView ? viewOrderDetail() : viewOrders()`
@@ -114,9 +114,11 @@ FastenerTradeWorkbench/
 │   │   ├── keyboard.js      ← 快捷键（⌘K/⌘S/Esc/?/⌥ 导航，见 docs/flows/keyboard.md）
 │   │   ├── ai-chat.js       ← AI 助手（对话 / 提案确认 / 附件，见 docs/flows/ai-chat.md）
 │   │   ├── search-panel.js  ← 全局搜索与命令面板（六源检索 + AI 联动，见 docs/flows/search-panel.md）
-│   │   └── data.js          ← 数据管理
+│   │   ├── data.js          ← 数据管理
+│   │   └── wiki.js          ← 专业解读（src/public/wiki/*.html 互动长页 iframe 内嵌，云端优先 wiki.edtib.com/wiki/ + 本地兜底，见 docs/wiki-integration.md）
 │   └── public/             ← 静态资源（Vite 原样复制到 dist/ 根目录）
 │       ├── images/          ← 图标 / favicon 等
+│       ├── wiki/            ← 专业解读互动文档（*.html 单文件零依赖 + 自动生成的 index.js 索引，不手改）
 │       └── vendor/          ← 第三方库（xlsx-js-style 本地化，离线可用）
 │           ├── cpexcel.js   ← 代码页表（多语言编码支持）
 │           └── xlsx.min.js  ← SheetJS 0.18.5 样式版 fork（主库）
@@ -125,7 +127,7 @@ FastenerTradeWorkbench/
 ├── README.md               ← 项目说明（浏览器版使用指引，版本信息以 package.json 为准）
 ├── docs/                    ← 项目文档（API.md / COVERAGE.md / 操作手册.md / flows 各模块流程 / version 发布记录 / screenshots 截图与历史单文件版）
 ├── wiki/                    ← GitHub Wiki 页面 Markdown 源（Home / _Sidebar / 各模块页，推送到仓库 Wiki）
-├── scripts/                 ← 构建 / 版本 / 文档脚本（bump-version / check-version / copy-frontend / serve / make-dmg / gen-coverage）
+├── scripts/                 ← 构建 / 版本 / 文档脚本（bump-version / check-version / copy-frontend / serve / make-dmg / gen-coverage / gen-wiki-index）
 ├── src-tauri/               ← Tauri 桌面封装（Rust 源码 + tauri.conf.json，frontendDist=../dist）
 └── dist/                    ← Vite 构建产物（双击 dist/index.html 可运行；结构：index.html + assets/js|css + vendor + images）
 ```

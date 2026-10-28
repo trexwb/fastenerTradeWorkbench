@@ -786,6 +786,35 @@ const AIT=(function(){
         }
       }
     },
+    {
+      type:'function',
+      function:{
+        name:'query_wiki',
+        description:'检索线上同步的 wiki 文章知识库（来源：wiki.edtib.com）。当用户询问专业解读、技术文章、系统介绍文档等问题时调用。立即执行不需确认。返回命中片段（含文章标题/URL/得分），片段已截断。回答时若用到命中内容，必须在句末标注【依据：文章标题】并附 URL。未命中时返回 count:0，应明确说明「本地知识库暂无相关内容」。',
+        parameters:{
+          type:'object',
+          properties:{
+            query:{type:'string',description:'检索问题/关键词（自然语言即可）'},
+            topN:{type:'integer',description:'返回片段数（1-10，可选，缺省 4）'}
+          },
+          required:['query']
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'list_wiki_articles',
+        description:'列出已同步到本地的线上 wiki 文章标题、URL、字符数等元数据，可选关键词过滤。用于先了解 wiki 知识库有哪些文章再决定检索方向。立即执行不需确认。',
+        parameters:{
+          type:'object',
+          properties:{
+            keyword:{type:'string',description:'按文章标题模糊过滤（可选）'}
+          },
+          required:[]
+        }
+      }
+    },
     // 阶段5：工作流计划发起（多步长任务专用；由 aiWriteLoop 拦截并创建 DB.aiWorkflows 草稿，
     // 不进入 runFlow/executeOps —— 本 schema 仅用于让模型知晓该工具存在）
     {
@@ -868,6 +897,8 @@ const AIT=(function(){
     list_kb_files:{label:'列出KB文件',tagCls:'info',kind:'query'},
     get_kb_file:{label:'查阅KB原文',tagCls:'info',kind:'query'},
     search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'},
+    query_wiki:{label:'检索Wiki文章',tagCls:'info',kind:'query'},
+    list_wiki_articles:{label:'列出Wiki文章',tagCls:'info',kind:'query'},
     // 工作流计划发起（kind: flow；由 aiWriteLoop 拦截为工作流创建，不真正执行 UI 动作）
     flow_start_workflow:{label:'发起执行计划',tagCls:'info',kind:'flow'}
   };
@@ -877,6 +908,9 @@ const AIT=(function(){
 
   /** 知识库只读工具名集合（v1.0.15 新增）：自动执行不经弹窗；校验器对它们免未知报错 */
   const KB_TOOL_NAMES=new Set(['query_knowledge','list_kb_files','get_kb_file','search_kb_detail']);
+
+  /** 线上 Wiki 知识库只读工具名集合：自动执行不经弹窗；校验器对它们免未知报错 */
+  const WIKI_KB_TOOL_NAMES=new Set(['query_wiki','list_wiki_articles']);
 
   /** 本地文件读取只读工具集合（v1.0.57）：桌面版专属、自动执行不经弹窗、校验免未知报错 */
   const FILE_TOOL_NAMES=new Set(['read_local_file']);
@@ -1382,7 +1416,9 @@ const AIT=(function(){
       if(o.status!=='送货中'&&(args.deliveryDate!==undefined||args.deliveryAddress!==undefined)){
         return {ok:false,error:'仅「送货中」状态订单可修改交期/送货地址，当前状态（'+o.status+'）只读锁定'};
       }
-      const before=_snap({buyerId:o.buyerId,project:o.project,deliveryDate:(o.delivery&&(o.delivery.date||o.delivery.time))||'',buyerContact:o.buyerContact});
+      /* v1.0.57 修复：before 由 4 字段部分快照改为整对象快照——旧快照在 undoAiOp 的 update 分支
+         会被整行替换回订单对象，回滚后订单丢 id/status/items 等全部字段（数据损毁）；与其余 update 执行器口径一致 */
+      const before=_snap(o);
       if(args.buyerId!==undefined)o.buyerId=args.buyerId;
       if(args.project!==undefined)o.project=args.project;
       if(args.deliveryDate!==undefined){o.delivery=o.delivery||{};o.delivery.date=args.deliveryDate;o.delivery.time=args.deliveryDate;}
@@ -1404,7 +1440,9 @@ const AIT=(function(){
       const o=DB.orders.find(x=>x.id===args.orderId);
       const it=(o.items||[]).find(x=>x.id===args.itemId);
       const before=_snap(it);
-      const patch=Object.assign({},args);delete patch.orderId;delete patch.itemId;
+      /* v1.0.57 修复：字段白名单——旧写法 Object.assign(args) 会把模型附带的多余字段（options/id/status 等）
+         原样覆盖进明细，破坏寻货分配数据（对照 update_settlement 的 _pick 口径） */
+      const patch=_pick(args,['name','spec','qty','salePrice','quotePrice','usage','remark']);
       Object.assign(it,patch);o.updatedAt=now();
       saveDB();
       const op=recordAiOp({op:'update',type:'order_item',targetId:it.id,before,after:_snap(it),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
@@ -1432,10 +1470,11 @@ const AIT=(function(){
       const it=(o.items||[]).find(x=>x.id===args.itemId);
       // 查找或创建关联单位（复用 manualSupplier 逻辑）
       let unit=DB.units.find(u=>u.name===args.unitName);
+      let createdUnit=false;
       if(!unit){
         unit={id:uid('U'),name:args.unitName,roles:['供应商'],rating:'',term:'',contacts:[],invoice:{},createdAt:today()};
         if(args.contact)unit.contacts.push({name:args.contact,phone:'',side:'供应',sides:['供应']});
-        DB.units.push(unit);
+        DB.units.push(unit);createdUnit=true;
       }
       // 同步价格库（与 manualSupplier 一致）
       const price={id:uid('PR'),unitId:unit.id,bomSku:it.bomSku||'',spec:it.spec||'',type:it.type||'',standard:it.standard||'',diameter:it.diameter||'',hardness:it.hardness||'',surface:it.surface||'',material:it.material||'',price:Number(args.price),validFrom:today(),contact:args.contact||'',remark:'AI 手动录入',createdAt:today()};
@@ -1446,6 +1485,9 @@ const AIT=(function(){
       it.options.push({id:uid('Q'),supplierId:unit.id,contact:args.contact||'',price:Number(args.price),allocQty:Number(args.allocQty),stockNote:args.stockNote||'手动录入',source:'manual',status:'已选'});
       o.updatedAt=now();
       saveDB();
+      /* v1.0.57 修复：自动创建的单位与同步的价格库补记 aiOps（同 batchId）——否则整批撤销后残留孤儿数据 */
+      if(createdUnit)recordAiOp({op:'create',type:'unit',targetId:unit.id,before:null,after:_snap(unit),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
+      recordAiOp({op:'create',type:'price',targetId:price.id,before:null,after:_snap(price),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
       const op=recordAiOp({op:'update',type:'order_item',targetId:it.id,before,after:_snap(it),batchId:ctx.batchId,operator:ctx.operator||'ai',aiChatId:ctx.aiChatId});
       return {ok:true,summary:'已手动录入供应商 '+unit.name+' · '+fmtN(args.allocQty)+' @ ¥'+args.price,opRecord:op};
     },
@@ -1529,7 +1571,7 @@ const AIT=(function(){
   /** 单条校验入口（执行前脏读检查可选，本轮暂略） */
   function validateOp(op){
     // 知识库只读工具无副作用：不进写入校验表，直接放行（避免弹窗场景误报「未知工具」）
-    if(KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
+    if(KB_TOOL_NAMES.has(op.name)||WIKI_KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     // v1.0.57：本地文件读取/白名单系统指令只读无副作用，同样直接放行
     if(FILE_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     const v=validators[op.name];
@@ -1756,6 +1798,15 @@ const AIT=(function(){
         // 复用 KB.getFileBlocks（同步接口，bootApp 已 init）；runQuery 保持同步约定
         return JSON.stringify(KB.getFileBlocks(args.nameOrRel,args.range));
       }
+      if(name==='query_wiki'){
+        if(typeof WikiKB==='undefined')return JSON.stringify({ok:false,error:'Wiki 知识库模块未加载'});
+        if(!WikiKB.state.enabled)return JSON.stringify({ok:false,error:'Wiki 知识库未启用'});
+        return JSON.stringify(WikiKB.search(args.query,{topN:args.topN}));
+      }
+      if(name==='list_wiki_articles'){
+        if(typeof WikiKB==='undefined')return JSON.stringify({ok:false,error:'Wiki 知识库模块未加载'});
+        return JSON.stringify(WikiKB.listArticles(args.keyword));
+      }
       if(name==='query_units'){
         let list=DB.units.slice();
         if(args.keyword)list=list.filter(u=>(u.name||'').includes(args.keyword));
@@ -1875,7 +1926,7 @@ const AIT=(function(){
   }
 
   return {
-    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,
+    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,WIKI_KB_TOOL_NAMES,FILE_TOOL_NAMES,
     validateOp,executeOp,executeOps,buildToolResponse,unitNameSafe,runQuery,runFlow
   };
 })();

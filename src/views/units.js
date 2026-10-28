@@ -351,10 +351,8 @@ function editUnit(id){
     clearDraft(DRAFT_TYPES.unit);
     saveDB();closeDrawer();render();toast('已更新','success');
   },true);
-  setTimeout(()=>{
-    const panel=document.querySelector('.drawer-panel');
-    if(panel)bindDraftSave(panel,collectUnitDraft,DRAFT_TYPES.unit);
-  },100);
+  /* v1.0.57 修复：编辑态不再写 unit 草稿——草稿只服务新建；否则编辑中放弃后，
+     下次「新建单位」会提示恢复另一单位的数据，可能据此建出重复单位 */
   setTimeout(()=>updateContactSides(),50);
 }
 
@@ -367,8 +365,11 @@ function delUnit(id){
   if(!p)return;
   const used=DB.orders.some(o=>o.buyerId===id||o.items.some(i=>(i.options||[]).some(opt=>opt.supplierId===id)));
   const usedPrice=DB.prices.some(pr=>pr.unitId===id);
+  /* v1.0.57 修复：引用提示补结算/发票——旧提示只查订单+报价，删除被结算/发票引用的单位时误示「未被引用」 */
+  const usedSettle=(DB.settlements||[]).some(s=>s.unitId===id);
+  const usedInv=(DB.invoices||[]).some(v=>v.unitId===id);
   let msg='确认删除关联单位「'+escHtml(p.name)+'」?';
-  if(used||usedPrice)msg='「'+escHtml(p.name)+'」已被订单或价格记录引用，删除后相关记录将显示为ID。确认删除?';
+  if(used||usedPrice||usedSettle||usedInv)msg='「'+escHtml(p.name)+'」已被订单、价格、结算或发票记录引用，删除后相关记录将显示为ID。确认删除?';
   confirmModal(msg,()=>{softDelete('unit',id,{operator:'user'});closeModal();render();toast('已删除','info');},'确认删除',null,null,true);
 }
 
@@ -428,12 +429,14 @@ function updateContactSides(){
  * @returns {Array} 联系人数组
  */
 function readContacts(){
-  return [...document.querySelectorAll('#contactsBox [data-c="name"]')].map((el,i)=>{
-    const sides=[...document.querySelectorAll('#contactsBox [data-c="side"][data-i="'+i+'"]:checked')].map(cb=>cb.dataset.v);
+  /* v1.0.57 修复：改为按行容器收集——旧实现 name 按位置、其余按 data-i 属性匹配，
+     删中间联系人后两者错位（电话/采购供应侧交叉错乱） */
+  return [...document.querySelectorAll('#contactsBox [data-crow]')].map(row=>{
+    const sides=[...row.querySelectorAll('[data-c="side"]:checked')].map(cb=>cb.dataset.v);
     return {
-      name:el.value.trim(),
-      phone:(document.querySelector('#contactsBox [data-c="phone"][data-i="'+i+'"]')||{}).value||'',
-      wechat:(document.querySelector('#contactsBox [data-c="wechat"][data-i="'+i+'"]')||{}).value||'',
+      name:((row.querySelector('[data-c="name"]')||{}).value||'').trim(),
+      phone:(row.querySelector('[data-c="phone"]')||{}).value||'',
+      wechat:(row.querySelector('[data-c="wechat"]')||{}).value||'',
       sides:sides,
       side:sides.includes('供应')?'供应商':(sides.includes('采购')?'采购商':'供应商')
     };
@@ -509,10 +512,15 @@ function batchDeleteUnits(){
       o.items.forEach(i=>{(i.options||[]).forEach(opt=>{if(opt.supplierId===id)orderCnt++;});});
     });
     const priceCnt=DB.prices.filter(pr=>pr.unitId===id).length;
-    if(usedOrder||usedPrice){
+    /* v1.0.57 修复：同 delUnit——引用聚合补结算/发票 */
+    const settleCnt=(DB.settlements||[]).filter(s=>s.unitId===id).length;
+    const invCnt=(DB.invoices||[]).filter(v=>v.unitId===id).length;
+    if(usedOrder||usedPrice||settleCnt>0||invCnt>0){
       const tag=[];
       if(priceCnt>0)tag.push('报价'+priceCnt);
       if(orderCnt>0)tag.push('订单'+orderCnt);
+      if(settleCnt>0)tag.push('结算'+settleCnt);
+      if(invCnt>0)tag.push('发票'+invCnt);
       refParts.push(escHtml(p.name)+'('+tag.join('/')+')');
     }
   });

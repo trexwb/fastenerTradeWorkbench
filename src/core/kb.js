@@ -81,8 +81,8 @@ window.KB=(function(){
       return new Promise((res,rej)=>{
         const tx=db.transaction(STORE,'readonly');
         const r=tx.objectStore(STORE).get(key);
-        r.onsuccess=()=>res(r.result!==undefined?r.result:null);
-        r.onerror=()=>rej(r.error);
+        r.onsuccess=()=>{db.close();res(r.result!==undefined?r.result:null);};
+        r.onerror=()=>{db.close();rej(r.error);};
       });
     }catch(e){return null;}
   }
@@ -92,8 +92,8 @@ window.KB=(function(){
     return new Promise((res,rej)=>{
       const tx=db.transaction(STORE,'readwrite');
       tx.objectStore(STORE).put(val,key);
-      tx.oncomplete=()=>res();
-      tx.onerror=()=>rej(tx.error);
+      tx.oncomplete=()=>{db.close();res();};
+      tx.onerror=()=>{db.close();rej(tx.error);};
     });
   }
   async function kbDelete(key){
@@ -102,8 +102,8 @@ window.KB=(function(){
     return new Promise((res,rej)=>{
       const tx=db.transaction(STORE,'readwrite');
       tx.objectStore(STORE).delete(key);
-      tx.oncomplete=()=>res();
-      tx.onerror=()=>rej(tx.error);
+      tx.oncomplete=()=>{db.close();res();};
+      tx.onerror=()=>{db.close();rej(tx.error);};
     });
   }
 
@@ -606,9 +606,10 @@ window.KB=(function(){
         _bm=null;
         return {ok:true,files:0,blocks:0,reads:0,scanned:0,errors:errs.slice()};
       }
-      // 第一遍：逐文件判定「复用旧分块」还是「重新解析」，产出最终 files 记录
+      // 第一遍：逐文件判定「复用旧分块」还是「需要解析」，先分类
       const finalFiles=[];const newBlocksRaw={};const reusedRels={};
       let totalChars=0;let reads=0;const errors=[];
+      const needParse=[];
       for(let i=0;i<found.length;i++){
         const f=found[i];
         if(!f.handle&&!f.path)continue;
@@ -620,19 +621,34 @@ window.KB=(function(){
           totalChars+=Number(prev.chars)||0;reads++;
           continue;
         }
-        try{
-          const r=await parseFile(f.name,f);
-          if(r&&r.chars===0){throw new Error('未从文件中提取到文本——若是扫描/图片型 PDF 则无文本层，暂不支持 OCR，请使用文字版');}
+        needParse.push({f:f,st:st});
+      }
+      // 分批并行解析（每批 5 个），避免串行逐个等待
+      const KB_PARSE_BATCH=5;
+      for(let bi=0;bi<needParse.length;bi+=KB_PARSE_BATCH){
+        const batch=needParse.slice(bi,bi+KB_PARSE_BATCH);
+        const results=await Promise.all(batch.map(async function(entry){
+          try{
+            const r=await parseFile(entry.f.name,entry.f);
+            return {entry:entry,r:r};
+          }catch(e){
+            return {entry:entry,error:e};
+          }
+        }));
+        results.forEach(function(res){
+          if(res.error){
+            errors.push(res.entry.f.name+': '+(res.error&&res.error.message?res.error.message:'解析失败'));
+            return;
+          }
+          const r=res.r;const f=res.entry.f;const st=res.entry.st;
+          if(r&&r.chars===0){errors.push(f.name+': 未提取到文本——扫描/图片型 PDF 暂不支持 OCR');return;}
           if(r&&r.chars>0){
             const btexts=splitBlocks(f.name,r.text,r.linePages);
             newBlocksRaw[f.rel]=btexts;
             finalFiles.push({id:-1,name:f.name,rel:f.rel,chars:r.chars,pages:r.page,blocks:btexts.length,size:st.size,lastModified:st.lastModified});
             totalChars+=r.chars;reads++;
           }
-          // 提取不到文本的文件：与旧版一致静默跳过
-        }catch(e){
-          errors.push(f.name+': '+(e&&e.message?e.message:'解析失败'));
-        }
+        });
       }
       // 第二遍：按最终下标统一组装分块（复用块 + 新解析块，file/index/id 全部对齐）
       const finalBlocks=[];
@@ -784,8 +800,18 @@ window.KB=(function(){
         state.error='当前浏览器不支持批量选择文件（需 Chrome/Edge），请使用桌面版或 Chrome/Edge 打开';
         return {ok:false,error:state.error};
       }
-      const handles=await window.showOpenFilePicker({multiple:true,
-        types:[{description:'知识库文件',accept:{'application/pdf':['.pdf'],'text/markdown':['.md','.markdown'],'text/plain':['.txt','.log'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}]});
+      const handles=await (async function(){
+        /* v1.0.57 修复：用户取消选择器（AbortError）旧代码未捕获，控制台 Uncaught 且无反馈；
+           返回 cancelled 与 chooseDir 语义对齐（data.js 已处理 r.cancelled） */
+        try{
+          return await window.showOpenFilePicker({multiple:true,
+            types:[{description:'知识库文件',accept:{'application/pdf':['.pdf'],'text/markdown':['.md','.markdown'],'text/plain':['.txt','.log'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}]});
+        }catch(e){
+          if(e&&e.name==='AbortError')return {__cancelled:true};
+          throw e;
+        }
+      })();
+      if(handles&&handles.__cancelled)return {ok:false,cancelled:true};
       for(const h of handles){
         const f=await h.getFile();
         found.push({name:f.name||h.name,rel:f.name||h.name,handle:h,size:f.size||0});
@@ -927,6 +953,8 @@ window.KB=(function(){
     return r;
   }
   async function rescan(){
+    /* v1.0.57 修复：索引进行中禁止重复触发——旧代码无守卫，可并发起两趟 indexDir 互相覆盖状态 */
+    if(state.indexing)return {ok:false,error:'索引进行中，请稍候'};
     if(!dirHandle||dirHandle._snapshot===true){
       const d=await kbGet(K_DIR);if(d&&!d._snapshot)dirHandle=d;
     }

@@ -158,6 +158,14 @@ const AI=(function(){
       '使用时机：用户问及「资料/文档/合同/规格书/历史记录/供应商文件/有没有说过…」等需要查阅本地资料的问题时，先调用 query_knowledge；若不确定 KB 有什么资料先 list_kb_files；需要核对命中片段的完整上下文用 get_kb_file；常规检索不要用 search_kb_detail（省 token）。\n'+
       '硬约束：当 KB 命中且用于回答时，句末必须标注【依据：文件名】（文件名取自命中结果的 file 字段）；可在同一对话中多次调用 query_knowledge 精炼关键词；未命中（count:0）时明确说「未在知识库中找到」，禁止编造文件名或内容；KB 命中与业务数据快照冲突时，以业务快照为准并说明。\n\n'
 :'')+
+      // Wiki 知识库工具：始终可用（不依赖用户绑定目录），未同步时工具返回 count:0
+      ((typeof WikiKB!=='undefined')?
+      '【线上知识库检索工具】（来自 wiki.edtib.com 的同步文章，自动定期更新）\n'+
+      '- query_wiki(query, topN?)：检索线上同步的 wiki 文章知识库，返回命中片段（含文章标题/URL/得分）。\n'+
+      '- list_wiki_articles(keyword?)：列出已同步的 wiki 文章元数据，先了解资料范围再检索。\n'+
+      '使用时机：用户问及专业解读、技术文章、系统介绍文档、wiki 内容等问题时，先调用 query_wiki；若不确定 wiki 有什么文章先 list_wiki_articles。\n'+
+      '硬约束：当 WikiKB 命中且用于回答时，句末必须标注【依据：文章标题】并附 URL；未命中（count:0）时明确说「本地知识库暂无相关内容」，禁止编造文章内容；可同时检索本地 KB 和线上 WikiKB，综合回答。\n\n'
+      :'')+
       snapshot;
   }
   /** v1.0.40 附件注入：把消息记录里的 attachments（解析全文）拼成上下文块。
@@ -263,6 +271,8 @@ const AI=(function(){
     state.chunkBuf='';
     state.tauriToolAcc=[];  // tool_calls 累积槽：按 index 累积（与 webToolAcc 同构）
     state.removeStreamListener=tauriListen(STREAM_EVENT,function(ev){
+      /* v1.0.57 修复：桌面版停止生成——用户点停止后丢弃后续流式块（配合 chat() 内 invoke 返回后的二次拦截） */
+      if(state.abortReason==='manual')return;
       const payload=ev&&ev.payload;
       if(!payload)return;
       const text=payload.text;
@@ -368,6 +378,8 @@ const AI=(function(){
       }
     }
     if(!res){
+      /* v1.0.57 修复：首块到达前手动停止（AbortError）此前被包装成「无法连接模型服务」误导用户 */
+      if(_netErr&&_netErr.name==='AbortError'){const _stop=new Error('已停止生成');_stop.name='AbortError';throw _stop;}
       throw new Error('无法连接模型服务（'+apiChatUrl()+'）：'+(_netErr&&_netErr.message?_netErr.message:JSON.stringify(_netErr)));
     }
     if(!res.ok){
@@ -504,6 +516,9 @@ const AI=(function(){
             reqArgs.tools=options.tools;
           }
           const full=await tauriInvoke('ai_deepseek_chat',reqArgs);
+          /* v1.0.57 修复：桌面版停止生成——Rust 侧无中止命令，用户点停止后丢弃后续块；
+             invoke 结果到达时若已标记手动停止，以 AbortError 结束（调用方按「已停止生成」收尾），不再消费结果 */
+          if(state.abortReason==='manual'){const _stop=new Error('已停止生成');_stop.name='AbortError';throw _stop;}
           // Rust 返回最终完整文本；若事件接收比最终返回慢，用最终文本兜底补齐
           if(typeof full==='string'&&full.length>state.chunkBuf.length&&onChunk){
             onChunk(full.slice(state.chunkBuf.length));
@@ -593,17 +608,24 @@ const AI=(function(){
             if(systemMsg)messages.push(systemMsg);
             messages.push({role:'user',content:'【历史对话摘要】\n'+summary+(lastUser?'\n\n【当前问题】\n'+lastUser.content:'')});
             if(typeof toast==='function')toast('上下文较长，已自动压缩为摘要','info');
+          }else{
+            /* v1.0.57 修复：压缩失败（断网/超时）时按既有注释承诺降级——保留 system + 最近 6 条，
+               避免超长请求原样发出被服务端 400 拒绝导致本轮发送失败 */
+            if(messages.length>7)messages.splice(1,messages.length-7);
           }
         }
       }
       // 工具可用性动态过滤：知识库未绑定/未启用时，不把 KB 工具带给模型（模型无从发起 → 无提案弹窗）
+      // Wiki 知识库工具始终可用（未同步时工具返回 count:0，优雅降级）
       // 工作流内部轮次（opts.noWfTools）不透出 flow_start_workflow，禁止步骤内再嵌套发起子工作流
       const kbSet=(typeof AIT!=='undefined'&&AIT.KB_TOOL_NAMES)?AIT.KB_TOOL_NAMES:null;
+      const wikiKbSet=(typeof AIT!=='undefined'&&AIT.WIKI_KB_TOOL_NAMES)?AIT.WIKI_KB_TOOL_NAMES:null;
       const kbAvailable=(typeof KB!=='undefined'&&KB.state.bound&&KB.state.enabled);
       const noWfTools=!!(opts&&opts.noWfTools);
       const toolsDef=(typeof AIT!=='undefined'?AIT.TOOLS_DEFS:[]).filter(function(t){
         const tName=t&&t.function&&t.function.name;
         if(noWfTools&&tName==='flow_start_workflow')return false;
+        if(wikiKbSet&&wikiKbSet.has(tName))return true;
         if(!(kbSet&&kbSet.has(tName)))return true;
         return kbAvailable;
       });
@@ -710,8 +732,11 @@ const AI=(function(){
       const flowSet=(typeof AIT!=='undefined'&&AIT.FLOW_TOOL_NAMES)?AIT.FLOW_TOOL_NAMES:null;
       const flowOps=calls.filter(tc=>flowSet&&flowSet.has(tc.name));
       // 知识库只读工具（query_knowledge/list_kb_files/get_kb_file/search_kb_detail）与 query_ 前缀同路：立即执行不经弹窗
-      const queryOps=calls.filter(tc=>tc.name.indexOf('query_')===0||(kbSet&&kbSet.has(tc.name)));
-      const writeOps=calls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name))&&!(kbSet&&kbSet.has(tc.name)));
+      // Wiki 知识库只读工具（query_wiki/list_wiki_articles）同理
+      /* v1.0.57 修复：read_local_file（桌面版新只读工具）此前落入 writeOps——必弹确认且执行必报「未知工具」；分流到 queryOps */
+      const fileSet=(typeof AIT!=='undefined'&&AIT.FILE_TOOL_NAMES)?AIT.FILE_TOOL_NAMES:null;
+      const queryOps=calls.filter(tc=>tc.name.indexOf('query_')===0||(kbSet&&kbSet.has(tc.name))||(wikiKbSet&&wikiKbSet.has(tc.name))||(fileSet&&fileSet.has(tc.name)));
+      const writeOps=calls.filter(tc=>tc.name.indexOf('query_')!==0&&!(flowSet&&flowSet.has(tc.name))&&!(kbSet&&kbSet.has(tc.name))&&!(wikiKbSet&&wikiKbSet.has(tc.name))&&!(fileSet&&fileSet.has(tc.name)));
 
       // 1) 查询类立即执行（无副作用，结果直接回填给模型）
       const queryResults=queryOps.map(tc=>{

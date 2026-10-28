@@ -98,6 +98,7 @@ const SVG={
   gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   alertTriangle:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   alertCircle:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
 };
 let _iconCache={};
 /**
@@ -578,32 +579,32 @@ function itemProfit(it){return Math.round(itemOpts(it).reduce((a,o)=>a+(itemQuot
  * @param {Object} o - 订单对象
  * @returns {number} 订单总利润
  */
-function orderProfit(o){return Math.round(o.items.reduce((a,it)=>a+itemProfit(it),0)*100)/100;}
+function orderProfit(o){return Math.round((o.items||[]).reduce((a,it)=>a+itemProfit(it),0)*100)/100;}
 /**
  * 计算订单的总销售额（各行项目售价 * 数量之和）。
  * @param {Object} o - 订单对象
  * @returns {number} 总销售额
  */
-function orderSales(o){return o.items.reduce((a,it)=>a+itemQuotePrice(it)*it.qty,0);}
+function orderSales(o){return (o.items||[]).reduce((a,it)=>a+itemQuotePrice(it)*(it.qty||0),0);}
 /**
  * 计算订单的总采购成本（各行项目已选寻源选项成本之和）。
  * @param {Object} o - 订单对象
  * @returns {number} 总采购成本
  */
-function orderCost(o){return o.items.reduce((a,it)=>a+itemOpts(it).reduce((s,o)=>s+(o.price||0)*(o.allocQty||0),0),0);}
+function orderCost(o){return (o.items||[]).reduce((a,it)=>a+itemOpts(it).reduce((s,o)=>s+(o.price||0)*(o.allocQty||0),0),0);}
 /**
  * 计算订单的意向金额（数量 × 意向价）。
  * 意向价是采购商最初期望的价格，salePrice 字段。
  * @param {Object} o - 订单对象
  * @returns {number} 意向金额
  */
-function orderIntent(o){return o.items.reduce((a,it)=>a+(it.salePrice||0)*(it.qty||0),0);}
+function orderIntent(o){return (o.items||[]).reduce((a,it)=>a+(it.salePrice||0)*(it.qty||0),0);}
 /**
  * 渲染角色标签 HTML，采购商显示蓝色 info 标签，其他角色显示灰色 gray 标签。
  * @param {Array<string>} roles - 角色数组（如 ['采购商']）
  * @returns {string} 角色标签 HTML 片段
  */
-function roleBadge(roles){return roles.map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+escHtml(r)+'</span>').join(' ');}
+function roleBadge(roles){return (roles||[]).map(r=>'<span class="tag '+(r==='采购商'?'info':'gray')+'">'+escHtml(r)+'</span>').join(' ');}
 /**
  * 将日期字符串（YYYY-MM-DD）转换为 Date 对象，时间归零。
  * @param {string} s - 日期字符串
@@ -812,7 +813,11 @@ function combo(el,options,onSelect,placeholder,allowCreate){
       e.preventDefault();
       if(activeIdx>=0&&activeIdx<hits.length){select(hits[activeIdx]);}
       else{const raw=inp.value.trim();const hit=options.find(o=>o.label===raw||(o.label+'').toLowerCase()===raw.toLowerCase());if(hit){select(hit);}else if(raw&&allowCreate){select({id:raw,label:raw,isCustom:true});}}
-    }else if(e.key==='Escape'){closeDrop();}
+    }else if(e.key==='Escape'){
+      /* v1.0.57 修复：阻断冒泡——否则 Esc 在关下拉的同时冒泡到 mask/drawer 的 Esc 处理器，
+         连带关闭整个弹窗/抽屉，已填内容全部丢失 */
+      e.preventDefault();e.stopPropagation();closeDrop();
+    }
   });
   inp.addEventListener('blur',()=>setTimeout(closeDrop,150));
 /** 关闭 combo 下拉列表，重置激活索引和展开状态 */

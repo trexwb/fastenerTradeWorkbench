@@ -23,6 +23,7 @@ function bootApp() {
   initApp();
 
   try{ if (typeof KB !== 'undefined') KB.init(); }catch(e){ console.warn('KB init failed', e); }
+  try{ if (typeof WikiKB !== 'undefined') WikiKB.init(); }catch(e){ console.warn('WikiKB init failed', e); }
 
   if (typeof AI !== 'undefined') AI.startHealthCheck();
 }

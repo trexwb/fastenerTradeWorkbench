@@ -8,12 +8,22 @@ let _cmdQuery='';
 let _cmdTimer=0;
 let _cmdReturnFocus=null;
 
-const _CMD_TYPE_LABEL={order:'订单',unit:'客户',price:'报价',bom:'BOM',settle:'结算',invoice:'发票'};
+const _CMD_TYPE_LABEL={order:'订单',unit:'客户',price:'报价',bom:'BOM',settle:'结算',invoice:'发票',wiki:'知识库'};
 
 function _cmdUnitName(id){const u=(DB.units||[]).find(x=>x.id===id);return u?u.name:(id||'');}
 function _cmdSpecOf(it){return [it.type,it.standard,it.diameter,it.hardness,it.surface,it.material].filter(Boolean).join(' ');}
 function _cmdMoney(v){return '¥'+Number(v||0).toLocaleString('zh-CN',{maximumFractionDigits:2});}
 function _cmdSales(o){return typeof orderSales==='function'?orderSales(o):0;}
+
+/** 知识库命中的副标题：优先取正文命中位置附近的片段（纯文本，渲染层统一转义） */
+function _cmdWikiSub(d,q){
+  const text=String(d.text||d.desc||'');
+  const lower=text.toLowerCase();
+  const i=q?lower.indexOf(q):-1;
+  if(i<0)return (d.category||'专业解读')+(d.desc?' · '+d.desc:'');
+  const start=Math.max(0,i-30);
+  return (start>0?'…':'')+text.slice(start,i+q.length+60)+'…';
+}
 
 /** 关键字高亮（escHtml 后按原词索引，q 已小写） */
 function _cmdHit(text,q){
@@ -34,7 +44,8 @@ function cmdSearch(q){
     const items=(o.items||[]).map(it=>(it.sku||'')+' '+(it.name||'')).join(' ');
     if([o.id,buyer,o.status||'',items,String(_cmdSales(o))].join(' ').toLowerCase().includes(q)){
       out.push({type:'order',title:o.id+' · '+buyer,sub:(o.status||'')+' · '+_cmdMoney(_cmdSales(o)),
-        action:function(){curOrderView=o.id;go('orders');}});
+        /* v1.0.57 修复：旧写法 curOrderView=o.id;go('orders') 会被 go() 清空，永远落列表页；改用 goOrderView 直达详情 */
+        action:function(){goOrderView(o.id);}});
     }
   });
   (DB.units||[]).forEach(u=>{if(out.length>=40)return;
@@ -69,6 +80,19 @@ function cmdSearch(q){
     if([n,v.type||'',String(v.amount||'')].join(' ').toLowerCase().includes(q)){
       out.push({type:'invoice',title:n,sub:(v.type||'')+' · '+_cmdMoney(v.amount),
         action:function(){go('invoices');}});
+    }
+  });
+  // 知识库（专业解读）源：复用 wiki 索引（含全文 text，见 scripts/gen-wiki-index.mjs）。
+  // 索引懒加载：未就绪时预热，加载完成后若面板仍开着则刷新结果。
+  const wikiDocs=(window.__WIKI_INDEX&&Array.isArray(window.__WIKI_INDEX.docs))?window.__WIKI_INDEX.docs:[];
+  if(!wikiDocs.length&&typeof loadWikiIndex==='function'){
+    try{loadWikiIndex(function(){if(_cmdOpen)cmdRender();});}catch(e){}
+  }
+  wikiDocs.forEach(d=>{if(out.length>=40)return;
+    const hay=[d.title||'',d.desc||'',d.category||'',(d.tags||[]).join(' '),d.text||''].join('\n').toLowerCase();
+    if(hay.includes(q)){
+      out.push({type:'wiki',title:d.title||d.file,sub:_cmdWikiSub(d,q),
+        action:function(){go('wiki');openWikiDoc(encodeURIComponent(d.file));}});
     }
   });
   return out.slice(0,40);
@@ -188,10 +212,14 @@ function openSearchPanel(){
       '<div class="cmd-footer"><span><kbd class="cmd-kbd">↑↓</kbd> 选择</span><span><kbd class="cmd-kbd">Enter</kbd> 打开</span><span><kbd class="cmd-kbd">Tab</kbd> 问 AI</span><span><kbd class="cmd-kbd">Esc</kbd> 关闭</span><span class="cmd-ai-hint">'+icon('zap','12')+' <kbd class="cmd-kbd">?</kbd>开头强制问 AI · 无结果回车也问 AI</span></div>'+
     '</div>';
   wrap.addEventListener('mousedown',function(e){if(e.target===wrap)closeSearchPanel();});
-  wrap.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();closeSearchPanel();}});
+  wrap.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeSearchPanel();}});
   document.body.appendChild(wrap);
   const input=document.getElementById('cmdInput');
   if(input){input.focus();input.select();}
+  // 知识库索引预热：首次打开面板时开始加载，加载完成后若面板仍开着则刷新结果
+  if(typeof loadWikiIndex==='function'&&!window.__WIKI_INDEX){
+    try{loadWikiIndex(function(){if(_cmdOpen)cmdRender();});}catch(e){}
+  }
   const closeBtn=wrap.querySelector('.cmd-close');
   if(closeBtn)closeBtn.addEventListener('keydown',function(e){
     if(e.key==='Tab'){e.preventDefault();if(input){input.focus();input.select();}}

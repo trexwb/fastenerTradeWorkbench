@@ -30,7 +30,7 @@ function getShortcutsHTML(){
     '<div class="sc-group">'+
       '<div class="sc-ghd">⚡ 全局操作（任何页面可用）</div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>⌘</kbd> + <kbd>K</kbd></span><span class="sc-desc">全局搜索（订单/客户/报价，可直接问 AI）</span></div>'+
-      '<div class="sc-row"><span class="sc-keys"><kbd>⌘</kbd> + <kbd>S</kbd></span><span class="sc-desc">保存当前抽屉/弹窗中的表单</span></div>'+
+      '<div class="sc-row"><span class="sc-keys"><kbd>⌘</kbd> + <kbd>S</kbd></span><span class="sc-desc">保存当前抽屉中的表单（弹窗内不生效）</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>Esc</kbd></span><span class="sc-desc">关闭抽屉/弹窗/快捷键说明 / 返回列表</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>/</kbd></span><span class="sc-desc">聚焦当前页面搜索框</span></div>'+
       '<div class="sc-row"><span class="sc-keys"><kbd>?</kbd></span><span class="sc-desc">打开本快捷键说明</span></div>'+
@@ -127,6 +127,9 @@ document.addEventListener('keydown',function(e){
      第一优先级：Esc — 关闭弹窗/抽屉，返回订单列表
      ===================================================== */
   if(key==='Escape'){
+    /* v1.0.57 修复：Coach 引导蒙层打开时 Esc 交给引导自身处理——否则本处理器先把详情页导航回列表，
+       引导随后才 dismiss，「关引导+退列表」同时发生 */
+    if(document.querySelector('.coach-overlay'))return;
     // 全局搜索面板优先关闭
     if(document.getElementById('cmdPanel')&&typeof closeSearchPanel==='function'){
       closeSearchPanel();
@@ -134,7 +137,10 @@ document.addEventListener('keydown',function(e){
     }
     // 优先关闭弹窗（modal 叠在抽屉之上，z-index 更高）
     if(document.getElementById('_mask')){
-      if(typeof closeModal==='function')closeModal();
+      /* v1.0.57 修复：改为模拟点击取消键——confirmModal 的 onCancel（草稿放弃清理、导入 await resolve）得以执行，
+         与弹窗内建 Esc 行为一致；旧逻辑直接 closeModal 跳过 onCancel，留下悬挂的 await/loading */
+      const cancelBtn=document.getElementById('_modalCancel');
+      if(typeof closeModal==='function'){if(cancelBtn)cancelBtn.click();else closeModal();}
       return;
     }
     // 再关闭抽屉
@@ -186,6 +192,8 @@ document.addEventListener('keydown',function(e){
      ⌥ + 字母：全局导航（非输入状态）
      ===================================================== */
   if(alt && !meta && !ctrl && !shift){
+    /* v1.0.57 修复：弹层打开时 ⌥ 导航直接忽略——go()→render() 会销毁打开中的抽屉/弹窗丢输入 */
+    if(document.querySelector('.drawer-wrap')||document.getElementById('_mask'))return;
     switch(key.toLowerCase()){
       case 'h': e.preventDefault();kbdNav('dashboard');return;
       case 'o': e.preventDefault();kbdNav('orders');return;

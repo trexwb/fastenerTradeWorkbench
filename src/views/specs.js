@@ -106,21 +106,6 @@ function renderSpecGroup(k){
         '<div id="'+addComboId+'" class="combo" data-placeholder="输入或选择新值，自动添加..." data-val="" style="flex:1"></div>'+
       '</div>'+
       '<div class="spec-add-hint">可直接输入自定义值，输入后自动添加到列表</div>'+
-      // 使用情况（默认隐藏）
-      '<div class="sg-usage" id="sgu_'+k+'" style="display:none">'+
-        '<div class="sg-usage-hd">'+icon('info','12')+' 引用统计（实时）</div>'+
-        vals.map(function(v,i){
-          let u=countSpecUsage(k,v);
-          return '<div class="sg-usage-row'+(u.total===0?' unused':'')+'">'+
-            '<span>'+escHtml(v)+'</span>'+
-            '<span>报价 <b>'+u.prices+'</b> 条</span>'+
-            '<span>BOM <b>'+u.bom+'</b> 条</span>'+
-            '<span>订单 <b>'+u.orders+'</b> 条</span>'+
-            '<span>共 <b>'+u.total+'</b> 次</span>'+
-            (u.total===0?' <span class="tag warn" style="font-size:11px">可清理</span>':'')+
-          '</div>';
-        }).join('')+
-      '</div>'+
     '</div>'+
   '</div>';
 }

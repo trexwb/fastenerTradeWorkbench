@@ -120,17 +120,19 @@ function settleUnitOrderDetails(unitId,type){
   let result=[];
   let settlements=(DB.settlements||[]).filter(function(s){return s.type===type&&s.unitId===unitId;});
 
+  // 预计算 orderId → 结算金额合计，避免逐订单重复遍历结算列表
+  const amountByOrderId={};
+  settlements.forEach(function(s){
+    (s.orders||[]).forEach(function(so){
+      amountByOrderId[so.orderId]=(amountByOrderId[so.orderId]||0)+(so.amount||0);
+    });
+  });
+
   if(type==='receipt'){
     orders.forEach(function(o){
       if(o.buyerId!==unitId)return;
       let total=orderSales(o);
-      // 汇总该订单已收金额
-      let received=0;
-      settlements.forEach(function(s){
-        (s.orders||[]).forEach(function(so){
-          if(so.orderId===o.id)received+=so.amount||0;
-        });
-      });
+      let received=amountByOrderId[o.id]||0;
       // v1.0.56（审计 M3）：意向价未填（应收为 0）时标注「未定价」，避免对账误解
       result.push({orderId:o.id,total:total,received:received,status:o.status,unpriced:(type==='receipt'&&total<=0&&(o.items||[]).length>0)});
     });
@@ -141,13 +143,7 @@ function settleUnitOrderDetails(unitId,type){
         opts.forEach(function(op){
           if(op.supplierId!==unitId)return;
           let cost=(op.price||0)*(op.allocQty||0);
-          // 汇总该订单该供应商已付金额
-          let paid=0;
-          settlements.forEach(function(s){
-            (s.orders||[]).forEach(function(so){
-              if(so.orderId===o.id)paid+=so.amount||0;
-            });
-          });
+          let paid=amountByOrderId[o.id]||0;
           // 按订单聚合（供应商可能在同一个订单内有多项）
           let exist=result.find(function(r){return r.orderId===o.id;});
           if(exist){exist.total+=cost;}
@@ -188,9 +184,8 @@ function settleRecords(unitId,type){
  */
 function viewSettlements(type){
   if(type)_settleTab=type;
-  let receiptData=settleReceiptData();
-  let paymentData=settlePaymentData();
-  let activeData=_settleTab==='receipt'?receiptData:paymentData;
+  let tabAllData=_settleTab==='receipt'?settleReceiptData():settlePaymentData();
+  let activeData=tabAllData;
 
   // 子Tab过滤（四舍五入到2位小数，与fmt显示精度对齐）
   let unpaidActiveData=activeData.filter(function(d){
@@ -221,8 +216,7 @@ function viewSettlements(type){
   if(_settlePage>totalPages)_settlePage=totalPages;
   let pageData=activeData.slice((_settlePage-1)*PAGE_SIZE,_settlePage*PAGE_SIZE);
 
-  // 当前Tab统计
-  let tabAllData=_settleTab==='receipt'?receiptData:paymentData;
+  // 当前Tab统计（tabAllData 已在函数顶部赋值）
   let tabTotal=0,tabDone=0;
   tabAllData.forEach(function(d){
     tabTotal+=(_settleTab==='receipt'?d.totalReceivable:d.totalPayable);
@@ -247,8 +241,8 @@ function viewSettlements(type){
       '<td style="color:'+(gap>0?'var(--red)':'var(--gray)')+'">'+fmt(gap)+'</td>'+
       '<td class="m-hide-s2">'+statusTag+'<div class="settle-progress-bar"><div class="settle-progress-fill" style="width:'+pct+'%;background:'+(pct>=100?'var(--green)':pct>0?'var(--pri)':'var(--red)')+'"></div></div></td>'+
       '<td class="td-act">'+
-        '<button class="btn xs" onclick="openSettleDetail(\''+d.unitId+'\',\''+type+'\')" title="明细" aria-label="明细">'+icon('fileText')+'明细</button>'+
-        '<button class="btn xs primary" onclick="openNewSettlement(\''+d.unitId+'\',\''+type+'\')" title="新增结算" aria-label="新增结算">'+icon('plus')+'新增结算</button>'+
+        '<button class="btn xs" onclick="openSettleDetail(\''+escJsStr(d.unitId)+'\',\''+type+'\')" title="明细" aria-label="明细">'+icon('fileText')+'明细</button>'+
+        '<button class="btn xs primary" onclick="openNewSettlement(\''+escJsStr(d.unitId)+'\',\''+type+'\')" title="新增结算" aria-label="新增结算">'+icon('plus')+'新增结算</button>'+
       '</td>'+
     '</tr>';
   }).join('');
@@ -262,6 +256,9 @@ function viewSettlements(type){
       '<input id="settleSearchInput" type="text" aria-label="搜索单位名称" tabindex="1" value="'+escAttr(_settleSearch)+'" placeholder="搜索单位名称..." onkeydown="if(event.key===\'Enter\'&&!event.isComposing)onSettleSearch(this.value)">'+
       '<button type="button" class="clear-btn" aria-label="清空搜索" onclick="onSettleSearch(\'\')">×</button>'+
     '</div>'+
+    /* v1.0.57 修复：补渲染单位筛选 combo 容器——此前 #settleUnitFilter 从未渲染，bindView 的绑定悬空，
+       onSettleUnitFilter 只剩「清除筛选」传空可达，整个单位筛选功能无法操作（照报价页 filt-combo 惯例） */
+    '<div id="settleUnitFilter" class="combo filt-combo" data-placeholder="全部单位" data-val="'+escAttr(_settleUnitFilter)+'"></div>'+
     '<div class="spacer"></div>'+
     '<button class="btn primary" onclick="openNewSettlement(\'\',\''+type+'\')">'+icon('plus')+'新增结算记录</button>'+
   '</div>'+
@@ -443,6 +440,9 @@ function openSettleDetail(unitId, tabType){
       '<td>'+escHtml(r.person||'-')+'</td>'+
       '<td style="font-size:13px">'+escHtml(orderIds||'-')+'</td>'+
       '<td>'+escHtml(r.note||'')+'</td>'+
+      /* v1.0.57 修复：补删除入口——delSettlement 一直存在但全仓无调用点，
+         录错的资金记录在 UI 上永远删不掉（唯一入口是 AI 工具） */
+      '<td class="td-act"><button class="btn xs danger" onclick="delSettlement(\''+escJsStr(r.id)+'\')" title="删除该笔记录" aria-label="删除">'+icon('trash','12')+'删除</button></td>'+
     '</tr>';
   }).join('');
 
@@ -498,8 +498,8 @@ function openSettleDetail(unitId, tabType){
     '<div class="drawer-section-hd" role="button" tabindex="0" aria-label="展开或折叠结算记录" onclick="toggleDrawerSection(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" style="cursor:pointer">'+icon('wallet','14')+' 结算记录 <span class="tag gray" style="margin-left:6px">'+records.length+'</span><span class="sec-arrow">'+icon('chevronUp','12')+'</span></div>'+
     '<div class="drawer-section-body"><div class="table-wrap" style="margin-bottom:0"><table><thead><tr><th>日期</th><th>金额</th><th>'+
     (isReceipt?'付款人':'收款人')+
-    '</th><th>关联订单</th><th>备注</th></tr></thead><tbody>'+
-    (recordRows||'<tr><td colspan="5"><div class="no-data">暂无结算记录</div></td></tr>')+
+    '</th><th>关联订单</th><th>备注</th><th>操作</th></tr></thead><tbody>'+
+    (recordRows||'<tr><td colspan="6"><div class="no-data">暂无结算记录</div></td></tr>')+
   '</tbody></table></div></div>';
 
   openDrawer((tabType==='receipt'?'收款':'付款')+'明细 · '+escHtml(unitName),body,null,true,true);
@@ -631,6 +631,8 @@ function openNewSettlement(presetUnitId,type){
     // 绑定抽屉内容的 input/change 事件，标记未保存状态
     const bd=document.querySelector('.drawer-panel .drawer-bd');
     if(bd){bd.addEventListener('input',()=>markDrawerDirty());bd.addEventListener('change',()=>markDrawerDirty());}
+    /* v1.0.57 修复：抽屉被快速关闭后定时器仍触发时元素已不存在，此处直接 return 防 TypeError 中断后续绑定 */
+    if(!document.getElementById('st_type'))return;
     let isReceipt=document.getElementById('st_type').value==='receipt';
     let roleLabel=isReceipt?'采购商':'供应商';
     let unitOpts=DB.units.filter(function(u){return u.roles.includes(roleLabel);}).map(function(u){
@@ -638,10 +640,12 @@ function openNewSettlement(presetUnitId,type){
     });
     let unitEl=document.getElementById('st_unit');
     if(unitEl){
+      /* v1.0.57 修复：allowCreate 改 false——自由输入不存在的单位会让 unitId 变自由文本，
+         金额从结算页聚合中消失而发票页却出现幽灵单位，两页资金对不上 */
       combo(unitEl,unitOpts,function(opt){
         unitEl.dataset.val=opt.id;
         refreshSettleOrderList();
-      },'搜索选择单位...',true);
+      },'搜索选择单位...',false);
     }
 
     // 绑定订单列表变化时自动汇总金额
@@ -690,10 +694,11 @@ function onSettleTypeChange(){
   });
   if(unitEl){
     unitEl.innerHTML='';
+    /* v1.0.57 修复：同上，类型切换重绑后同样禁自由新建 */
     combo(unitEl,unitOpts,function(opt){
       unitEl.dataset.val=opt.id;
       refreshSettleOrderList();
-    },'搜索选择单位...',true);
+    },'搜索选择单位...',false);
     if(currentUnitId){
       let selUnit=DB.units.find(function(u){return u.id===currentUnitId;});
       if(selUnit){
@@ -806,6 +811,8 @@ function submitSettlement(){
   let note=document.getElementById('st_note').value.trim();
 
   if(!unitId){toast('请选择单位','warning');return;}
+  /* v1.0.57 修复：单位存在性校验——防幽灵 unitId 入库（金额不进聚合、发票页出现孤儿） */
+  if(!DB.units.some(function(u){return u.id===unitId;})){toast('单位不存在，请重新选择','warning');return;}
   if(!date){toast('请选择结算日期','warning');return;}
   if(!(amount>0)){toast('请输入有效结算金额','warning');return;}
 

@@ -52,7 +52,7 @@ function viewBOM(){
   // 筛选栏（灰色底框，激活时显示清除按钮）
   const filterRow='<div class="filter-bar" id="bomFilterBar">'+
     '<span class="filter-bar-label">'+icon('filter','13')+' 筛选</span>'+
-    SPEC_FIELDS.map(k=>'<div id="bf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val=""></div>').join('')+
+    SPEC_FIELDS.map(k=>'<div id="bf_'+k+'" class="combo filt-combo" data-placeholder="'+SPEC_LABELS[k]+'" data-val="'+escAttr(_bfVals[k]||'')+'"></div>').join('')+
     '<button id="bomFilterClearBtn" class="btn sm ghost filt-clear" onclick="clearBOMFilter()"'+(isFiltered?'':' style="display:none"')+'>'+icon('x','12')+' 清除筛选</button>'+
   '</div>';
 
@@ -108,6 +108,8 @@ function viewBOM(){
  * 
  * @returns {Array} 过滤后的BOM数组
  */
+/* BOM 六维筛选状态（v1.0.57 修复：随 combo 选择持久到全局，render 重建筛选栏后回填 data-val） */
+let _bfVals={};
 function filterBOMData(){
   const kw=bomSearch.toLowerCase().trim();
   const specVals={};
@@ -236,6 +238,7 @@ function clearBOMFilter(){
   if(inp)inp.value='';
   SPEC_FIELDS.forEach(k=>{
     const el=document.getElementById('bf_'+k);
+    _bfVals[k]=''; /* v1.0.57 修复：清除筛选同步重置筛选状态，否则下次 render 又回填旧值 */
     if(el){el.dataset.val='';const inp=el.querySelector('input');if(inp)inp.value='';}
   });
   _bomPage=1;
@@ -528,7 +531,9 @@ function parseBOMBatch(){
     let cols=dataLines[li].split('\t');
     let firstIsNum=/^\d+$/.test((cols[0]||'').trim());
     let startIdx=firstIsNum?1:0;
-    let valid=cols.slice(startIdx).filter(function(c){return c.trim();});
+    let valid=cols.slice(startIdx).map(function(c){return (c==null?'':String(c)).trim();});
+    /* v1.0.57 修复：不再 filter 压缩空列——中间空格会导致后续字段整体左移错位（与 units.js 导入对齐） */
+    if(valid.every(function(c){return !c;}))continue;
     if(!valid.length)continue;
     let row={sku:'',name:'',spec:'',surface:'',standard:'',diameter:'',hardness:'',material:''};
     try{

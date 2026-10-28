@@ -6,6 +6,200 @@
 
 ---
 
+## 未发布 · 🛡 全量操作逻辑审查与修复（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57；同日同批次审查修复）
+> **日期**: 2026-10-28
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 7 路并行静态审查（订单/资金/档案/数据知识/AI/基础设施/导出）+ 主线程逐条核实；共修复 P0×5、P1×17、P2×28，涉及 22 个源文件 + 入口 HTML；另有一批 P2 仅记录待后续处理
+> **详细清单**: `docs/audit/2026-10-28-operation-logic-audit.md`（附录含 7 份分模块审查明细 `audit-tmp/*.md`）
+
+### 一、P0（卡死/数据丢失）
+
+- **编辑模式产品链无限递归**：`persistSourcingChange→refreshProductList→persistOrderItems` 反向重入，寻货分配/产品增删必触发（页面冻结后 RangeError，多选供应商只进第 1 家）——orders.js 重入门闩
+- **概览页入口串单覆盖**：`goOrder` 不设 `_fMode/_fOrderId/_fItems`，「处理/查看」落空白新建页或渲染上一张编辑中的订单（保存会整单覆盖错误订单）——转调 `goOrderEdit` 并补齐状态四件套
+- **回收站恢复假成功**：所属订单已不存在时恢复明细静默丢弃数据仍提示「已恢复」——改为抛错保留回收站条目
+- **AI 回滚毁单**：`update_order_meta` 的 before 为 4 字段部分快照，回滚时整行替换订单丢 id/status/items——改为整对象快照
+- **导出双卡死**：SheetJS 动态加载无超时（网络挂起时 `_exportBusy` 永久 true）+ `downloadWorkbook` 用 async executor 吞同步异常（外层 Promise 永远 pending）——加 10s 超时 + 改 async 函数整段 try/catch
+
+### 二、P1（功能无法操作/死链）
+
+- **单位筛选整条死功能**：结算页/发票页 `#settleUnitFilter`/`#invUnitFilter` 从未渲染，bindView 绑定悬空——照报价页 `filt-combo` 惯例补渲染容器（combo 自动从 data-val 回填）
+- **⌘K 订单结果永远落列表**（curOrderView 被 go() 清空）→ 改 `goOrderView`
+- **wiki 全文搜索命中线上文章无反应**（`openWikiDoc('')` 直接 return）→ 按 `d.url` 分流 `openWikiExternal`
+- **操作历史假回滚**：order_item 更新类（assign_supplier 等 4 工具）静默跳过却标已回滚；spec/order_item 的 create 回滚必抛错被行内 onclick 吞掉——undoAiOp 补定向真回滚 + `undoAiOpSafe` 包装错误提示
+- **confirmModal 右上角 × 不走 onCancel**——导入/恢复确认框点 × 后 await 永挂、按钮 loading 永不清除；× 改为模拟点击取消键
+- **首会话删除静默失效**：initApp 三个空库分支缺 `trash/aiOps/wikiMeta` 且未调 ensureDBFields——三处补调
+- **modal() 兜底关闭破坏校验契约**：价格库匹配/手动供应商校验失败时错误提示随弹窗销毁、输入全丢——onOk 返回 false 不再兜底关窗，两个校验方改 `return false`
+- **combo Esc 冒泡连带关闭宿主弹窗/抽屉**——补 preventDefault+stopPropagation
+- **BOM 六维筛选选中即失效**（render 全量重建清空 data-val）——改 `refreshBOMTable` 局部刷新 + `_bfVals` 状态持久
+- **单位联系人删中间行后保存交叉错乱**（name 按位置、其余按 data-i）——readContacts 改按行容器收集
+- **BOM 批量导入空列压缩致字段左移错位**——保留空位，与 units.js 导入对齐
+- **结算记录无删除入口**（delSettlement 全仓无调用点）——明细抽屉「结算记录」表补删除列（含发票级联勾选随之生效）
+- **新建结算幽灵单位**（单位 combo allowCreate 可自由输入，金额从聚合消失、发票页出现孤儿）——禁自由新建 + 提交前存在性校验
+- **read_local_file 分流断裂**（v1.0.57 桌面版新工具落 writeOps 必报「未知工具」）——ai.js 分流 queryOps + AIT 导出 FILE_TOOL_NAMES
+- **AI 写入后 render 销毁抽屉**：「撤销本轮改动」条与执行计划卡永不显示——抽屉打开中推迟 render，关闭时补刷
+- **桌面版停止无效**（Tauri 无中止命令）——丢弃后续块 + invoke 返回后 AbortError 收尾
+- **`_sourcingCtx` 未声明**：未开过寻货抽屉时首次读取 ReferenceError，编辑模式产品变更不落库——补 `let` 声明
+
+### 三、P2（健壮性，28 条，摘要）
+
+导出 loading 反馈与取消尊重；ensureDBFields 补订单 items 数组（导出六分支 TypeError 免疫）；utils 订单聚合/roleBadge、dashboard roles 裸调等 `||[]` 防护；saveDB unhandled rejection；备份/恢复/列表目录授权守卫（fhPerm）替代 NotAllowedError 原文；keyboard Esc 链（Coach 蒙层守卫、模拟点取消）+ ⌥ 弹层守卫 + ⌘S 文案纠偏；search-panel Esc 阻断冒泡；restoreFromHash 放行 wiki + 无 oid 订单清理模式残留；goOrderEdit 补 updateHash 与 curOrder 克隆（面包屑单号恢复）；render 重置 body 滚动锁；结算行 onclick escJsStr、抽屉定时器判空；openInvEdit 先校验后写；_invSyncDirty 同步后复位；报价批量缓冲重置；单位删除引用提示补结算/发票、编辑态不再写草稿；specs 隐藏死元素移除；订单批量预览 salePrice 错位、批量缓冲提交后清空、列表筛选 UI 失同步、toast 'warn' 无效类型、data-id escAttr；AI 首块前停止误报连接失败、上下文压缩失败降级截断、update_order_item 字段白名单、add_manual_supplier 副产物补记 aiOps；AF.ensureXLSX 就绪门对齐 style_version；KB 取消选择器捕获、索引防并发；wiki 外链 noopener 误判、云端索引 10s 超时；index.html 加载文案白屏兜底。
+
+### 四、仅记录待后续（未改）
+
+订单状态机双轨（UI 流转未接 canFlowOrderStatus、NEXT_STATUS 无反向边）、订单草稿单键互覆、新建订单 hash 不可恢复、settle 0 应收标红、WikiKB id 按下标生成、wiki 全量同步无进度、KB 目录读取失败误报、Coach 子路由归并与重看入口、specs 三遍引用统计性能、AI 附件 Excel 同步解析阻塞、`__rfCache` 无上限——详见审查报告第 5 节。
+
+### 五、验证
+
+- 按用户长期工作方式约定：**本轮未运行构建/类型检查/lint/测试等验证**；已完成全部改动落盘核对（grep）与关键结构性改动回读
+- 如实声明：以上修复**未构建验证**——全部业务 JS 经 App.vue 拼接单次间接 eval，任何一处语法错误都会导致启动失败；建议交付前 `npm run vite:build` 一次并双击 `dist/index.html` 冒烟（订单编辑寻货、⌘K 跳订单、导出、BOM 筛选为重点路径）
+
+### 六、变更文件
+
+`src/views/{orders,settlements,invoices,prices,bom,units,specs,dashboard,search-panel,keyboard,wiki,data,ai-chat}.js`、`src/core/{router,ui,utils,store,exporter,kb,ai,ai-tools,ai-files}.js`、`src/index.html`、`docs/version/RELEASE-v1.0.md`、`docs/audit/2026-10-28-operation-logic-audit.md`
+
+---
+
+## 未发布 · ☁️ 专业解读云端同步 + list.json 文章清单接入（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57；同一模块持续开发）
+> **日期**: 2026-10-27
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 「专业解读」新增云端索引通道——云端优先、本地兜底；新增 list.json 文章清单通道，与 index.js 互动文档合并展示；涉及 `src/views/wiki.js`、`src-tauri/tauri.conf.json`、`docs/wiki-integration.md`
+> **详细说明**: `docs/wiki-integration.md` 第七章
+
+### 一、背景与方案
+
+- 需求：wiki 文档已部署到 `https://wiki.edtib.com/wiki/`，希望更新线上资料后**无需发版** app 即可读到。
+- 否决方案：目录列表页当 API（`/技术科普/`）——nginx 默认关闭 autoindex（403），GitHub Pages / Cloudflare Pages 返回 404；即便开启也无标题/摘要/分类等卡片元数据，解析脆弱。
+- 采用方案：线上部署**索引清单** `index.js`（与 `scripts/gen-wiki-index.mjs` 本地产物同构），app 动态 `<script src>` 跨域加载（免 CORS 头），云端成功且 docs 非空则全量切换，iframe 直连线上文档。
+- list.json 通道：fetch 拉取线上文章清单（含 title/url/category/updated_at），与 index.js 互动文档合并展示；远程文章新标签页打开，本地文档 iframe 阅读。
+
+### 二、实现要点（src/views/wiki.js）
+
+- 新增 `WIKI_REMOTE_BASE='https://wiki.edtib.com/wiki/'`（置空可禁用云端增强）
+- 双通道时序：本地索引先渲染（file:// / 离线可用）→ `loadWikiIndex` finish 后异步 `_loadWikiRemote()` → 成功切换重渲染；失败静默回退本地，60s 冷却后进入页面自动重试（`WIKI_REMOTE_RETRY_MS`）
+- 云端产物与本地产物全局名同为 `__WIKI_INDEX`：加载前暂存本地引用，onload 取走云端值后立即还原，避免覆盖
+- 索引 URL 带时间戳（`index.js?t=…`）绕过浏览器/CDN 缓存；`sw.js` 只拦同源请求，跨域不受 SW 缓存干扰（已核实）
+- `_wikiDocUrl()` 来源感知：文档在云端索引 → 线上绝对 URL（复制链接可分享）；本地独有 → 本地路径；iframe / 复制链接 / 独立窗口三处统一
+- 列表头部来源标识：云端生效显示绿色「云端」tag +「云端同步于 YYYY-MM-DD · wiki.edtib.com」；本地维持「索引更新于 …」
+- 云端 `docs` 为空数组视为部署异常，不切换（防误清空）
+- 手动刷新按钮：重置 list.json 与云端 index.js 缓存，重新拉取后重渲染，用于校对本地文档与线上文章是否一致
+
+### 三、环境适配
+
+- `src-tauri/tauri.conf.json`：CSP `script-src` 与 `frame-src` 追加 `https://wiki.edtib.com`（桌面版加载云端索引与 iframe 内嵌云端文档的前提，需随下个桌面版发布生效）
+- 浏览器版（含 file:// 双击）无需任何配置：`<script src>` 与 iframe 跨域天然允许
+
+### 四、线上部署约定（用户侧）
+
+- `https://wiki.edtib.com/wiki/` 下放 `*.html` + `index.js` + `list.json`（同目录）；`.js` 的 Content-Type 需为 JS 类型；无需 CORS；不依赖目录列表；建议 `index.js` 短缓存
+- 更新资料：上传 HTML → `npm run wiki:index` 重建索引 → 上传 `index.js`，即完成（用户端自动可见）
+
+### 五、验证
+
+- `node --check` 通过：`src/views/wiki.js`
+- lint 无新增错误；`docs/wiki-integration.md` 章节号顺延（七云端同步 / 八排错 / 九目录区别）
+- `npm run vite:build` 通过（见下）；云端未部署时 onerror 静默回退本地，行为与改造前一致
+
+### 六、变更文件
+
+`src/views/wiki.js`、`src-tauri/tauri.conf.json`、`docs/wiki-integration.md`、`docs/version/RELEASE-v1.0.md`
+
+---
+
+## 未发布 · 📚 专业解读深化为内置知识库（不推进版本号）
+
+> **状态**: ✅ 代码就绪 + 真实浏览器功能验证通过（**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-27
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 6 个代码文件针对性增强 + 3 篇文档 head 补元数据 + 3 份文档更新；无业务算法改动
+> **需求**: 「wiki 模块其实是作为知识库使用的，请帮我深化模块的功能」
+
+### 一、新功能
+
+- **站内全文检索**：索引生成器（v2）构建期提取每篇文档纯文本（去 script/style/注释，上限 2 万字）；列表顶部搜索框（回车触发，§8 约定）支持标题/摘要/标签/正文全文，空格分隔多关键词（AND），命中片段高亮（`<mark class="wiki-hit">`，先切分后转义防 XSS）+ 命中次数
+- **筛选 chips**：全部 / 收藏 / 未读 / 有笔记（带实时计数），与搜索 AND 组合；「清除」一键重置
+- **阅读进度**：打开自动记已读、次数、最近时间（`DB.wikiMeta[file]`）；列表头部统计「已读 N · 收藏 K」；卡片显示未读标记/上次阅读；列表顶部「继续阅读」条直达最近 3 篇
+- **收藏**：卡片右上角星标 + 阅读页顶栏「收藏」按钮；阅读态切换只原地更新按钮，不重建 iframe（不丢阅读位置）
+- **阅读笔记**：阅读页底部「我的笔记」，停止输入约 900ms 自动保存（防抖）+ 手动保存按钮 + 「有未保存更改…/已保存 hh:mm」状态指示；离开阅读态前冲刷
+- **⌘K 全局搜索接入**：`search-panel.js` 新增第七源「知识库」，命中正文片段（`_cmdWikiSub`），Enter 直达文档；面板打开时预热索引
+- **AI 帮助**：`help-knowledge.js` 新增 `wiki` 条目（query_help 可检索），概览条目导航列表补「专业解读」
+- **首次引导**：`router.js` Coach 新增 wiki 模块三步引导
+- **文档元数据**：3 篇互动长页 `<head>` 补 `description` / `wiki-category`（材料专题/工艺专题/质量失效）/ `wiki-tags`，列表自动按分类分组并展示标签
+
+### 二、实现要点
+
+- 阅读元数据：`DB.wikiMeta[file] = {star, read, readCount, lastReadAt, notes}`；`store.js` 初始 DB/`ensureDBFields` 补字段，`mergeFileData` 按「本地优先」合并（随文件同步/备份走）；`_wikiMetaGet()` 只读（渲染/筛选路径无副作用）、`_wikiMeta()` 懒创建（写入路径）
+- 索引 v2 兼容 v1：无 `text` 字段时检索自动降级为标题/摘要/标签
+- `utils.js` SVG 图标表新增 `star`（既有图标零改动）
+- 样式全部入 `components.css` wiki 区块，复用既有设计令牌与 `.search-box`/`.btn.ghost`/`.tag.*` 组件类，无 `!important`、无硬编码色值；`.wiki-card` 追加 `position:relative` 供星标定位
+
+### 三、变更文件
+
+`scripts/gen-wiki-index.mjs`、`src/views/wiki.js`、`src/views/search-panel.js`、`src/core/store.js`、`src/core/help-knowledge.js`、`src/core/router.js`、`src/core/utils.js`、`src/styles/components.css`、`src/public/wiki/{17-4ph-fastener,2A12-T4-自冲摩擦铆焊-互动长页,hydrogen-embrittlement}.html`（仅 head 元数据）、`docs/wiki-integration.md`、`docs/flows/search-panel.md`、本文档
+
+### 四、验证
+
+- `node --check` 通过：wiki.js / search-panel.js / store.js / help-knowledge.js / router.js / utils.js / gen-wiki-index.mjs
+- `npm run wiki:index` 重新生成索引 v2（3 篇，57KB，text 提取 6.6K/8.4K/7K 字符，分类/标签正确）
+- `npm run vite:build` 成功（chunk 体积告警为既有提示，与基线一致）
+- 真实浏览器（Chromium，http 静态服务）实测通过：列表卡片/分组/统计、单关键词命中片段高亮、多关键词 AND、空态、筛选计数、打开文档记录已读、收藏原地切换（iframe 未重载）、笔记「未保存→已保存」自动落库、「继续阅读」条、⌘K 知识库源命中并点击直达、刷新后 IndexedDB 持久化恢复
+- 注：沙箱浏览器对 `file://` 页面注入了禁 eval 的 CSP 导致无法直接双击验证；产物本身无 CSP，Tauri CSP 已含 `unsafe-eval`，正常浏览器双击 `dist/index.html` 不受影响（启动方式与 v1.0.57 完全一致，未改动）
+
+---
+
+## 未发布 · 📚 新增「专业解读」：本地互动文档 iframe 内嵌（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57）
+> **日期**: 2026-10-26
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 新增侧栏一级入口「专业解读」+ 文档索引生成器 + 集成说明文档；改动 7 个既有文件，无业务算法改动
+> **详细说明**: `docs/wiki-integration.md`
+
+### 一、功能
+
+- 侧栏新增一级入口「专业解读」（`NAV` 位于「数据管理」之后），卡片列表展示 `src/public/wiki/*.html` 全部互动长页
+- 卡片含分类标签、标题、摘要（3 行截断）、篇幅估算（`≈ N 分钟`）、阅读入口；支持键盘 Enter/Space 打开
+- 点击进入全高阅读器：顶部工具条（返回列表 / 复制链接 / 独立窗口）+ iframe 内嵌，文档自身排版与主题不受影响
+- 切换导航时自动收起文档回到列表态；`#wiki` hash 可直接还原视图
+
+### 二、实现要点
+
+- 新增 `src/views/wiki.js`（约 300 行，`viewWiki/openWikiDoc/closeWikiDoc/copyWikiLink` 全局函数，注册于 `App.vue` 的 `SCRIPTS`，位于 `views/data.js` 之后、`router.js` 之前）
+- 新增 `scripts/gen-wiki-index.mjs`：扫描 `src/public/wiki/*.html`，提取 `<title>` / `description` / `wiki-category` / `wiki-tags` / `wiki-order`，产出 `src/public/wiki/index.js`
+- 索引**必须**是 JS 而非 JSON：`file://` 双击运行时 `origin` 为 `null`，`fetch` 会被 CORS 拦截，只能用动态 `<script src>` 注入
+- `vite.config.js` 新增 `ftwb-wiki-index` 插件：`buildStart` 重建索引，dev 期监听 wiki 目录 `.html` 增删改自动重建并刷新；`package.json` 新增 `wiki:index` 手动脚本
+- 文档 URL 统一由 `new URL('wiki/'+encodeURI(file), document.baseURI)` 生成，适配 dev / file:// / GitHub Pages 子路径 / `tauri.localhost` 四种加载环境
+
+### 三、三处环境障碍修复
+
+- `src-tauri/tauri.conf.json`：CSP `frame-src 'none'` → `frame-src 'self'`，解除桌面端 iframe 禁用
+- `src/public/sw.js`：新增 `/wiki/` 前缀 `navigate` 请求专用分支（缓存优先→网络→失败透传），不再误回退 `index.html`（iframe 加载 HTML 同为 navigate 模式，否则离线打开文档显示应用首页）
+- 索引产物改为 `window.__WIKI_INDEX` 的 JS 文件，规避 file:// 下 origin null 的 CORS 限制
+
+### 四、变更文件
+
+`src/views/wiki.js`（新增）、`scripts/gen-wiki-index.mjs`（新增）、`docs/wiki-integration.md`（新增）、`src/core/router.js`、`src/App.vue`、`src/public/sw.js`、`src-tauri/tauri.conf.json`、`src/styles/components.css`、`vite.config.js`、`package.json`、`.gitignore`、`AGENTS.md`
+
+### 五、验证
+
+- `node --check` 通过：`src/views/wiki.js`、`src/public/sw.js`、`src/public/wiki/index.js`、`src/core/router.js`
+- mock DOM 环境下实跑 `viewWiki()`：首屏 loading 正常、索引注入路径正确、3 篇文档全部渲染、`onclick` 参数为纯 ASCII 编码、中文文件名 iframe src 编码正确、`closeWikiDoc()` 正常回列表
+- 产物 HTML 结构校验（html.parser）：标签闭合无误、无异常属性
+- 待人工验证：`npm run dev` 实际渲染效果、Tauri 打包后桌面端 iframe 显示、GitHub Pages 离线文档打开
+
+### 六、当前文档清单
+
+| 文件 | 标题 |
+| --- | --- |
+| `17-4ph-fastener.html` | 0Cr17Ni4Cu4Nb · 会自己变强的钢 |
+| `2A12-T4-自冲摩擦铆焊-互动长页.html` | 不打孔也能焊死｜2A12-T4 铝合金自冲摩擦铆焊读解 |
+| `hydrogen-embrittlement.html` | 氢脆 · 看不见的金属刺客 |
+
+---
+
 ## v1.0.57 · ♿ UI/UX 验收修复（不推进版本号）
 
 > **状态**: ♿ 无障碍/视觉验收整改（产品设计 QA 18 项偏差全量修复；**不推进版本号**，版本号维持 1.0.57）

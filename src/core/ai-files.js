@@ -31,7 +31,7 @@ window.AF=(function(){
 
   /* ---------- Excel：确保 SheetJS 就绪（复用 exporter.js 顶层 loadXLSX：本地 vendor 优先 + CDN 兜底） ---------- */
   function ensureXLSX(){
-    if(window.XLSX&&window.XLSX.utils&&typeof window.XLSX.read==='function')return Promise.resolve();
+    if(window.XLSX&&window.XLSX.utils&&typeof window.XLSX.read==='function'&&window.XLSX.style_version)return Promise.resolve();
     // loadXLSX 是 exporter.js 的顶层函数：项目全部业务 JS 由 App.vue 合并为一次间接 eval 执行，
     // 顶层函数共享同一全局作用域，这里直接复用（不重复实现加载器，不新增 CDN 常量）。
     if(typeof loadXLSX==='function'){

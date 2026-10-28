@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.0.57';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.1.0';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -64,9 +64,9 @@ const STATUS_FLOW=['待确认','寻货中','报价中','签约完成','送货中
 
 /**
  * 全局数据主存储对象（主力存储：IndexedDB）
- * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, seq: number, orderSeq: number, _savedAt?: number}}
+ * @type {{units: Array, specs: Object, bom: Array, prices: Array, orders: Array, settlements: Array, invoices: Array, wikiMeta: Object, seq: number, orderSeq: number, _savedAt?: number}}
  */
-let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[],aiWorkflows:[]};
+let DB={units:[],specs:{},prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,trash:[],aiOps:[],aiWorkflows:[],wikiMeta:{}};
 
 /* 补齐 DB 可能缺失的字段（供 idbLoad 和 loadFromFile 复用） */
 /**
@@ -80,12 +80,16 @@ function ensureDBFields(){
   if(Array.isArray(DB.bom))DB.bom.forEach(function(b){if(b&&typeof b==='object'&&!b.id)b.id=uid('B');});
   if(!DB.settlements)DB.settlements=[];
   if(!DB.invoices)DB.invoices=[];
+  /* v1.0.57 修复：订单缺 items 数组（导入残缺/手改备份）会让导出六分支/概览统计 TypeError；
+     统一在此兜底补空数组（与上方 BOM id 兜底同模式），不再逐调用点散改 */
+  if(Array.isArray(DB.orders))DB.orders.forEach(function(o){if(o&&!Array.isArray(o.items))o.items=[];});
   if(!Array.isArray(DB.aiChats))DB.aiChats=[];
   // AI 会话中断残留：上次会话流式回复未完成时退出应用会留下 pending 标记，加载时清除避免永久光标闪烁
   if(DB.aiChats.length)DB.aiChats.forEach(m=>{if(m&&m.pending)m.pending=false;});
   if(!Array.isArray(DB.trash))DB.trash=[];          // 回收站（软删除隔离区，AI 永不触碰）
   if(!Array.isArray(DB.aiOps))DB.aiOps=[];          // AI/用户操作日志（审计+回滚依据）
   if(!Array.isArray(DB.aiWorkflows))DB.aiWorkflows=[]; // AI 多步工作流（执行计划草稿/进度持久化）
+  if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')DB.wikiMeta={}; // 专业解读知识库阅读元数据（收藏/已读/笔记）
   if(!DB.seq)DB.seq=100;
   if(!DB._savedAt)DB._savedAt=Date.now();
   if(!DB.orderSeq){
@@ -143,6 +147,8 @@ let syncDirHandle=null;    // 同步目录句柄（网页版用于展示「数�
 let fileSync=false;        // true=已绑定且有权, 'pending'=已绑定但需重新授权, false=未绑定
 let fileLastSave='';       // 最后写入时间
 let bindingInProgress=false; // true=正在执行绑定流程，禁止一切文件写入（防止竞态覆盖）
+const BINDING_SAFETY_MS=30000; // 绑定流程安全超时：超时自动释放锁，防止永久阻塞文件写入
+let _bindingSafetyTimer=0;
 /**
  * 绑定目录时在目录中查找/创建的固定数据文件名
  * @type {string}
@@ -316,6 +322,10 @@ async function _doBindDirectory(){
     // 绑定流程保护：读取/合并/导入完成前禁止任何文件写入（saveToFile 会检查 bindingInProgress），
     // 杜绝「绑定过程中其他事件（定时器/输入回调等）触发保存、用当前库覆盖目标文件」的竞态清空问题
     bindingInProgress=true;
+    clearTimeout(_bindingSafetyTimer);
+    _bindingSafetyTimer=setTimeout(function(){
+      if(bindingInProgress){bindingInProgress=false;toast('绑定流程超时，已自动解锁','warning');}
+    },BINDING_SAFETY_MS);
     fileHandle=handle;
     // 读取目标文件内容，区分三种情况：合法对象 / 非空但解析失败 / 空文件（刚创建的或原本就空）
     let fileData=null, fileHasAny=false;
@@ -331,7 +341,7 @@ async function _doBindDirectory(){
     // 文件有内容但无法解析为合法对象：绝不能开启同步，否则当前库会反向覆盖文件，回滚并取消绑定
     if(fileHasAny&&!fileData){
       fileHandle=null;
-      bindingInProgress=false;
+      clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
       toast('目标文件解析失败，已取消绑定，请检查「'+BIND_FILE_NAME+'」的格式','error');
       return;
     }
@@ -359,7 +369,7 @@ async function _doBindDirectory(){
     syncDirHandle=dirHandle;
     await fhSave(handle);
     await fhStoreKey(KEY_SYNC_DIR,dirHandle);
-    bindingInProgress=false;
+    clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
     // 将合并/导入/当前的 DB 写回文件，确保文件与 IndexedDB 一致；
     // 由于合并模式下写入的是 IndexedDB ∪ 文件数据的并集，绝不发生「清空目标文件」
     await saveToFile();
@@ -367,7 +377,7 @@ async function _doBindDirectory(){
     toast('已绑定目录：'+dirHandle.name+'，数据文件：'+handle.name+'，将自动同步'+tip,'success');
     render();
   }catch(e){
-    bindingInProgress=false;
+    clearTimeout(_bindingSafetyTimer);bindingInProgress=false;
     if(e.name!=='AbortError')toast('绑定失败：'+e.message,'error');
   }
 }
@@ -510,6 +520,13 @@ function mergeFileData(fileData){
       if(!DB.specs[k])DB.specs[k]=[];
       const seen=new Set(DB.specs[k]);
       fileVals.forEach(v=>{if(!seen.has(v)){DB.specs[k].push(v);seen.add(v);}});
+    });
+  }
+  // 专业解读阅读元数据（收藏/已读/笔记）：按文件名取并集，两边都有时以 IndexedDB 现有为准
+  if(fileData.wikiMeta&&typeof fileData.wikiMeta==='object'){
+    if(!DB.wikiMeta||typeof DB.wikiMeta!=='object')DB.wikiMeta={};
+    Object.keys(fileData.wikiMeta).forEach(function(k){
+      if(!DB.wikiMeta[k])DB.wikiMeta[k]=fileData.wikiMeta[k];
     });
   }
   // seq / orderSeq 取最大值（避免编号回退）
@@ -671,21 +688,20 @@ function idbOpen(){return new Promise((res,rej)=>{
  */
 async function idbSave(){
   if(IS_TAURI_RUNTIME){
-    // 桌面版主存储：写入应用数据目录 data.json（WKWebView 自定义协议下 IndexedDB 不可靠）
     try{
       await window.__TAURI__.core.invoke('data_file_save',{content:JSON.stringify(DB)});
       idbStatus='ok';return;
-    }catch(e){console.error('Tauri data save error:',e);idbStatus='error';return;}
+    }catch(e){console.error('Tauri data save error:',e);idbStatus='error';throw e;}
   }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{
       const tx=db.transaction(IDB_STORE,'readwrite');
       tx.objectStore(IDB_STORE).put(DB,IDB_KEY);
-      tx.oncomplete=()=>{idbStatus='ok';res();};
-      tx.onerror=()=>{idbStatus='error';rej(tx.error);};
+      tx.oncomplete=()=>{db.close();idbStatus='ok';res();};
+      tx.onerror=()=>{db.close();idbStatus='error';rej(tx.error);};
     });
-  }catch(e){console.error('IDB save error:',e);idbStatus='error';}
+  }catch(e){console.error('IDB save error:',e);idbStatus='error';throw e;}
 }
 
 /**
@@ -695,24 +711,23 @@ async function idbSave(){
  */
 async function idbLoad(){
   if(IS_TAURI_RUNTIME){
-    // 桌面版主存储：从应用数据目录 data.json 读取
     try{
       const txt=await window.__TAURI__.core.invoke('data_file_load');
       if(!txt)return null;
       const d=JSON.parse(txt);
       idbStatus='ok';
       return d&&typeof d==='object'&&!Array.isArray(d)?d:null;
-    }catch(e){console.error('Tauri data load error:',e);idbStatus='error';return null;}
+    }catch(e){console.error('Tauri data load error:',e);idbStatus='error';throw e;}
   }
   try{
     const db=await idbOpen();
     return new Promise((res,rej)=>{
       const tx=db.transaction(IDB_STORE,'readonly');
       const r=tx.objectStore(IDB_STORE).get(IDB_KEY);
-      r.onsuccess=()=>{idbStatus='ok';res(r.result||null);};
-      r.onerror=()=>{idbStatus='error';rej(r.error);};
+      r.onsuccess=()=>{db.close();idbStatus='ok';res(r.result||null);};
+      r.onerror=()=>{db.close();idbStatus='error';rej(r.error);};
     });
-  }catch(e){console.error('IDB load error:',e);idbStatus='error';return null;}
+  }catch(e){console.error('IDB load error:',e);idbStatus='error';throw e;}
 }
 
 /* 存储用量估算 */
@@ -773,12 +788,14 @@ async function initApp(){
       // 2. 恢复文件同步（必须在渲染前完成，确保 fileSync 状态正确）
       await initFileHandle();
       // 数据加载完成，调用 onAppReady 恢复 hash 路由
-      autoPurgeTrash();  // 回收站自动清理（超保留期条目，启动时触发）
       if(typeof onAppReady==='function')onAppReady();else render();
     }else if(idbData&&(idbData.units||idbData.prices||idbData.orders)){
       // 部分数据（不完整），清空后让用户自行录入
       toast('数据不完整，已清空，请重新录入数据','warning');
       DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
+      /* v1.0.57 修复：与 importParsedData 收口对齐补齐 trash/aiOps/wikiMeta 等字段——
+         旧代码漏调 ensureDBFields，首个会话所有删除（softDelete→DB.trash.unshift）TypeError 被吞，删除静默失效 */
+      ensureDBFields();
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
@@ -786,6 +803,8 @@ async function initApp(){
     }else{
       // IndexedDB 无数据，首次使用，从空状态开始
       DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
+      /* v1.0.57 修复：同上——首会话删除静默失效同族缺口 */
+      ensureDBFields();
       await idbSave();
       // 2. 恢复文件同步（必须在渲染前完成）
       await initFileHandle();
@@ -798,6 +817,8 @@ async function initApp(){
     if(typeof toast==='function'){toast('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份','error');}
     else{console.error('浏览器存储不可用，当前数据仅保存在内存中（刷新页面将丢失），请使用「导出」功能备份');}
     DB={units:[],specs:JSON.parse(JSON.stringify(DEFAULT_SPECS)),bom:[],prices:[],orders:[],settlements:[],invoices:[],aiChats:[],seq:100,orderSeq:1,aiWorkflows:[]};
+    /* v1.0.57 修复：内存降级模式同样补齐字段，避免首次删除 TypeError */
+    ensureDBFields();
     // 恢复文件同步（必须在渲染前完成）
     await initFileHandle();
     render();
@@ -855,7 +876,8 @@ function saveDB(){
   DB._savedAt=Date.now();
   // IndexedDB 主力存储（异步，保持原逻辑立即写）
   const p=idbSave();
-  p.finally(()=>_checkIdbErrorToast());
+  /* v1.0.57 修复：p.finally() 产生的新 promise 无人 catch，写失败时每次都产生 Uncaught (in promise) 噪音 */
+  p.catch(()=>{}).finally(()=>_checkIdbErrorToast());
   // 本地文件（如果已绑定）：P3/R5 修复，改为 300ms 防抖合并写盘，避免高频变更频繁写文件
   if(fileSync===true)_scheduleFileSave();
   return p;
@@ -998,10 +1020,14 @@ function restoreFromTrash(trashId){
     if(!DB.specs[d.field].includes(d.value))DB.specs[d.field].push(d.value);
   }else if(entry.type==='order_item'){
     const order=DB.orders.find(o=>o.id===entry.data.orderId);
-    if(order&&Array.isArray(order.items)){
-      const itemData=_snap(entry.data);delete itemData.orderId;
-      if(!order.items.some(it=>it.id===entry.originalId))order.items.push(itemData);
+    /* v1.0.57 修复：所属订单已不存在（被彻底删除/自动清理）时，明细的最后一份拷贝就在本条目里——
+       旧代码静默跳过恢复却仍删除回收站条目并提示「已恢复」，数据永久丢失。
+       改为抛错保留条目，data.js restoreTrashItem 的 catch 会 toast 具体原因。 */
+    if(!order||!Array.isArray(order.items)){
+      throw new Error('所属订单 '+(entry.data.orderId||'')+' 已不存在（可能已被彻底删除），无法恢复该明细');
     }
+    const itemData=_snap(entry.data);delete itemData.orderId;
+    if(!order.items.some(it=>it.id===entry.originalId))order.items.push(itemData);
   }else{
     const arrName=_SOFT_DEL_TABLE[entry.type];
     if(arrName&&entry.data){
@@ -1049,11 +1075,18 @@ function autoPurgeTrash(force){
       return 0;
     }
     // 关联 aiOps：标记 autoPurged，UI 不再提供回滚
-    expired.forEach(t=>{
-      (DB.aiOps||[]).forEach(op=>{
-        if(!op.undone&&!op.autoPurged&&op.op==='delete'&&op.type===t.type&&op.targetId===t.originalId){
-          op.autoPurged=true;op.undoneAt=nowTs;
-        }
+    // 预建索引：按 (type, targetId) 分组未完成的 delete 操作，避免逐条嵌套遍历
+    const opsByKey={};
+    (DB.aiOps||[]).forEach(function(op){
+      if(!op.undone&&!op.autoPurged&&op.op==='delete'){
+        const k=op.type+':'+op.targetId;
+        (opsByKey[k]=opsByKey[k]||[]).push(op);
+      }
+    });
+    expired.forEach(function(t){
+      const k=t.type+':'+t.originalId;
+      (opsByKey[k]||[]).forEach(function(op){
+        op.autoPurged=true;op.undoneAt=nowTs;
       });
     });
     DB.trash=DB.trash.filter(t=>t&&t.deletedAt>=cutoff);
@@ -1074,10 +1107,52 @@ function undoAiOp(aiOpId){
   if(op.autoPurged)throw new Error('该记录已被自动清理，不可回滚');
   switch(op.op){
     case 'create':
+      /* v1.0.57 修复：规格枚举/订单明细此前不在 _SOFT_DEL_TABLE，create 回滚必抛错被行内 onclick 吞掉（点击无反应）。
+         按类型定向回滚：spec 从 DB.specs 移除值；order_item 全库定位明细后移除。 */
+      if(op.type==='spec'){
+        const fv=String(op.targetId||'');const ci=fv.indexOf(':');
+        const field=ci>0?fv.slice(0,ci):'';const value=ci>0?fv.slice(ci+1):'';
+        if(!field||!value)throw new Error('回滚失败：规格操作记录缺少维度信息');
+        if(DB.specs[field])DB.specs[field]=DB.specs[field].filter(v=>v!==value);
+        break;
+      }
+      if(op.type==='order_item'){
+        let removed=false;
+        (DB.orders||[]).forEach(od=>{
+          if(!Array.isArray(od.items))return;
+          const before=od.items.length;
+          od.items=od.items.filter(it=>it.id!==op.targetId);
+          if(od.items.length!==before){removed=true;od.updatedAt=now();}
+        });
+        if(!removed)throw new Error('回滚失败：找不到该明细（可能已被删除）');
+        break;
+      }
       try{softDelete(op.type,op.targetId,{operator:'user',reason:'回滚创建'});}
       catch(e){throw new Error('回滚失败：记录可能已被删除 - '+e.message);}
       break;
     case 'update':{
+      /* v1.0.57 修复：order_item 更新类（assign_supplier/add_manual_supplier/remove_sourcing_option/
+         update_order_item）此前因 _SOFT_DEL_TABLE 无 order_item 被静默跳过却标记已回滚（假回滚）。
+         按 targetId 全库定位明细，用 before 快照整体还原；定位不到显式报错，不再静默假成功。 */
+      if(op.type==='order_item'){
+        if(!op.before)throw new Error('回滚失败：操作记录缺少修改前快照');
+        let restored=false;
+        (DB.orders||[]).forEach(od=>{
+          if(!Array.isArray(od.items))return;
+          const i=od.items.findIndex(it=>it.id===op.targetId);
+          if(i>=0){od.items[i]=_snap(op.before);od.updatedAt=now();restored=true;}
+        });
+        if(!restored)throw new Error('回滚失败：找不到该明细（可能已被删除）');
+        break;
+      }
+      if(op.type==='spec'){
+        if(op.before&&op.targetId){
+          const fv=String(op.targetId);const ci=fv.indexOf(':');
+          const field=ci>0?fv.slice(0,ci):'';
+          if(field&&Array.isArray(op.before))DB.specs[field]=_snap(op.before);
+        }
+        break;
+      }
       const arrName=_SOFT_DEL_TABLE[op.type];
       if(arrName&&op.before){
         const arr=DB[arrName];
@@ -1256,6 +1331,10 @@ async function performBackup(){
   }else{
     const snapDir=await _backupSnapDirHandle();
     if(!snapDir){const err=new Error('未设置备份目录');err.code='NO_BACKUP_DIR';throw err;}
+    /* v1.0.57 修复：刷新后目录句柄授权可能失效，此前直接报 NotAllowedError 原文；先请求授权并给出明确指引 */
+    if(!await fhPerm(snapDir,true)){
+      const err=new Error('备份目录授权已失效，请在数据管理页重新选择备份目录');err.code='NO_BACKUP_DIR';throw err;
+    }
     const fh=await snapDir.getFileHandle(name,{create:true});
     const w=await fh.createWritable();
     await w.write(JSON.stringify(_backupSnapshot(),null,2));
@@ -1334,6 +1413,8 @@ async function listBackups(){
   if(!dir)return [];
   const out=[];
   try{
+    /* v1.0.57 修复：授权失效时旧代码静默返回空列表，界面误报「暂无备份文件」；先请求授权 */
+    if(!await fhPerm(dir,false))return [];
     for await(const entry of dir.values()){
       if(entry.kind!=='file'||!entry.name.startsWith(BACKUP_FILE_PREFIX)||!entry.name.endsWith('.json'))continue;
       let size=0,modified=0;
@@ -1384,6 +1465,8 @@ async function restoreBackup(name){
     else{
       const snapDir=await _backupSnapDirHandle();
       if(!snapDir){toast('备份目录不可用，请重新设置','error');return;}
+      /* v1.0.57 修复：同 performBackup——授权失效给明确指引而非 NotAllowedError 原文 */
+      if(!await fhPerm(snapDir,false)){toast('备份目录授权已失效，请在数据管理页重新选择备份目录','error');return;}
       const f=await snapDir.getFileHandle(name);
       const file=await f.getFile();
       text=await file.text();

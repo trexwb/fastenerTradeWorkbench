@@ -106,3 +106,7 @@ package-lock.json
 /src-tauri/gen/schemas
 /src-tauri/gen/icons
 **/target/
+
+# ── 自动生成产物 ──
+# 专业解读文档索引：由 scripts/gen-wiki-index.mjs 从 src/public/wiki/*.html 生成
+/src/public/wiki/index.js

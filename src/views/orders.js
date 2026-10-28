@@ -4,11 +4,17 @@
    ========================================================= */
 /** 格式化交货期字段（支持字符串和对象格式） */
 function fmtDelivery(d){return typeof d==='object'?(d.time||''):(d||'');}
+/* 寻货抽屉上下文（mode/orderId/lastIdx），由 sourceItem 赋值。
+   v1.0.57 审查修复：补全局声明——此前无 let/var，未开过寻货抽屉时首次读取抛 ReferenceError，
+   导致编辑模式产品变更不落库、toast/BOM 补录弹窗丢失。 */
+let _sourcingCtx=null;
+/** persistSourcingChange 重入门闩（见函数内注释） */
+let _persistSourcingBusy=false;
 /* 订单列表行渲染（viewOrders 和 refreshOrderList 共用） */
 /** 渲染单条采购订单表格行 */
 function renderOrderRow(o){
   return '<tr>'+
-    '<td><input type="checkbox" class="order-check" data-id="'+o.id+'" onchange="updateOrderBatchBtn()"></td>'+
+    '<td><input type="checkbox" class="order-check" data-id="'+escAttr(o.id)+'" onchange="updateOrderBatchBtn()"></td>'+
     '<td><b>'+escHtml(o.id)+'</b></td>'+
     '<td>'+escHtml(pName(o.buyerId))+'</td>'+
     '<td class="m-hide-s1">'+escHtml(o.buyerContact||'-')+'</td>'+
@@ -85,6 +91,15 @@ function refreshOrderList(){
   if(paging)paging.innerHTML=totalPages>1?buildPaging(all.length,_orderPage,totalPages,'orderPage',{id:'orderPaging'}):'';
   const tag=document.getElementById('orderCountTag');
   if(tag){const total=DB.orders.length,matched=all.length;tag.style.display=(orderSearch||orderStatusFilter)?'':'none';tag.textContent=matched+' / '+total;}
+  /* v1.0.57 修复：局部刷新时同步搜索框与状态下拉的显示——此前清除筛选只重绘表格，
+     控件仍显示旧关键词/旧状态，再按一次回车又变回空结果，看起来像筛选坏了 */
+  const searchInput=document.getElementById('orderSearchInput');
+  if(searchInput){
+    searchInput.value=orderSearch||'';
+    if(searchInput.parentElement)searchInput.parentElement.classList.toggle('has-val',!!orderSearch);
+  }
+  const statusSel=document.getElementById('orderStatusFilter');
+  if(statusSel&&(statusSel.value||'')!==(orderStatusFilter||''))statusSel.value=orderStatusFilter||'';
 }
 /* =========================================================
    采购订单 - 详情查看
@@ -514,7 +529,10 @@ function goOrderEdit(id){
   _fMode='edit';_fOrderId=id;
   _draftOrder=null;
   _fItems=o.items.map(it=>({...it}));
-  curOrder=id;curOrderView=null;
+  /* v1.0.57 修复：curOrder 由字符串 id 改为克隆对象，与 goOrder/restoreFromHash 口径一致——
+     面包屑 (curOrder&&curOrder.id) 此前拿到的是 undefined，编辑页订单号显示为空 */
+  curOrder=JSON.parse(JSON.stringify(o));curOrderView=null;
+  if(typeof updateHash==='function')updateHash();
   render();
   // 编辑模式也绑定自动保存
   setTimeout(bindOrderDraftSave,100);
@@ -569,6 +587,13 @@ function sourceItemFromDetail(itemIdx){
  * @param {{refreshEdit?:boolean}} [opts] refreshEdit=true 时即使不是编辑模式，也再调一次 refreshProductList（兜底）
  */
 function persistSourcingChange(opts){
+  /* v1.0.57 修复：编辑模式下 persistSourcingChange → refreshProductList（尾部 persistOrderItems）
+     → persistOrderItems → persistSourcingChange 反向重入形成无限递归（页面冻结数秒后 RangeError 爆栈，
+     价格库匹配多选只进第 1 家、后续 toast 全丢）。加重入门闩：重入调用直接跳过（该次调用只会重复
+     已完成的落库与刷新，跳过无行为缺口），保留既有数据流不变。 */
+  if(_persistSourcingBusy)return;
+  _persistSourcingBusy=true;
+  try{
   opts=opts||{};
   // 详情模式：_fItems 已被 sourceItem 设为 DB 订单的浅拷贝。一次性落库。
   const isDetailMode=(_sourcingCtx&&_sourcingCtx.mode==='detail')||(curOrderView&&(!_fMode||_fMode==='__detail__'));
@@ -594,6 +619,7 @@ function persistSourcingChange(opts){
   if(curOrderView){updateDetailRow(_sourcingCtx?_sourcingCtx.lastIdx:undefined);refreshDetailStats();}
   if(_fMode==='edit')refreshProductList();
   if(typeof refreshSourceDrawer==='function'&&opts.idx!==undefined)refreshSourceDrawer(opts.idx);
+  }finally{_persistSourcingBusy=false;}
 }
 /** 将寻货结果从临时状态持久化到订单详情数据（B1 修复：兼容遗留调用，单测 / 老扩展可继续调用） */
 function persistSourcingFromDetail(){
@@ -948,10 +974,10 @@ function openPriceMatchModal(idx){
   modal('价格库匹配 · '+escHtml(it.diameter||'')+' '+escHtml(it.type||''),body,'确定',()=>submitPriceMatch(idx),true);
   setTimeout(()=>{const s=document.getElementById('pmSearch');if(s)s.focus();},100);
 }
-/** 提交价格库匹配勾选结果（批量添加供应商） */
+/** 提交价格库匹配勾选结果（批量添加供应商）。校验失败 return false：modal() 契约为 onOk 返回 false 时不兜底关窗，保留已勾选内容 */
 function submitPriceMatch(idx){
   const chks=document.querySelectorAll('#pmList input[type="checkbox"]:checked');
-  if(!chks.length){toast('请至少选择一个供应商','warning');return;}
+  if(!chks.length){toast('请至少选择一个供应商','warning');return false;}
   const it=_fItems[idx];
   const existIds=itemOpts(it).map(o=>o.supplierId);
   // 先收集勾选数据和分配数量，再关弹窗（弹窗关闭后 DOM 元素即销毁）
@@ -976,7 +1002,7 @@ function submitPriceMatch(idx){
   const sumQ=filtered.reduce(function(a,e){return a+e.qty;},0);
   if(sumQ>remainNow){
     toast('勾选供应商分配合计 '+fmtN(sumQ)+' 超出剩余 '+fmtN(remainNow)+'，请调整各行分配数量后再提交','warning');
-    return;
+    return false;
   }
   closeModal();
   filtered.forEach(e=>{
@@ -1158,13 +1184,14 @@ function manualSupplier(idx){
   const q=+document.getElementById('ms_qty').value;
   const stock=document.getElementById('ms_stock').value.trim();
   const errEl=document.getElementById('msErr');
-  if(!name){errEl.style.display='block';errEl.textContent='请输入供应商名称';return;}
-  if(!FTValidators.isPositiveNumber(price)){errEl.style.display='block';errEl.textContent='请输入有效采购单价';return;}
-  if(!FTValidators.isPositiveNumber(q)){errEl.style.display='block';errEl.textContent='请输入有效分配数量';return;}
+  /* 校验失败 return false：modal() 契约为 onOk 返回 false 时不兜底关窗，保留 msErr 内联错误与已填输入 */
+  if(!name){errEl.style.display='block';errEl.textContent='请输入供应商名称';return false;}
+  if(!FTValidators.isPositiveNumber(price)){errEl.style.display='block';errEl.textContent='请输入有效采购单价';return false;}
+  if(!FTValidators.isPositiveNumber(q)){errEl.style.display='block';errEl.textContent='请输入有效分配数量';return false;}
   const allocSum=itemAllocSum(it);
-  if(allocSum+q>it.qty){errEl.style.display='block';errEl.textContent='累计分配数量超出需求 '+fmtN(it.qty)+'（已分配 '+fmtN(allocSum)+'）';return;}
+  if(allocSum+q>it.qty){errEl.style.display='block';errEl.textContent='累计分配数量超出需求 '+fmtN(it.qty)+'（已分配 '+fmtN(allocSum)+'）';return false;}
   // 检查是否已存在该供应商
-  if(itemOpts(it).some(o=>o.supplierId===nameVal||(pName(o.supplierId)===name))){errEl.style.display='block';errEl.textContent='该供应商已添加，请勿重复';return;}
+  if(itemOpts(it).some(o=>o.supplierId===nameVal||(pName(o.supplierId)===name))){errEl.style.display='block';errEl.textContent='该供应商已添加，请勿重复';return false;}
   // 查找或创建关联单位
   let unit=DB.units.find(u=>u.name===name||(u.id===nameVal));
   if(!unit&&nameVal){
@@ -1267,7 +1294,7 @@ async function saveOrder(){
     if(dupGroups.length>0){
       const rowDescs=dupGroups.map(rows=>'第'+rows.join('/')+'条');
       let dupCount=0;dupGroups.forEach(rows=>dupCount+=rows.length);
-      toast('⚠ 检测到 '+dupCount+' 条相同 SKU+规格 的产品行（'+rowDescs.join('；')+'），建议合并后再保存','warn');
+      toast('⚠ 检测到 '+dupCount+' 条相同 SKU+规格 的产品行（'+rowDescs.join('；')+'），建议合并后再保存','warning');
     }
     const buyerContact=document.getElementById('tf_contact').value;
     const project=document.getElementById('tf_project').value;
@@ -1454,8 +1481,8 @@ function renderOrderBatchPreviewAppend(allRows){
       '<td>'+escHtml(r.spec||'-')+'</td>'+
       '<td>'+escHtml(r.surface||'-')+'</td>'+
       '<td>'+fmtN(r.qty)+'</td>'+
-      '<td>'+fmt(r.price)+'</td>'+
-      '<td>'+fmt(r.amount||(r.qty*r.price))+'</td>'+
+      '<td>'+fmt(r.salePrice)+'</td>'+
+      '<td>'+fmt(r.amount||(r.qty*(r.salePrice||0)))+'</td>'+
       '<td><span class="tag '+(r.bomMatched?'ok':'warn')+'">'+(r.bomMatched?'已匹配':'未匹配')+'</span></td>'+
       '<td class="td-act"><button class="btn sm danger" onclick="removeOrderBatchRow('+i+')" title="删除行" aria-label="删除行">'+icon('x')+'</button></td>'+
     '</tr>';
@@ -1539,6 +1566,8 @@ function submitOrderBatch(){
   refreshProductList();
   saveOrderDraftFromItems();
   persistOrderItems();
+  /* v1.0.57 修复：提交后清空批量缓冲，防止下次打开批量添加时旧行经 mergeBatchRows 再次累加入库 */
+  window._batchOrderData=[];
   if(unmatched.length){
     toast('成功添加 '+succ+' 项（'+unmatched.length+' 项BOM未匹配）','success');
     confirmModal('检测到 '+unmatched.length+' 个BOM库中不存在的SKU，是否一键添加到BOM库？',
@@ -1730,6 +1759,8 @@ function submitSupplierQuote(){
   clearDraft(DRAFT_TYPES.order);
   saveDB();
   closeDrawer();
+  /* v1.0.57 修复：提交后清空供应商报价导入缓冲，防止残留行污染下次合并与未匹配统计 */
+  window._quoteImportData=[];
   render();
   const priceMsg=priceSynced>0?'，同步签约报价 '+priceSynced+' 条':'';
   if(unmatched){

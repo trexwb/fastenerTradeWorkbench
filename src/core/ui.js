@@ -93,7 +93,16 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
     /* 防双击：async onOk 未决期间禁用确定键，避免重复执行写回调（§12.5 重复触发防护） */
     const okBtn=document.getElementById('_modalOk');
     if(okBtn&&okBtn.disabled)return;
-    if(onOk){try{const r=onOk();if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}}catch(e){}}
+    if(onOk){
+      try{
+        const r=onOk();
+        if(r&&typeof r.then==='function'){if(okBtn)okBtn.disabled=true;r.then(()=>{closeModal();}).catch(()=>{const b=document.getElementById('_modalOk');if(b)b.disabled=false;});return;}
+        /* v1.0.57 修复：onOk 显式返回 false 表示校验失败需留在弹窗（如价格库匹配未勾选、
+           手动供应商必填缺失），不再执行兜底 closeModal——旧逻辑同步返回后无条件关窗，
+           校验提示随弹窗一起销毁、已填输入全部丢失 */
+        if(r===false)return;
+      }catch(e){}
+    }
     closeModal();
   };
   /* v1.0.28 修复：取消按钮未绑 onclick，导致设置等弹窗点"取消"无反应。modal() 无 onCancel 形参，取消即关闭弹窗（与 confirmModal 行为一致） */
@@ -134,7 +143,7 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
   const safeMsg=html?String(msg):escHtml(String(msg));
   const titleId='_dlgTitle'+(++_dialogSeq);
   const msgId='_dlgMsg'+_dialogSeq;
-  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="'+titleId+'" aria-describedby="'+msgId+'"><div class="mh"><span class="mt" id="'+titleId+'">'+escHtml(okText||'确认操作')+'</span><button type="button" class="x" aria-label="关闭" onclick="closeModal()">×</button></div><div class="mb"><p id="'+msgId+'" style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
+  document.getElementById('app').insertAdjacentHTML('beforeend','<div class="mask" id="_mask"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="'+titleId+'" aria-describedby="'+msgId+'"><div class="mh"><span class="mt" id="'+titleId+'">'+escHtml(okText||'确认操作')+'</span><button type="button" class="x" aria-label="关闭" onclick="(function(){var c=document.getElementById(\'_modalCancel\');if(c)c.click();else if(typeof closeModal===\'function\')closeModal();})()">×</button></div><div class="mb"><p id="'+msgId+'" style="font-size:14px;line-height:1.7;white-space:pre-line">'+safeMsg+'</p></div><div class="mf"><button type="button" class="btn" id="_modalCancel" tabindex="998">'+escHtml(cancelText||'取消')+'</button><button type="button" class="btn danger" id="_modalOk" tabindex="999">'+escHtml(okText||'确认')+'</button></div></div></div>');
   const mask=document.getElementById('_mask');
   mask.addEventListener('keydown',function(e){
     if(e.key==='Escape'){e.preventDefault();e.stopPropagation();const c=document.getElementById('_modalCancel');if(c)c.click();else closeModal();return;}
@@ -236,6 +245,12 @@ function closeDrawer(){
   const target=_drawerReturnFocus;
   _drawerReturnFocus=null;
   _restoreFocus(target);
+  /* v1.0.57 修复：AI 写入成功/计划创建后若抽屉打开中会推迟 render（避免渲染销毁抽屉连撤销条一起丢），
+     此处在抽屉真正关闭后补一次背景刷新 */
+  if(window._pendingRenderOnDrawerClose){
+    window._pendingRenderOnDrawerClose=false;
+    if(typeof render==='function')render();
+  }
 }
 /**
  * 触发抽屉面板的保存回调。

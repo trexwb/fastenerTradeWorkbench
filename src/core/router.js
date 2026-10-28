@@ -114,7 +114,7 @@ function restoreFromHash(){
     if(!saved||!saved.view) return;
     let validView = NAV.some(function(n){
       return n.k === saved.view || (n.children && n.children.some(c=>c.k===saved.view));
-    });
+    }) || saved.view==='wiki'; /* v1.0.57 修复：wiki 不在 NAV，刷新后此前回落 dashboard 且面包屑空白 */
     if(!validView) return;
     view = saved.view;
     if(saved.view==='orders' && saved.oid){
@@ -135,6 +135,10 @@ function restoreFromHash(){
         }
       }
     }
+    /* v1.0.57 修复：无 oid 的订单路由需清理三订单模式残留，避免 hash/localStorage 与实际渲染不一致 */
+    if(saved.view==='orders' && !saved.oid){
+      curOrder=null;curOrderView=null;_fMode='';_fOrderId=null;_fItems=[];
+    }
     return;
   }
   let hash = window.location.hash.slice(2); // 去掉 '#/'
@@ -149,7 +153,7 @@ function restoreFromHash(){
   // 验证 view 是否有效
   let validView = NAV.some(function(n){
     return n.k === targetView || (n.children && n.children.some(c=>c.k===targetView));
-  });
+  }) || targetView==='wiki'; /* v1.0.57 修复：wiki 不在 NAV，#/wiki 刷新后此前回落 dashboard */
   if(!validView) return;
   
   view = targetView;
@@ -175,6 +179,10 @@ function restoreFromHash(){
       }
     }
   }
+  /* v1.0.57 修复：#/orders（无 oid）需清理三订单模式残留，避免地址栏与实际视图不一致 */
+  if(targetView === 'orders' && !orderId){
+    curOrder=null;curOrderView=null;_fMode='';_fOrderId=null;_fItems=[];
+  }
 }
 
 /**
@@ -193,7 +201,10 @@ if(hashRoutingEnabled()){
  * @param {string} v - 目标视图 key
  * @returns {void} 无返回值
  */
-function go(v){view=v;curOrder=null;curOrderView=null;sidebarOpen=false;updateHash();render();window.scrollTo(0,0);}
+function go(v){view=v;curOrder=null;curOrderView=null;sidebarOpen=false;
+  // 专业解读模块：离开时关闭已打开的文档，回到列表态（模块未加载时静默跳过）
+  if(typeof __wikiReset==='function'){try{__wikiReset();}catch(e){}}
+  updateHash();render();window.scrollTo(0,0);}
 
 /**
  * 渲染整个应用界面，包括侧栏、面包屑和内容区。
@@ -201,6 +212,10 @@ function go(v){view=v;curOrder=null;curOrderView=null;sidebarOpen=false;updateHa
  */
 function render(){
   const app=document.getElementById('app');
+  /* v1.0.57 修复：render 全量重建 #app 会连带销毁打开中的抽屉，但 body 的 overflow='hidden'
+     无人恢复（抽屉打开时按 ⌥ 导航触发 render 后整页锁死无法滚动）。渲染即重置；
+     抽屉正常打开路径（openDrawer）随后会重新置位。 */
+  document.body.style.overflow='';
   
   // 侧栏导航（支持二级菜单）
   let sideNav='';
@@ -226,7 +241,7 @@ function render(){
   if(curOrder&&view==='orders'){
     crumb='<a href="javascript:void(0)" onclick="go(\'orders\')" style="color:var(--pri);text-decoration:none">采购订单</a>'+
       '<span style="color:var(--line);margin:0 6px">/</span>'+
-      '<span>'+(curOrderView?'查看订单':'编辑订单')+' · '+escHtml(DB.orders.find(function(o){return o.id===curOrder})?.id||'')+'</span>';
+      '<span>'+(curOrderView?'查看订单':'编辑订单')+' · '+escHtml(curOrderView||_fOrderId||((curOrder&&curOrder.id)||''))+'</span>';
   }else if(view==='settle-receipt')crumb='对账结算 / 收款记录';
   else if(view==='settle-payment')crumb='对账结算 / 付款记录';
   else if(view==='inv-issue')crumb='发票管理 / 开票记录';
@@ -244,7 +259,7 @@ function render(){
     case 'settle-receipt':content=viewSettlements('receipt');break;
     case 'settle-payment':content=viewSettlements('payment');break;
     case 'settlements':
-      _settleTab = _settleTab || (view==='settle-payment'?'payment':'receipt');
+      _settleTab = _settleTab || 'receipt';
       _settleSubTab = _settleSubTab || 'unpaid';
       _settlePage = _settlePage || 1;
       content=viewSettlements(_settleTab);
@@ -253,13 +268,14 @@ function render(){
     case 'inv-issue':content=viewInvoices('issue');break;
     case 'inv-receive':content=viewInvoices('receive');break;
     case 'data':content=viewData();break;
+    case 'wiki':content=viewWiki();break;
   }
   app.innerHTML='<div class="app">'+
     '<div class="menu-overlay'+(sidebarOpen?' on':'')+'" onclick="toggleSidebar()"></div>'+
     '<aside class="sidebar'+(sidebarOpen?' open':'')+'">'+
       '<div class="brand">紧固件贸易工作台<small>Fastener Trade Workbench</small></div>'+
       '<nav>'+sideNav+'</nav>'+
-      '<div class="side-ft"><a href="https://wiki.edtib.com/%E4%B8%8B%E8%BD%BD%E4%B8%AD%E5%BF%83/%E7%B4%A7%E5%9B%BA%E4%BB%B6%E8%B4%B8%E6%98%93%E4%B8%AA%E4%BA%BA%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80.html" target="_blank" class="side-ft-link">'+icon('download','14')+' 下载工作台</a></div>'+
+      '<div class="side-ft"><a href="#wiki" onclick="go(\'wiki\');return false;" class="side-ft-link">'+icon('fileText','14')+' 专业解读</a></div>'+
     '</aside>'+
     '<div class="main">'+
       '<div class="topbar">'+
@@ -595,7 +611,14 @@ function goOrderView(id){curOrderView=id;curOrder=null;view='orders';updateHash(
  * 跳转到订单编辑视图
  * @param {string} id - 订单ID
  */
-function goOrder(id){curOrderView=id;curOrder=null;view='orders';updateHash();render();}
+function goOrder(id){
+  const o=DB.orders.find(function(x){return x.id===id;});
+  if(!o){view='orders';curOrder=null;curOrderView=null;updateHash();render();return;}
+  /* v1.0.57 修复：转调 goOrderEdit 补齐 _fMode/_fOrderId/_fItems 状态四件套——
+     旧实现只设 curOrder 对象，dashboard「处理/查看」落到空白新建页；若此前编辑过订单 A，
+     还会渲染 A 的编辑页而面包屑显示 B 单号，保存会整单覆盖 A（数据丢失）。 */
+  goOrderEdit(id);
+}
 
 
 
@@ -653,7 +676,7 @@ function bindView(){
     const unitEl=document.getElementById('pf_unit');
     if(unitEl&&!unitEl.dataset.bound){
       unitEl.dataset.bound='1';
-      combo(unitEl,DB.units.filter(u=>u.roles.includes('供应商')).map(u=>({id:u.id,label:u.name,tag:{text:u.rating,cls:u.rating==='主力'?'ok':(u.rating==='新客'?'warn':'gray')}})),opt=>{unitEl.dataset.val=opt.id||'';filterPrices();},'全部供应商',true);
+      combo(unitEl,DB.units.filter(u=>(u.roles||[]).includes('供应商')).map(u=>({id:u.id,label:u.name,tag:{text:u.rating,cls:u.rating==='主力'?'ok':(u.rating==='新客'?'warn':'gray')}})),opt=>{unitEl.dataset.val=opt.id||'';filterPrices();},'全部供应商',true);
     }
     SPEC_FIELDS.forEach(k=>{
       const el=document.getElementById('pf_'+k);
@@ -670,7 +693,9 @@ function bindView(){
       const el=document.getElementById('bf_'+k);
       if(el&&!el.dataset.bound){
         el.dataset.bound='1';
-        combo(el,(DB.specs[k]||[]).map(v=>({id:v,label:v})),opt=>{el.dataset.val=opt.id||'';render();},SPEC_LABELS[k],true);
+        /* v1.0.57 修复：选中后改用 refreshBOMTable 局部刷新并把选择持久到 _bfVals——
+           旧逻辑 render() 全量重建会把 data-val 硬编码清空，六维筛选选中即抹掉、AND 组合不可能 */
+        combo(el,(DB.specs[k]||[]).map(v=>({id:v,label:v})),opt=>{el.dataset.val=opt.id||'';_bfVals[k]=opt.id||'';refreshBOMTable();},SPEC_LABELS[k],true);
       }
     });
     return;
@@ -682,7 +707,7 @@ function bindView(){
       sUnitEl.dataset.bound='1';
       const isRcp=view==='settle-receipt'||(view==='settlements'&&_settleTab==='receipt');
       const role=isRcp?'采购商':'供应商';
-      const units=DB.units.filter(u=>u.roles.includes(role));
+      const units=DB.units.filter(u=>(u.roles||[]).includes(role));
       combo(sUnitEl,units.map(u=>({id:u.id,label:u.name})),function(opt){
         sUnitEl.dataset.val=opt.id||'';
         onSettleUnitFilter(opt.id||'');
@@ -697,7 +722,7 @@ function bindView(){
       iUnitEl.dataset.bound='1';
       const isIssue=view==='inv-issue'||(view==='invoices'&&_invTab==='issue');
       const role=isIssue?'采购商':'供应商';
-      const units=DB.units.filter(u=>u.roles.includes(role));
+      const units=DB.units.filter(u=>(u.roles||[]).includes(role));
       combo(iUnitEl,units.map(u=>({id:u.id,label:u.name})),function(opt){
         iUnitEl.dataset.val=opt.id||'';
         onInvUnitFilter(opt.id||'');
@@ -710,7 +735,7 @@ function bindView(){
     const buyerEl=document.getElementById('tf_buyer');
     if(buyerEl&&!buyerEl.dataset.bound){
       buyerEl.dataset.bound='1';
-      combo(buyerEl,DB.units.filter(u=>u.roles.includes('采购商')).map(u=>({id:u.id,label:u.name,tag:{text:u.rating,cls:u.rating==='主力'?'ok':(u.rating==='新客'?'warn':'gray')}})),
+      combo(buyerEl,DB.units.filter(u=>(u.roles||[]).includes('采购商')).map(u=>({id:u.id,label:u.name,tag:{text:u.rating,cls:u.rating==='主力'?'ok':(u.rating==='新客'?'warn':'gray')}})),
         opt=>{
           buyerEl.dataset.val=opt.id;
           const u=DB.units.find(x=>x.id===opt.id);
@@ -825,6 +850,11 @@ document.addEventListener('click', function (e) {
       {target:'.btn.primary[data-action="export"]',pos:'bottom',title:'① 强烈建议：立刻导出一个 JSON 备份',body:'浏览器清理缓存或切换设备前先导出备份，下次用「导入 JSON」就能恢复到任意机器。'},
       {target:'.btn.primary[data-action="bind-dir"]',pos:'top',title:'② 进阶：绑定本地文件夹 = 自动同步',body:'绑定一个文件夹后，系统会把所有数据写入「紧固件贸易工作台_数据.json」；换电脑、换浏览器只要打开这同一个文件夹就能拿到最新数据，这是<b>最佳实践</b>。'},
       {title:'③ 重置示例数据 / 清空：有保护机制',body:'重置和清空会经过二次确认（显示影响条目数），绑定了文件也不会清空目标文件，放心使用。'}
+    ]},
+    wiki:{label:'专业解读',icon:'fileText',steps:[
+      {title:'专业解读 = 你的内置知识库',body:'这里是随应用分发的<b>本地知识库</b>：材料/工艺深度长文（17-4PH、氢脆、自冲摩擦铆焊…），全部离线可读，还能做笔记。'},
+      {target:'.wiki-toolbar',pos:'bottom',title:'① 全文检索 + 筛选',body:'搜索框支持<b>标题/摘要/标签/正文全文</b>检索（回车触发，空格分隔多关键词）；右侧 chips 按「收藏 / 未读 / 有笔记」过滤。⌘K 全局搜索也会命中知识库。'},
+      {target:'.wiki-grid',pos:'top',title:'② 收藏 · 已读 · 笔记',body:'卡片右上角星标收藏；打开即自动记已读，列表顶部出现<b>「继续阅读」</b>；阅读页底部可写<b>读书笔记</b>（自动保存，随数据备份保存）。'}
     ]},
     keyboard:{label:'快捷键',icon:'keyboard',steps:[
       {title:'快捷键 = 效率倍增开关',body:'把高频操作全部集中到键盘，尤其是全局命令面板 <span class="kbd">⌘K</span>。这里可以看到完整的快捷键列表，并能切换启用/禁用。'},

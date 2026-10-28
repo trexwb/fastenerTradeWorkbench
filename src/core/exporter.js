@@ -54,8 +54,19 @@ function loadXLSX() {
           s.integrity = integrity;
           s.crossOrigin = 'anonymous';
         }
-        s.onload = function () { res(); };
-        s.onerror = function () { rej(new Error('加载失败: ' + src)); };
+        /* v1.0.57 修复：连接挂起（防火墙吞包）时 onerror 长时间不触发，await loadXLSX() 永不 settle，
+           _exportBusy 永久 true，之后所有导出被「正在导出，请稍候…」挡死只能刷新。
+           加 10s 超时：reject 并清理已注入的 script 标签。 */
+        const SCRIPT_LOAD_TIMEOUT_MS = 10000;
+        let settled = false;
+        const timer = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          if (s.parentNode) s.parentNode.removeChild(s);
+          rej(new Error('加载超时（10s）: ' + src));
+        }, SCRIPT_LOAD_TIMEOUT_MS);
+        s.onload = function () { if (settled) return; settled = true; clearTimeout(timer); res(); };
+        s.onerror = function () { if (settled) return; settled = true; clearTimeout(timer); if (s.parentNode) s.parentNode.removeChild(s); rej(new Error('加载失败: ' + src)); };
         document.head.appendChild(s);
       });
     }
@@ -118,33 +129,39 @@ function ev(v) { return v == null ? '' : String(v); }
  * @param {string} fname - 下载文件名（不含扩展名）
  * @returns {Promise<void>} 下载完成后 resolve
  */
-function downloadWorkbook(wb, fname) {
-  return new Promise(async function (resolve, reject) {
-    let u8 = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    
-    // 优先使用 File System Access API（Chrome 86+，file:// 也支持）
-    if (typeof window.showSaveFilePicker === 'function') {
-      try {
-        let handle = await window.showSaveFilePicker({
-          suggestedName: fname + '.xlsx',
-          types: [{
-            description: 'Excel 文件',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-          }]
-        });
-        let writable = await handle.createWritable();
-        await writable.write(u8);
-        await writable.close();
-        toast('已保存到：' + handle.name, 'success');
-        resolve();
-        return;
-      } catch (err) {
-        // 用户取消或其他错误，回退到传统下载方式
-        if (err.name !== 'AbortError') {
-          console.error('[exporter] showSaveFilePicker 失败，回退到传统下载:', err);
-        }
-      }
+async function downloadWorkbook(wb, fname) {
+  /* v1.0.57 修复：旧实现用 new Promise(async executor) 包裹，XLSX.write 等同步异常的 rejection
+     会被 Promise 构造器吞掉，外层永远 pending → 无错误提示且 _exportBusy 永久卡死。改为 async 函数整段 try/catch。 */
+  let u8;
+  try {
+    u8 = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  } catch (err) {
+    console.error('[exporter] XLSX.write 序列化失败:', err);
+    throw err;
+  }
+  
+  // 优先使用 File System Access API（Chrome 86+，file:// 也支持）
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      let handle = await window.showSaveFilePicker({
+        suggestedName: fname + '.xlsx',
+        types: [{
+          description: 'Excel 文件',
+          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+        }]
+      });
+      let writable = await handle.createWritable();
+      await writable.write(u8);
+      await writable.close();
+      toast('已保存到：' + handle.name, 'success');
+      return;
+    } catch (err) {
+      /* v1.0.57 修复：用户取消保存对话框（AbortError）应尊重取消意图，
+         不再静默回退 <a download> 自动下载到默认目录 */
+      if (err.name === 'AbortError') return;
+      console.error('[exporter] showSaveFilePicker 失败，回退到传统下载:', err);
     }
+  }
     
     // 回退：传统 <a download> 方式（http(s):// 有效，file:// 可能失败）
     let blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -158,12 +175,13 @@ function downloadWorkbook(wb, fname) {
     // v1.0.42 修复（与 data.js exportJSON 同款竞态）：WebView2 下载子系统对 blob URL 的
     // 内容读取是异步的，click 后立即 revokeObjectURL 会让 Windows 拿到已失效的 URL，
     // 导出 0 字节/空文件。延迟 3000ms 等读取完成后再释放（与 exportJSON 对齐）。
-    setTimeout(function () {
-      document.body.removeChild(a);
-      try{URL.revokeObjectURL(url);}catch(e){}
-      resolve();
-    }, 3000);
-  });
+    await new Promise(function (resolve2) {
+      setTimeout(function () {
+        document.body.removeChild(a);
+        try{URL.revokeObjectURL(url);}catch(e){}
+        resolve2();
+      }, 3000);
+    });
 }
 
 /* =========================================================
@@ -181,6 +199,8 @@ async function exportOrder(orderId) {
   let o = DB.orders.find(function (x) { return x.id === orderId; });
   if (!o) { toast('未找到订单', 'error'); return; }
   _exportBusy=true;
+  /* v1.0.57 修复：导出全程（动态加载库 + 大表构建可达数秒）无任何反馈，用户以为点了没反应 */
+  toast('正在生成 Excel 文件…','info');
   try {
     await loadXLSX();
     switch (o.status) {
