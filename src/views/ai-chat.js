@@ -630,9 +630,21 @@ async function sendAIMessage(message,snapshot,options){
         }
       }
     }catch(e){console.warn('KB retrieve failed',e);}
+    // Wiki 知识库检索：自动注入 Top-N（与本地 KB 并行，始终尝试）
+    let wikiKbBlock='';
+    try{
+      if(typeof WikiKB!=='undefined'){
+        if(!WikiKB.state.articles.length&&WikiKB.state.lastSyncAt===0){await WikiKB.init();}
+        WikiKB.ensureFresh();
+        if(WikiKB.state.enabled&&WikiKB.state.blocks.length){
+          wikiKbBlock=WikiKB.buildPromptBlock(message);
+        }
+      }
+    }catch(e){console.warn('WikiKB retrieve failed',e);}
     // 当轮附件全文注入（单附件 30000 / 总量 60000 字符预算；历史轮次走 getHistory 的 2000/8000 小预算回注）
     const _attCur=(userMessage&&Array.isArray(userMessage.attachments)&&userMessage.attachments.length&&typeof AI.attachBlock==='function')?AI.attachBlock(userMessage,30000,60000):'';
-    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(kbBlock?'\n\n'+kbBlock:'')}].concat(history,[{role:'user',content:message+_attCur}]);
+    const _kbBlocks=[kbBlock,wikiKbBlock].filter(Boolean).join('\n\n');
+    const request=[{role:'system',content:AI.buildSystemPrompt(snapshot)+(_kbBlocks?'\n\n'+_kbBlocks:'')}].concat(history,[{role:'user',content:message+_attCur}]);
     // 统一走写入流程：若模型未调用工具 → aiWriteLoop 返回纯文本总结（兼容只读分析场景）
     // 写入确认被用户取消时：若正处于执行计划运行中，一并中止该计划（步骤无法继续推进）
     const onConfirm=async(toolCalls)=>{

@@ -115,7 +115,7 @@ FastenerTradeWorkbench/
 │   │   ├── ai-chat.js       ← AI 助手（对话 / 提案确认 / 附件，见 docs/flows/ai-chat.md）
 │   │   ├── search-panel.js  ← 全局搜索与命令面板（六源检索 + AI 联动，见 docs/flows/search-panel.md）
 │   │   ├── data.js          ← 数据管理
-│   │   └── wiki.js          ← 专业解读（src/public/wiki/*.html 互动长页 iframe 内嵌，见 docs/wiki-integration.md）
+│   │   └── wiki.js          ← 专业解读（src/public/wiki/*.html 互动长页 iframe 内嵌，云端优先 wiki.edtib.com/wiki/ + 本地兜底，见 docs/wiki-integration.md）
 │   └── public/             ← 静态资源（Vite 原样复制到 dist/ 根目录）
 │       ├── images/          ← 图标 / favicon 等
 │       ├── wiki/            ← 专业解读互动文档（*.html 单文件零依赖 + 自动生成的 index.js 索引，不手改）

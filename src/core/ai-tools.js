@@ -786,6 +786,35 @@ const AIT=(function(){
         }
       }
     },
+    {
+      type:'function',
+      function:{
+        name:'query_wiki',
+        description:'检索线上同步的 wiki 文章知识库（来源：wiki.edtib.com）。当用户询问专业解读、技术文章、系统介绍文档等问题时调用。立即执行不需确认。返回命中片段（含文章标题/URL/得分），片段已截断。回答时若用到命中内容，必须在句末标注【依据：文章标题】并附 URL。未命中时返回 count:0，应明确说明「本地知识库暂无相关内容」。',
+        parameters:{
+          type:'object',
+          properties:{
+            query:{type:'string',description:'检索问题/关键词（自然语言即可）'},
+            topN:{type:'integer',description:'返回片段数（1-10，可选，缺省 4）'}
+          },
+          required:['query']
+        }
+      }
+    },
+    {
+      type:'function',
+      function:{
+        name:'list_wiki_articles',
+        description:'列出已同步到本地的线上 wiki 文章标题、URL、字符数等元数据，可选关键词过滤。用于先了解 wiki 知识库有哪些文章再决定检索方向。立即执行不需确认。',
+        parameters:{
+          type:'object',
+          properties:{
+            keyword:{type:'string',description:'按文章标题模糊过滤（可选）'}
+          },
+          required:[]
+        }
+      }
+    },
     // 阶段5：工作流计划发起（多步长任务专用；由 aiWriteLoop 拦截并创建 DB.aiWorkflows 草稿，
     // 不进入 runFlow/executeOps —— 本 schema 仅用于让模型知晓该工具存在）
     {
@@ -868,6 +897,8 @@ const AIT=(function(){
     list_kb_files:{label:'列出KB文件',tagCls:'info',kind:'query'},
     get_kb_file:{label:'查阅KB原文',tagCls:'info',kind:'query'},
     search_kb_detail:{label:'深检知识库',tagCls:'info',kind:'query'},
+    query_wiki:{label:'检索Wiki文章',tagCls:'info',kind:'query'},
+    list_wiki_articles:{label:'列出Wiki文章',tagCls:'info',kind:'query'},
     // 工作流计划发起（kind: flow；由 aiWriteLoop 拦截为工作流创建，不真正执行 UI 动作）
     flow_start_workflow:{label:'发起执行计划',tagCls:'info',kind:'flow'}
   };
@@ -877,6 +908,9 @@ const AIT=(function(){
 
   /** 知识库只读工具名集合（v1.0.15 新增）：自动执行不经弹窗；校验器对它们免未知报错 */
   const KB_TOOL_NAMES=new Set(['query_knowledge','list_kb_files','get_kb_file','search_kb_detail']);
+
+  /** 线上 Wiki 知识库只读工具名集合：自动执行不经弹窗；校验器对它们免未知报错 */
+  const WIKI_KB_TOOL_NAMES=new Set(['query_wiki','list_wiki_articles']);
 
   /** 本地文件读取只读工具集合（v1.0.57）：桌面版专属、自动执行不经弹窗、校验免未知报错 */
   const FILE_TOOL_NAMES=new Set(['read_local_file']);
@@ -1529,7 +1563,7 @@ const AIT=(function(){
   /** 单条校验入口（执行前脏读检查可选，本轮暂略） */
   function validateOp(op){
     // 知识库只读工具无副作用：不进写入校验表，直接放行（避免弹窗场景误报「未知工具」）
-    if(KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
+    if(KB_TOOL_NAMES.has(op.name)||WIKI_KB_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     // v1.0.57：本地文件读取/白名单系统指令只读无副作用，同样直接放行
     if(FILE_TOOL_NAMES.has(op.name))return {ok:true,preview:{},readonly:true};
     const v=validators[op.name];
@@ -1756,6 +1790,15 @@ const AIT=(function(){
         // 复用 KB.getFileBlocks（同步接口，bootApp 已 init）；runQuery 保持同步约定
         return JSON.stringify(KB.getFileBlocks(args.nameOrRel,args.range));
       }
+      if(name==='query_wiki'){
+        if(typeof WikiKB==='undefined')return JSON.stringify({ok:false,error:'Wiki 知识库模块未加载'});
+        if(!WikiKB.state.enabled)return JSON.stringify({ok:false,error:'Wiki 知识库未启用'});
+        return JSON.stringify(WikiKB.search(args.query,{topN:args.topN}));
+      }
+      if(name==='list_wiki_articles'){
+        if(typeof WikiKB==='undefined')return JSON.stringify({ok:false,error:'Wiki 知识库模块未加载'});
+        return JSON.stringify(WikiKB.listArticles(args.keyword));
+      }
       if(name==='query_units'){
         let list=DB.units.slice();
         if(args.keyword)list=list.filter(u=>(u.name||'').includes(args.keyword));
@@ -1875,7 +1918,7 @@ const AIT=(function(){
   }
 
   return {
-    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,
+    TOOLS_DEFS,TOOL_META,NEXT_STATUS,FLOW_TOOL_NAMES,KB_TOOL_NAMES,WIKI_KB_TOOL_NAMES,
     validateOp,executeOp,executeOps,buildToolResponse,unitNameSafe,runQuery,runFlow
   };
 })();

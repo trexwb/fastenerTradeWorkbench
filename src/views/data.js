@@ -399,6 +399,65 @@ function _kbToggle(v){if(typeof KB==='undefined')return;KB.setEnabled(v);toast(v
 function _kbTopN(v){if(typeof KB==='undefined')return;const n=KB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}
 function _kbCite(v){if(typeof KB==='undefined')return;KB.setCite(v);toast(v?'回答将标注来源':'已关闭来源标注','info');}
 
+/** 线上知识库（Wiki RAG）：同步状态、文章数量与检索开关 */
+function renderWikiKbSection(){
+  setTimeout(_wikiKbRefreshBox,0);
+  return '<div class="card" style="margin-top:12px">'+
+    '<div class="data-section-hd">'+icon('globe','16')+' 线上知识库 <span class="tag info" style="font-size:11px">Wiki RAG</span>'+
+      '<span class="note" style="float:right;font-size:12px">wiki.edtib.com · 定时同步 · 本地检索</span></div>'+
+    '<div id="wikiKbSectionBox" style="font-size:13px;color:var(--gray)">正在加载…</div>'+
+  '</div>';
+}
+async function _wikiKbRefreshBox(){
+  const box=document.getElementById('wikiKbSectionBox');
+  if(!box)return;
+  let s=null;
+  try{
+    if(typeof WikiKB!=='undefined'){await WikiKB.init();s=WikiKB.summarize();}
+  }catch(e){/* Wiki 知识库模块未加载或初始化失败 */}
+  if(!s){
+    box.innerHTML='Wiki 知识库模块未加载。';
+    return;
+  }
+  const sizeStr=s.chars<1024?s.chars+' B':(s.chars<1048576?(s.chars/1024).toFixed(1)+' KB':(s.chars/1048576).toFixed(1)+' MB');
+  const timeTxt=s.lastSyncAt?_backupTimeLabel(s.lastSyncAt):'';
+  const inner='<div class="data-kb-status-row">'+
+      '<span class="tag '+(s.articles>0?'ok':'gray')+'">'+(s.articles>0?'已同步':'未同步')+'</span>'+
+      (s.syncing?'<span class="tag warn">同步中…</span>':'')+
+      '<span style="color:var(--ink)">'+s.articles+' 篇文章 · '+s.blocks+' 个分块 · '+sizeStr+'</span>'+
+      (timeTxt?'<span class="note" style="margin:0">最近同步 '+timeTxt+'</span>':'')+
+    '</div>'+
+    '<div class="ai-kb-actions">'+
+      '<button type="button" class="btn primary sm" onclick="_wikiKbSync()" '+(s.syncing?'disabled':'')+'>'+icon('refresh','14')+' 立即同步</button>'+
+      '<button type="button" class="btn sm" onclick="_wikiKbClear()" '+(s.syncing?'disabled':'')+'>'+icon('trash','14')+' 清空缓存</button>'+
+    '</div>'+
+    '<div class="ai-kb-opts">'+
+      '<label class="ai-opt"><input type="checkbox" id="wikiKbEnabled" '+(s.enabled?'checked':'')+' onchange="_wikiKbToggle(this.checked)"><span>提问时检索线上知识库</span></label>'+
+      '<label class="ai-opt-inline">注入 Top-N '+
+        '<select id="wikiKbTopN" onchange="_wikiKbTopN(this.value)">'+
+          [3,4,5,6,8,10].map(function(n){return '<option value="'+n+'"'+(s.topN===n?' selected':'')+'>'+n+' 片段</option>';}).join('')+
+        '</select></label>'+
+    '</div>'+
+    (s.error?'<div class="data-kb-error">'+escHtml(s.error)+'</div>':'');
+  box.innerHTML=inner;
+}
+async function _wikiKbSync(){
+  if(typeof WikiKB==='undefined'){toast('Wiki 知识库模块未加载','error');return;}
+  toast('正在同步线上知识库…','info');
+  const r=await WikiKB.sync();
+  if(r&&r.ok){toast('同步完成：'+r.articles+' 篇文章 · '+r.blocks+' 个分块（新增 '+r.newCount+'，更新 '+r.updatedCount+'）','success');}
+  else{toast(r&&r.error?r.error:'同步失败','error');}
+  _wikiKbRefreshBox();
+}
+async function _wikiKbClear(){
+  if(typeof WikiKB==='undefined'){toast('Wiki 知识库模块未加载','error');return;}
+  await WikiKB.clearAll();
+  toast('已清空线上知识库缓存','info');
+  _wikiKbRefreshBox();
+}
+function _wikiKbToggle(v){if(typeof WikiKB==='undefined')return;WikiKB.setEnabled(v);toast(v?'提问时将检索线上知识库':'已关闭线上知识库检索','info');}
+function _wikiKbTopN(v){if(typeof WikiKB==='undefined')return;const n=WikiKB.setTopN(v);toast('注入 Top-'+n+' 片段','info');}
+
 function renderDangerZone(){
   return '<div style="border-top:1px solid var(--line);padding-top:20px">'+
       '<div class="card" style="border-color:var(--red-line)">'+
@@ -422,7 +481,7 @@ function viewData(){
   let body='';
   if(tab==='history')body=renderOpsHistory();
   else if(tab==='trash')body=renderTrash();
-  else body=renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderKbSection()+renderDangerZone();
+  else body=renderStorageStatus(sizeStr)+renderBackupSection()+renderFileSyncSection()+renderKbSection()+renderWikiKbSection()+renderDangerZone();
   return tabs+'<div class="data-tab-body">'+body+'</div>';
 }
 function _switchDataTab(name){window._dataTab=name;render();}

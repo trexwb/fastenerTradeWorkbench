@@ -64,7 +64,50 @@ AIGC:
 2. **Service Worker**：`src/public/sw.js` 对 `pathname` 含 `/wiki/` 的 `navigate` 请求单独放行（缓存优先→网络），不再回退 `index.html`——否则离线打开文档会显示应用首页。iframe 加载 HTML 正是 `navigate` 模式。
 3. **路径基准**：文档 URL 一律由 `new URL('wiki/'+encodeURI(file), document.baseURI)` 生成，自动适配 dev（`http://localhost:1421/`）、构建后（`file://` / GitHub Pages 子路径 / `tauri.localhost`）。
 
-## 七、排错清单
+## 七、云端同步（wiki.edtib.com · 免发版更新资料）
+
+> 2026-10-27 起支持：**云端优先、本地兜底**。线上资料更新后，用户端**无需更新 app** 即可读到新列表/新文档。
+
+### 机制
+
+- `src/views/wiki.js` 先加载本地 `wiki/index.js` 渲染（保证 file:// 双击与离线可用），随后异步加载 `https://wiki.edtib.com/wiki/index.js?t=时间戳`；
+- 云端索引加载成功且 `docs` 非空 → 列表整体切换为云端（标题旁显示绿色「云端」tag 与同步日期），文档 iframe 直连线上 URL，「复制链接」复制的是**可分享的线上地址**；
+- 云端不可用（离线 / 断网 / 未部署）→ **静默回退本地内置**，零打扰；失败后 60 秒冷却，再次进入页面自动重试；
+- 跨域加载用动态 `<script src>`（与本地索引同机制，**服务端无需任何 CORS 头**）；iframe 跨域展示天然允许。
+
+### 线上目录约定（https://wiki.edtib.com/wiki/）
+
+```
+/wiki/
+├── index.js                        ← 必须有：索引清单（gen-wiki-index.mjs 的同一产物）
+├── 17-4ph-fastener.html
+├── 2A12-高锁螺母-收口裂纹-互动长页.html
+└── …                               ← 文档与 index.js 同目录
+```
+
+### 更新资料的线上流程（免发版）
+
+1. 上传新的 `.html` 到 `https://wiki.edtib.com/wiki/`；
+2. 重建索引并上传：把线上目录的 HTML 同步到本地 `src/public/wiki/` 后执行 `npm run wiki:index`，将生成的 `index.js` 一并上传（或在服务器上对 wiki 目录跑同一脚本）；
+3. 完成。用户下次打开「专业解读」即见新内容（索引请求带时间戳，不会被浏览器缓存卡住）。
+
+### 服务器要求
+
+| 项 | 要求 | 说明 |
+| --- | --- | --- |
+| `Content-Type` | `.js` 需返回 `application/javascript` / `text/javascript` | nginx 默认正确；`nosniff` 下类型错误会导致 script 拒绝执行 |
+| CORS | **不需要** | `<script src>` 与 iframe 均不受同源限制 |
+| 目录列表 | **不依赖** | app 只读 `index.js` 清单，从不解析目录列表页 |
+| 缓存 | `index.js` 建议短缓存（如 `Cache-Control: no-cache` 或 max-age ≤ 300） | 前端已带 `?t=` 时间戳兜底，双保险 |
+| 协议 | 必须 HTTPS | 混合内容限制 |
+
+### 语义注意
+
+- 云端成功后列表**全量以云端为准**：线上下架的文档本地也不再显示（本地文件仍保留作离线兜底）；
+- 云端 `docs` 为空数组视为部署异常，**不会**切换（防止误清空列表）；
+- 桌面端已放开 CSP：`script-src` / `frame-src` 均已加 `https://wiki.edtib.com`（`src-tauri/tauri.conf.json`），需随下个桌面版发布生效。
+
+## 八、排错清单
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
@@ -73,8 +116,10 @@ AIGC:
 | 离线/部署后 iframe 显示应用首页 | SW 把文档请求当导航回退 | 确认 `sw.js` 的 `/wiki/` 放行分支存在，并清一次缓存（版本号变更会自动换缓存名） |
 | 中文文件名 404 | 未编码 | 前端已 `encodeURI`；手工拼链接时同样需要编码 |
 | 新增文档不显示 | 索引未重建 | dev 重启或 `npm run wiki:index` |
+| 列表始终无「云端」tag（一直显示本地） | 线上 `index.js` 未部署 / 404 / `Content-Type` 非 JS / 断网 | 浏览器控制台查 script 加载报错；直接访问 `https://wiki.edtib.com/wiki/index.js` 验证可达且为 JS 类型 |
+| 云端文档 iframe 空白（仅桌面端） | CSP 未含 `wiki.edtib.com` | `tauri.conf.json` 的 `script-src`/`frame-src` 补域名后重新打包 |
 
-## 八、与根目录 `wiki/` 的区别
+## 九、与根目录 `wiki/` 的区别
 
 - 根目录 `wiki/`：GitHub Wiki 页面的 **Markdown 源**，推送到仓库 Wiki，与应用无关。
 - `src/public/wiki/`：**应用内**阅读的互动长页 HTML，随构建产物一起分发。

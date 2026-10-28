@@ -6,6 +6,54 @@
 
 ---
 
+## 未发布 · ☁️ 专业解读云端同步 + list.json 文章清单接入（不推进版本号）
+
+> **状态**: ✅ 代码就绪（**不推进版本号**，版本号维持 1.0.57；同一模块持续开发）
+> **日期**: 2026-10-27
+> **上一版本**: v1.0.57（代码）
+> **版本范围**: 「专业解读」新增云端索引通道——云端优先、本地兜底；新增 list.json 文章清单通道，与 index.js 互动文档合并展示；涉及 `src/views/wiki.js`、`src-tauri/tauri.conf.json`、`docs/wiki-integration.md`
+> **详细说明**: `docs/wiki-integration.md` 第七章
+
+### 一、背景与方案
+
+- 需求：wiki 文档已部署到 `https://wiki.edtib.com/wiki/`，希望更新线上资料后**无需发版** app 即可读到。
+- 否决方案：目录列表页当 API（`/技术科普/`）——nginx 默认关闭 autoindex（403），GitHub Pages / Cloudflare Pages 返回 404；即便开启也无标题/摘要/分类等卡片元数据，解析脆弱。
+- 采用方案：线上部署**索引清单** `index.js`（与 `scripts/gen-wiki-index.mjs` 本地产物同构），app 动态 `<script src>` 跨域加载（免 CORS 头），云端成功且 docs 非空则全量切换，iframe 直连线上文档。
+- list.json 通道：fetch 拉取线上文章清单（含 title/url/category/updated_at），与 index.js 互动文档合并展示；远程文章新标签页打开，本地文档 iframe 阅读。
+
+### 二、实现要点（src/views/wiki.js）
+
+- 新增 `WIKI_REMOTE_BASE='https://wiki.edtib.com/wiki/'`（置空可禁用云端增强）
+- 双通道时序：本地索引先渲染（file:// / 离线可用）→ `loadWikiIndex` finish 后异步 `_loadWikiRemote()` → 成功切换重渲染；失败静默回退本地，60s 冷却后进入页面自动重试（`WIKI_REMOTE_RETRY_MS`）
+- 云端产物与本地产物全局名同为 `__WIKI_INDEX`：加载前暂存本地引用，onload 取走云端值后立即还原，避免覆盖
+- 索引 URL 带时间戳（`index.js?t=…`）绕过浏览器/CDN 缓存；`sw.js` 只拦同源请求，跨域不受 SW 缓存干扰（已核实）
+- `_wikiDocUrl()` 来源感知：文档在云端索引 → 线上绝对 URL（复制链接可分享）；本地独有 → 本地路径；iframe / 复制链接 / 独立窗口三处统一
+- 列表头部来源标识：云端生效显示绿色「云端」tag +「云端同步于 YYYY-MM-DD · wiki.edtib.com」；本地维持「索引更新于 …」
+- 云端 `docs` 为空数组视为部署异常，不切换（防误清空）
+- 手动刷新按钮：重置 list.json 与云端 index.js 缓存，重新拉取后重渲染，用于校对本地文档与线上文章是否一致
+
+### 三、环境适配
+
+- `src-tauri/tauri.conf.json`：CSP `script-src` 与 `frame-src` 追加 `https://wiki.edtib.com`（桌面版加载云端索引与 iframe 内嵌云端文档的前提，需随下个桌面版发布生效）
+- 浏览器版（含 file:// 双击）无需任何配置：`<script src>` 与 iframe 跨域天然允许
+
+### 四、线上部署约定（用户侧）
+
+- `https://wiki.edtib.com/wiki/` 下放 `*.html` + `index.js` + `list.json`（同目录）；`.js` 的 Content-Type 需为 JS 类型；无需 CORS；不依赖目录列表；建议 `index.js` 短缓存
+- 更新资料：上传 HTML → `npm run wiki:index` 重建索引 → 上传 `index.js`，即完成（用户端自动可见）
+
+### 五、验证
+
+- `node --check` 通过：`src/views/wiki.js`
+- lint 无新增错误；`docs/wiki-integration.md` 章节号顺延（七云端同步 / 八排错 / 九目录区别）
+- `npm run vite:build` 通过（见下）；云端未部署时 onerror 静默回退本地，行为与改造前一致
+
+### 六、变更文件
+
+`src/views/wiki.js`、`src-tauri/tauri.conf.json`、`docs/wiki-integration.md`、`docs/version/RELEASE-v1.0.md`
+
+---
+
 ## 未发布 · 📚 专业解读深化为内置知识库（不推进版本号）
 
 > **状态**: ✅ 代码就绪 + 真实浏览器功能验证通过（**不推进版本号**，版本号维持 1.0.57）

@@ -30,6 +30,7 @@ const SCRIPTS = [
   'core/help-knowledge.js',
   'core/ai-tools.js',
   'core/kb.js',
+  'core/wiki-kb.js', // 线上文章知识库（wiki.edtib.com 定时同步 + BM25 检索）
   // ⚠ 重要：2026-08-29 修复「引导提示需要跳过两次」
   // 原 SCRIPTS 同时加载 core/guide.js（横幅型 · key: wb_fastener_guide_*）
   //         与     core/router.js（Coach 全屏蒙层 · key: wb_fastener_coach_seen_*）

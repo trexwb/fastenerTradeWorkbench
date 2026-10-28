@@ -73,7 +73,6 @@ const NAV=[
     {k:'inv-receive',label:'收票记录',icon:'fileDown'}
   ]},
   {k:'data',label:'数据管理',icon:'database'},
-  {k:'wiki',label:'专业解读',icon:'fileText'},
 ];
 
 /* =========================================================
@@ -264,7 +263,7 @@ function render(){
     '<aside class="sidebar'+(sidebarOpen?' open':'')+'">'+
       '<div class="brand">紧固件贸易工作台<small>Fastener Trade Workbench</small></div>'+
       '<nav>'+sideNav+'</nav>'+
-      '<div class="side-ft"><a href="https://wiki.edtib.com/%E4%B8%8B%E8%BD%BD%E4%B8%AD%E5%BF%83/%E7%B4%A7%E5%9B%BA%E4%BB%B6%E8%B4%B8%E6%98%93%E4%B8%AA%E4%BA%BA%E5%B7%A5%E4%BD%9C%E5%8F%B0/%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80.html" target="_blank" class="side-ft-link">'+icon('download','14')+' 下载工作台</a></div>'+
+      '<div class="side-ft"><a href="#wiki" onclick="go(\'wiki\');return false;" class="side-ft-link">'+icon('fileText','14')+' 专业解读</a></div>'+
     '</aside>'+
     '<div class="main">'+
       '<div class="topbar">'+
