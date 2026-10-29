@@ -7,7 +7,7 @@
  * 单一来源：package.json 版本号
  * @type {string}
  */
-const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.1.0';
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined') ? __APP_VERSION__ : 'v1.1.1';
 
 /**
  * localStorage 草稿键名前缀，与 DRAFT_TYPES 拼接构成完整键名
@@ -388,7 +388,9 @@ async function _doBindDirectory(){
  * @returns {Promise<void>} 完成（无返回值）
  */
 async function unbindFile(){
-  confirmModal('解绑后数据将仅保存在浏览器 localStorage。确认解绑本地文件？',async()=>{
+  /* v1.1.0 审查修复：原文案误写「仅保存在浏览器 localStorage」——主存储是 IndexedDB，
+     localStorage 只存表单草稿；错误文案会让用户误以为解绑会丢业务数据 */
+  confirmModal('解绑后数据将仅保存在浏览器 IndexedDB 中（不受解绑影响，仍可随时用「导出 JSON 备份」手动备份）。确认解绑本地文件？',async()=>{
     fileHandle=null;fileSync=false;fileLastSave='';
     syncDirHandle=null;
     await fhDelete();
@@ -647,14 +649,20 @@ async function initFileHandle(){
  */
 /** 手动同步进行中标志：防止双击并发重复写本地文件 */
 let _fileSyncing=false;
-async function syncNow(){
+async function syncNow(btn){
   if(!fileHandle||fileSync!==true)return;
   if(_fileSyncing){toast('正在同步中，请稍候…','info');return;}
   _fileSyncing=true;
+  /* v1.1.0 审查修复：补按钮 loading 与失败提示——此前写失败时异常直接抛出，无 toast、无渲染，用户以为同步成功 */
+  if(btn){btn.classList.add('loading');btn.setAttribute('aria-busy','true');}
   try{
     await saveToFile();
+  }catch(e){
+    toast('同步到本地文件失败：'+(e&&e.message||e),'error');
+    return;
   }finally{
     _fileSyncing=false;
+    if(btn){btn.classList.remove('loading');btn.removeAttribute('aria-busy');}
   }
   render();
   toast('已手动同步到本地文件','success');

@@ -73,6 +73,7 @@ const NAV=[
     {k:'inv-receive',label:'收票记录',icon:'fileDown'}
   ]},
   {k:'data',label:'数据管理',icon:'database'},
+  {k:'sync',label:'数据同步',icon:'link'},
 ];
 
 /* =========================================================
@@ -269,6 +270,7 @@ function render(){
     case 'inv-receive':content=viewInvoices('receive');break;
     case 'data':content=viewData();break;
     case 'wiki':content=viewWiki();break;
+    case 'sync':content=viewSync();break;
   }
   app.innerHTML='<div class="app">'+
     '<div class="menu-overlay'+(sidebarOpen?' on':'')+'" onclick="toggleSidebar()"></div>'+
@@ -477,6 +479,9 @@ function renderSetStatus(){
     h+='<div class="set-status-text">当前版本 '+cur+'</div>';
   }
   h+='<div class="set-status-actions"><button type="button" class="btn ghost" id="setCheckBtn">'+icon('refresh',14)+' 检查更新</button></div>';
+  // 2026-10-29 审计修复：状态未变化时跳过整段重建——600ms 轮询此前无条件重写 innerHTML，
+  // 「下载并安装」按钮的 disabled 防重锁随 DOM 重建失效（disabled 属性不反映在 innerHTML 中，比较仍然成立）
+  if(box.children.length&&box.innerHTML===h)return;
   box.innerHTML=h;
   const cb=document.getElementById('setCheckBtn');
   if(cb)cb.onclick=function(){window.Updater.check(false);renderSetStatus();};
@@ -766,15 +771,20 @@ function bindView(){
    外链处理：Tauri 桌面版 WebView 不处理 target="_blank" 导航，
    点击时改为 invoke Rust open_external 命令用系统浏览器打开；
    浏览器版保持原生行为（target="_blank" 新标签页）。
+   2026-10-29：从「仅 target=_blank」放宽为「所有外部 http(s) 链接」——
+   AI 消息等渲染链路若 target 属性被 sanitize 剥离，裸 <a href> 会让
+   WebView 原地导航、整个 App 被链接页覆盖，此处按链接协议兜底拦截。
    ═══════════════════════════════════════════════════════════════ */
 document.addEventListener('click', function (e) {
   if (typeof IS_TAURI_RUNTIME === 'undefined' || !IS_TAURI_RUNTIME) return;
   const t = e.target;
-  const a = t && t.closest ? t.closest('a[target="_blank"]') : null;
+  const a = t && t.closest ? t.closest('a[href]') : null;
   if (!a || !a.href) return;
+  if (!/^https?:/i.test(a.href)) return; // 仅拦截外部 http(s) 链接；锚点/相对路径/mailto 等保持默认
   e.preventDefault();
   window.__TAURI__.core.invoke('open_external', { url: a.href })['catch'](function (err) {
     console.error('[router] 打开外部链接失败:', err);
+    if (typeof toast === 'function') toast('打开外部链接失败，请复制链接到浏览器打开', 'error');
   });
 });
 

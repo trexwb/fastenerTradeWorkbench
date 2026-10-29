@@ -268,6 +268,10 @@ function viewOrderDetail(){
 function changeOrderStatus(id,status){
   const o=DB.orders.find(x=>x.id===id);
   if(!o)return;
+  // 2026-10-29 审计 P2 修复：流转合法性统一走共享状态机（正向+相邻回退），与 AI 工具 flow_order_status 同一口径，
+  // 消除「UI 按钮放行、AI 校验拒绝」的双轨分裂
+  const flow=window.FTValidators.canFlowOrderStatus(o.status,status);
+  if(!flow.ok){toast(flow.error,'error');return;}
   // v1.0.56（审计 H1）：离开结算聚合状态集（签约完成/送货中/完成）且存在关联结算时，
   // 确认口径影响——订单转异常/取消等后不再计入结算页应收/应付聚合，避免对账口径错位
   const wasSettled=['签约完成','送货中','完成'].indexOf(o.status)>=0;
@@ -1271,7 +1275,7 @@ function removeOption(idx,optId){
  * - 清空 _fItems
  * - 跳转订单列表
  */
-async function saveOrder(){
+async function saveOrder(skipTermConfirm){
   if(_orderSaving){toast('正在保存中，请稍候...','info');return;}
   _orderSaving=true;
   try{
@@ -1307,6 +1311,13 @@ async function saveOrder(){
         if(status==='未成交'&&o.status!=='报价中'){
           // P3/R3 修复：视图层状态流转特判语义与共享模块 NEXT_STATUS['报价中'] 含 '未成交' 对齐（保持原提示文案）
           toast('未成交仅可从「报价中」订单进入，请先回到详情页标记','warning');return;
+        }
+        // 2026-10-29 审计 P3 修复：编辑表单状态下拉旁路状态机——终态（异常/取消）改出属状态修正操作，
+        // 二次确认防误改（与共享状态机「异常/取消为终态」口径对齐）；确认后 skipTermConfirm=true 重入避免重复弹窗
+        if(!skipTermConfirm&&(o.status==='异常'||o.status==='取消')&&status!==o.status){
+          confirmModal('订单 '+o.id+' 当前为终态「'+o.status+'」，保存后将改为「'+status+'」。\n\n终态修正会影响结算页应收/应付聚合口径，确定继续吗？',
+            function(){saveOrder(true);},'确认修改','返回检查');
+          return;
         }
         // 送货信息兜底：编辑表单不包含送货字段，若订单已录入结构化送货对象（送货中/完成），保存时不得用期望交期字符串覆盖/清空送货信息
         const prevDelivery=o.delivery;
@@ -1907,14 +1918,6 @@ function updateReceiveField(optId,field,value){
     _receiveRenderDebounced();
   }
 }
-/* ---- 采购订单批量删除 ---- */
-/** 确认后删除指定采购订单 */
-function deleteOrder(id){
-  confirmModal('确认删除该采购订单？单号: '+id,function(){
-    softDelete('order',id,{operator:'user'});
-    render();toast('已删除','info');
-  },'确认删除');
-}
 /* ---- 联系人悬停气泡辅助函数 ---- */
 /** 生成带悬停气泡的供应商名称：气泡内显示联系人、电话、微信 */
 function contactTooltip(supplierId){
@@ -2240,7 +2243,6 @@ function pmOnCheckChange(idx,priceId){
   const boxes=Array.from(document.querySelectorAll('#pmList input[type="checkbox"]'));
   const checked=boxes.filter(function(b){return b.checked;});
   const inp=document.getElementById('alloc_'+priceId);
-  if(inp&&inp.checked===undefined){}
   const el=document.getElementById('pm_chk_'+priceId);
   const isNowChecked=el&&el.checked;
   if(isNowChecked&&checked.length>1&&inp){

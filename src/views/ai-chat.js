@@ -41,6 +41,10 @@ const aiDraftPersist=debounce(function(){
   if(!inp)return;
   try{localStorage.setItem(AI_DRAFT_KEY,inp.value);}catch(e){}
 },AI_DRAFT_PERSIST_DELAY);
+/** AI 输入框 placeholder：常态引导 + 按键说明（原底部提示行已移除，信息并入 placeholder，2026-10-29） */
+const AI_INPUT_PLACEHOLDER='例如：本月经营情况怎么样？（Enter 发送 · Ctrl/⌘/Shift+Enter 换行）';
+/** 生成中复用 placeholder 作忙碌提示（原提示行 CSS ::after 文案随行移除） */
+const AI_INPUT_PLACEHOLDER_BUSY='AI 回复中，发送已暂停（可点「停止」中断）';
 /* ===== AI 消息 Markdown 渲染：markdown-it + DOMPurify + highlight.js =====
  * npm 依赖由 src/main.js 顶层挂到 window.__MD_DEPS（raw-eval 全局脚本无法直接 import）。
  * 终态（renderAIMarkdown）与流式（renderAIMarkdownStream）两条路径：
@@ -112,17 +116,94 @@ function cutIncompleteTableTail(text){
   while(cut>0&&lines[cut-1].trim()==='')cut--;            // 连同前导空行裁掉，待补齐后整块出现
   return lines.slice(0,cut).join('\n');
 }
+/** 降级纯文本渲染的裸链接识别（http/https，不含空白与引号） */
+const AI_PLAIN_URL_RE=/(https?:\/\/[^\s<>"']+)/g;
+/** 纯文本降级渲染：先整体 escHtml，再把 http(s) 裸链接包为可点击 <a>（新窗口；桌面版由 router.js 统一拦截调系统浏览器），尾部标点不入链接 */
+function aiLinkifyPlain(text){
+  return escHtml(String(text==null?'':text)).replace(AI_PLAIN_URL_RE,function(m){
+    const url=m.replace(/[.,;:!?)\]}。，、；：！？）》」』】]+$/,'');
+    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+url+'</a>'+m.slice(url.length);
+  }).replace(/\n/g,'<br>');
+}
+/** 表格行识别（行首 0–3 空格后跟 |） */
+const AI_TABLE_ROW_RE=/^\s{0,3}\|/;
+/** 围栏代码块标记（``` 或 ~~~） */
+const AI_FENCE_RE=/^\s{0,3}(`{3,}|~{3,})/;
+/** 表格渲染兼容（2026-10-29）：GFM 表格不允许打断段落——模型输出的表格若紧贴上一行正文（中间无空行），
+ *  markdown-it 会把整块当普通段落文本渲染（用户实测截图：竖线半角、分隔行均在却仍显示为纯文本）。
+ *  最小修复：仅在「表格行紧跟非表格正文行」时在其前补一个空行，让表格块成立；
+ *  围栏代码块（```/~~~）与引用/缩进块内不处理，避免改动代码内容与块结构。 */
+function aiFixTableBlocks(src){
+  const lines=String(src==null?'':src).split('\n');
+  const out=[];
+  let inFence=false,fenceMark='';
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    const fm=line.match(AI_FENCE_RE);
+    if(fm){
+      if(!inFence){inFence=true;fenceMark=fm[1];}
+      else if(fm[1][0]===fenceMark[0]&&fm[1].length>=fenceMark.length){inFence=false;}
+      out.push(line);continue;
+    }
+    if(!inFence&&AI_TABLE_ROW_RE.test(line)){
+      const prev=out.length?out[out.length-1]:'';
+      if(prev&&!AI_TABLE_ROW_RE.test(prev)&&! /^(\s{4,}|\s{0,3}>)/.test(prev))out.push('');
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+/** 表格内空行修复：AI 有时在表头与分隔行之间、或数据行之间插入空行，
+ *  markdown-it 要求表格行连续（无空行打断），否则整块退化为 <p> 纯文本。
+ *  本函数逐段扫描，将连续"表行 + 空行 + 表行"序列中的空行剔除，使表格块成立。 */
+function aiFixTableBlankLines(src){
+  const lines=String(src==null?'':src).split('\n');
+  const out=[];
+  let inFence=false,fenceMark='';
+  let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    const fm=line.match(AI_FENCE_RE);
+    if(fm){
+      if(!inFence){inFence=true;fenceMark=fm[1];}
+      else if(fm[1][0]===fenceMark[0]&&fm[1].length>=fenceMark.length){inFence=false;}
+      out.push(line);i++;continue;
+    }
+    if(inFence){out.push(line);i++;continue;}
+    if(AI_TABLE_ROW_RE.test(line)){
+      out.push(line);i++;
+      while(i<lines.length&&lines[i].trim()===''){
+        if(i+1<lines.length&&AI_TABLE_ROW_RE.test(lines[i+1])){i++;continue;}
+        break;
+      }
+      continue;
+    }
+    out.push(line);i++;
+  }
+  return out.join('\n');
+}
 /** AI 消息 Markdown → 安全 HTML（终态：历史气泡 / 用户消息等一次性完整渲染） */
 function renderAIMarkdown(text){
-  const src=String(text==null?'':text).replace(/\r\n/g,'\n');
-  if(!ensureAiMdDeps())return src?('<p>'+escHtml(src).replace(/\n/g,'<br>')+'</p>'):'';
+  const src=aiFixTableBlocks(String(text==null?'':text).replace(/\r\n/g,'\n'));
+  if(!ensureAiMdDeps())return src?('<p>'+aiLinkifyPlain(src)+'</p>'):'';
   try{
-    let html=_aiMd.render(src);
-    if(_aiPurify)html=_aiPurify.sanitize(html,{ADD_TAGS:['button'],ADD_ATTR:['data-lang']});
+    // 预处理：确保表格前后有空行（AI 经常忘记加空行导致表格解析失败）
+    let processed=src;
+    // 1) 在表格前添加空行（如果前面不是空行）
+    processed=processed.replace(/([^\n])\n(\|[^|]+\|)/g,'$1\n\n$2');
+    // 2) 在表格后添加空行（如果后面不是空行）
+    processed=processed.replace(/(\|[^|]+\|)\n([^\n|])/g,'$1\n\n$2');
+    // 3) 修复表格内部空行（上两步可能在表头与分隔行之间、数据行之间插入了空行，
+    //    markdown-it 要求表格行连续，否则退化为 <p> 纯文本）
+    processed=aiFixTableBlankLines(processed);
+    let html=_aiMd.render(processed);
+    // ADD_ATTR 补 'target'：DOMPurify 默认白名单无 target，会洗掉 link_open 设置的 _blank，
+    // 外链退化为裸 <a href>，点击后在当前窗口原地导航、桌面版整个 App 被链接页覆盖（2026-10-29）
+    if(_aiPurify)html=_aiPurify.sanitize(html,{ADD_TAGS:['button'],ADD_ATTR:['data-lang','target']});
     return html;
   }catch(e){
     console.warn('markdown 渲染失败，降级纯文本',e);
-    return src?('<p>'+escHtml(src).replace(/\n/g,'<br>')+'</p>'):'';
+    return src?('<p>'+aiLinkifyPlain(src)+'</p>'):'';
   }
 }
 /** AI 消息 Markdown 流式渲染：先裁掉未成形表格尾，再走完整渲染（供生成中气泡使用） */
@@ -203,19 +284,56 @@ function aiRenderCite(html){
     return '<button type="button" class="ai-cite" onclick="kbShowFile(\''+escJsStr(trimmed)+'\')" title="查看原文：'+escAttr(trimmed)+'">'+escHtml(trimmed)+'</button>';
   });
 }
-/** 查看知识库某文件的原文（弹窗展示其全部分块，用于核对引用来源） */
+/** 按引用名查找线上文章（WikiKB）：先精确标题/URL，再做归一化包含匹配（模型引用可能增删引号/空白）。
+ *  AI 对线上文章命中的引用约定是【依据：文章标题】，与本地 KB 的【依据：文件名】互不覆盖（2026-10-29）。 */
+function aiFindWikiArticle(name){
+  if(typeof WikiKB==='undefined')return null;
+  const key=String(name==null?'':name).trim();
+  if(!key)return null;
+  try{
+    const exact=WikiKB.getArticle(key);
+    if(exact&&exact.url)return {title:exact.title,url:exact.url};
+    const norm=function(s){return String(s||'').toLowerCase().replace(/[\s「」『』“”‘’"']+/g,'');};
+    const nk=norm(key);
+    if(!nk)return null;
+    const list=(WikiKB.listArticles().articles)||[];
+    let best=null,bestLen=0;
+    for(let i=0;i<list.length;i++){
+      const nt=norm(list[i].title);
+      if(!nt)continue;
+      const hit=nt.indexOf(nk)>=0||(nk.indexOf(nt)>=0&&nt.length>=6);
+      if(hit&&(!best||nt.length<bestLen)){best=list[i];bestLen=nt.length;}
+    }
+    return best?{title:best.title,url:best.url}:null;
+  }catch(e){return null;}
+}
+/** 查看知识库某文件的原文（弹窗展示其全部分块，用于核对引用来源）。
+ *  2026-10-29：本地 KB 未命中时回落到线上文章库（WikiKB）——AI 引用 wiki.edtib.com 文章时
+ *  标注的是【依据：文章标题】，此前只查本地 KB 会误报「未在知识库中找到该文件」。
+ *  命中后跳转专业解读模块应用内阅读（与 navigate_view 一致不关 AI 抽屉；go() 会重置阅读态，须先 go 再 open）。 */
 async function kbShowFile(nameOrRel){
-  if(typeof KB==='undefined'){toast('知识库模块未加载','error');return;}
-  const blocks=await KB.fileBlocks(nameOrRel);
-  if(!blocks.length){toast('未在知识库中找到该文件：'+nameOrRel,'warning');return;}
-  const html='<div class="kb-viewer"><div style="margin-bottom:8px"><span class="tag ok">'+escHtml(nameOrRel)+'</span> <span class="note">'+blocks.length+' 个分块</span></div>'+blocks.map(function(b,bi){
-    const meta=[];
-    if(b.chapter)meta.push('章节：'+escHtml(b.chapter));
-    if(b.page)meta.push('第'+b.page+'页');
-    const mtag=meta.length?' <span class="note">'+meta.join(' · ')+'</span>':'';
-    return '<details'+(bi===0?' open':'')+'><summary>分块 '+(bi+1)+mtag+'</summary><pre class="kb-block">'+escHtml(b.text)+'</pre></details>';
-  }).join('')+'</div>';
-  modal('知识库原文 · '+nameOrRel,html,'关闭',()=>closeModal(),true);
+  let blocks=[];
+  if(typeof KB!=='undefined'){
+    try{blocks=(await KB.fileBlocks(nameOrRel))||[];}catch(e){blocks=[];}
+  }
+  if(blocks.length){
+    const html='<div class="kb-viewer"><div style="margin-bottom:8px"><span class="tag ok">'+escHtml(nameOrRel)+'</span> <span class="note">'+blocks.length+' 个分块</span></div>'+blocks.map(function(b,bi){
+      const meta=[];
+      if(b.chapter)meta.push('章节：'+escHtml(b.chapter));
+      if(b.page)meta.push('第'+b.page+'页');
+      const mtag=meta.length?' <span class="note">'+meta.join(' · ')+'</span>':'';
+      return '<details'+(bi===0?' open':'')+'><summary>分块 '+(bi+1)+mtag+'</summary><pre class="kb-block">'+escHtml(b.text)+'</pre></details>';
+    }).join('')+'</div>';
+    modal('知识库原文 · '+nameOrRel,html,'关闭',()=>closeModal(),true);
+    return;
+  }
+  const art=aiFindWikiArticle(nameOrRel);
+  if(art&&art.url){
+    if(typeof go==='function')go('wiki');
+    if(typeof openWikiDocRemote==='function')openWikiDocRemote(encodeURIComponent(art.url));
+    return;
+  }
+  toast('未在知识库中找到该文件：'+nameOrRel,'warning');
 }
 // ===== 执行计划（工作流）卡片 =====
 /** 渲染执行计划卡（实时读取 DB.aiWorkflows 中最新状态；无计划返回提示占位） */
@@ -341,7 +459,7 @@ function openAIAssistant(){
       '<div class="ai-head-actions"><button type="button" class="ai-head-btn ai-clear-history'+(isAIBusy()?' is-disabled':'')+'" data-title="清空全部对话记录" onclick="clearAIHistory()" title="清空全部对话记录" aria-label="清空全部对话记录">'+icon('trash','15')+' 清空</button><button type="button" class="ai-head-btn" onclick="openAISettings()" title="AI 设置" aria-label="打开 AI 设置">'+icon('palette','15')+' 设置</button></div>'+
     '</header>'+
     '<div id="aiMessages" class="ai-messages" role="log" aria-label="对话记录">'+history+'</div>'+
-    '<div class="ai-composer"><div id="aiAttachBar" class="ai-attach-bar"></div><div class="ai-input-box"><textarea id="aiInput" rows="1" aria-label="向 AI 助手提问" placeholder="例如：本月经营情况怎么样？" onkeydown="handleAIInputKey(event)"></textarea></div><div class="ai-actions-row"><button type="button" id="aiAttachBtn" class="ai-attach-pill" title="添加附件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf · 本地直读解析，不上传、不产生临时文件）" aria-label="添加附件" onclick="aiAttachPick()">'+icon('plus','14')+'<span>附件</span></button><div class="ai-actions-right"><span class="ai-context" title="发送前可审阅：AI 基于当前页面脱敏快照回答">'+icon('link','12')+'当前上下文：'+escHtml(aiContextName())+'</span><button type="button" id="aiSendBtn" class="ai-send-btn" aria-label="发送消息" title="发送消息" onclick="requestAISend()">'+icon('chevronUp','18')+'</button></div></div><div class="ai-input-hint"><span class="ai-hint-main">Enter 发送 · Ctrl / Shift + Enter 换行</span><span class="ai-hint-note">可上传/拖拽附件，桌面版还可在正文直接写文件路径：txt/md/csv/xls/xlsx/docx/pdf（本地直读，不上传）</span></div><input type="file" id="aiFileInput" class="ai-file-input" multiple accept="'+(typeof AF!=='undefined'&&AF.ACCEPT?AF.ACCEPT:'')+'" onchange="aiAttachFromInput(this)"></div></section>';
+    '<div class="ai-composer"><div id="aiAttachBar" class="ai-attach-bar"></div><div class="ai-input-box"><textarea id="aiInput" rows="1" aria-label="向 AI 助手提问" placeholder="'+escAttr(AI_INPUT_PLACEHOLDER)+'" onkeydown="handleAIInputKey(event)"></textarea></div><div class="ai-actions-row"><button type="button" id="aiAttachBtn" class="ai-attach-pill" title="添加附件（txt/md/markdown/log/csv/xls/xlsx/docx/pdf · 本地直读解析，不上传、不产生临时文件）" aria-label="添加附件" onclick="aiAttachPick()">'+icon('plus','14')+'<span>附件</span></button><div class="ai-actions-right"><span class="ai-context" title="发送前可审阅：AI 基于当前页面脱敏快照回答">'+icon('link','12')+'当前上下文：'+escHtml(aiContextName())+'</span><button type="button" id="aiSendBtn" class="ai-send-btn" aria-label="发送消息" title="发送消息" onclick="requestAISend()">'+icon('chevronUp','18')+'</button></div></div><input type="file" id="aiFileInput" class="ai-file-input" multiple accept="'+(typeof AF!=='undefined'&&AF.ACCEPT?AF.ACCEPT:'')+'" onchange="aiAttachFromInput(this)"></div></section>';
   openDrawer('AI 助手',body,null,false,true);AI.probeProxy().then(()=>{aiScrollBottom(true);});
   syncAIGenerateProtection(); // 重开抽屉时若正处于生成中，立即将删除/清空按钮置为禁用态
   // 草稿恢复：关闭抽屉不清空输入框——打开时把上次未发送的内容回填，输入防抖 300ms 后写 localStorage（关闭/重开不丢）
@@ -716,6 +834,8 @@ function stopAIMessage(){AI.abort();}
 /** 生成中/结束的 UI 态切换：按钮「停止⇄发送」、composer 忙碌标记；幂等，节点缺失自动跳过 */
 function setAISendingUI(on){
   const button=document.getElementById('aiSendBtn');const composer=document.querySelector('.ai-composer');
+  const input=document.getElementById('aiInput');
+  if(input)input.placeholder=on?AI_INPUT_PLACEHOLDER_BUSY:AI_INPUT_PLACEHOLDER; // 忙碌提示由 placeholder 承载
   if(on){
     if(button){button.innerHTML=icon('x','18');button.title='停止生成';button.onclick=stopAIMessage;}
     if(composer)composer.classList.add('ai-busy');
