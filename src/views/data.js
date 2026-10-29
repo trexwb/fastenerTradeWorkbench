@@ -41,12 +41,13 @@ function renderStorageStatus(sizeStr){
             '<div style="font-size:12px;margin-top:4px;color:var(--gray)">磁盘文件，清缓存不丢数据</div>'+
           '</div>'+
         '</div>'+
-        '<div id="storageQuota" style="margin-bottom:12px;background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gray)">'+
+        '<div id="storageQuota" aria-live="polite" style="margin-bottom:12px;background:var(--bg-tint);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gray)">'+
           icon('clock','12')+' 正在获取存储配额...'+
         '</div>'+
         '<div style="border-top:1px solid var(--line);padding-top:20px;">'+
           '<div style="display:flex;justify-content:space-between;align-items:center">'+
-            '<div style="data-section-hd">'+icon('database','16')+' localStorage <span class="tag info" style="font-size:12px;margin-left:4px">表单草稿</span></div>'+
+            /* v1.1.0 审查修复：原文误写 style="data-section-hd"，标题样式类从未生效 */
+            '<div class="data-section-hd" style="border-bottom:none;padding-bottom:0">'+icon('database','16')+' localStorage <span class="tag info" style="font-size:12px;margin-left:4px">表单草稿</span></div>'+
             '<span class="tag gray" style="font-size:12px">仅缓存</span>'+
           '</div>'+
           '<div style="font-size:12px;color:var(--gray)">仅用于表单填写过程中的自动草稿缓存，防止退出/关闭/误操作导致需要重新填写。提交后自动清除，不存储业务数据。</div>'+
@@ -249,10 +250,10 @@ function renderFileSyncSection(){
       syncContent=
         '<div style="background:var(--green-l);border:1px solid var(--green-line);border-radius:8px;padding:14px;margin-bottom:12px">'+
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="tag ok">已同步</span><b>'+escHtml(fileHandle?fileHandle.name:'')+'</b></div>'+
-          '<div style="font-size:12px;color:var(--gray)">'+(fileLastSave?'最后同步：'+escHtml(fileLastSave):'')+' · 每次修改自动写入文件，浏览器清缓存不丢数据</div>'+
+          '<div style="font-size:12px;color:var(--gray)">'+(fileLastSave?'最后同步：'+escHtml(fileLastSave)+' · ':'')+'每次修改自动写入文件，浏览器清缓存不丢数据</div>'+
         '</div>'+
         '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-          '<button class="btn" onclick="syncNow()">'+icon('refresh')+'立即同步</button>'+
+          '<button class="btn" onclick="syncNow(this)">'+icon('refresh')+'立即同步</button>'+
           '<button class="btn danger" onclick="unbindFile()">'+icon('x')+'解绑文件</button>'+
         '</div>';
     }else if(fileSync==='pending'){
@@ -281,7 +282,7 @@ function renderFileSyncSection(){
       '<div class="card">'+
         '<div class="data-section-hd">'+icon('fileText','16')+' 本地文件同步 <span class="tag ok" style="font-size:11px">推荐</span></div>'+
         syncContent+
-        '<div id="dataLocationInfo" style="font-size:13px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);line-height:1.9;color:var(--gray)">正在获取数据所在位置...</div>'+
+        '<div id="dataLocationInfo" aria-live="polite" style="font-size:13px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);line-height:1.9;color:var(--gray)">正在获取数据所在位置...</div>'+
       '</div>'+
     '</div>';
 }
@@ -300,7 +301,9 @@ function _renderWebDataLocation(){
     if(bd)html+='<div>• 自动备份目录：<b style="color:var(--ink)">'+escHtml(bd)+'</b><span style="font-size:12px">（所选文件夹名）</span></div>';
     html+='<div style="font-size:12px;margin-top:6px;color:var(--gray)">浏览器出于安全限制不提供完整磁盘路径；本地文件同步绑定的目录即网页版数据所在目录，可前往操作系统文件管理器中查看该文件夹。</div>';
     el.innerHTML=html;
-  });
+  })
+  /* v1.1.0 审查修复：补 catch——目录名读取失败时不再永远停在「正在获取数据所在位置...」 */
+  .catch(function(){ el.textContent='数据所在位置：浏览器 IndexedDB（目录信息获取失败）'; });
 }
 
 /** 渲染危险操作区（清空全部数据按钮及警告提示） */

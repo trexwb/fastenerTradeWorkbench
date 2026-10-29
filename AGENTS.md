@@ -30,7 +30,7 @@
 > - **版本回退规则**：当用户要求"回退到 X.Y.Z"时，以上三处必须**同时**改写成用户指定的值，且本回合内不得再以"我刚才做了修改所以要 +1"为由推进。
 > - **不推进版本号时仍必须写更新日志**：每次修复追加到 `docs/version/RELEASE-v{主版本}.md` 对应分节，标注日期并明确"不推进版本号"。发布日志只增不改。
 
-当前基准版本：**v1.1.0**。
+当前基准版本：**v1.1.1**。
 
 ### 1. 零依赖运行原则（最高优先级）
 
@@ -67,7 +67,7 @@
 
 ### 4. 架构约定
 
-- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → ai-files → kb → validators → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,wiki,keyboard,ai-chat,search-panel} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor|wiki` 原样复制到 dist/（`wiki/` 为专业解读互动文档 + 自动生成的 `index.js` 索引）
+- **项目结构**：Vite root = `src`；`src/index.html` 入口 → `src/main.js`（CSS 引入 + createApp）→ `src/App.vue`（用 `import.meta.glob(?raw)` 读取 `src/core|views/**/*.js` 源码，间接 eval 全局执行，顺序：`seed → utils → ui → store → exporter → ai → help-knowledge → ai-tools → ai-files → kb → wiki-kb → sync → validators → views/{dashboard,units,specs,bom,prices,orders,settlements,invoices,data,sync,wiki,keyboard,ai-chat,search-panel} → router → app`）；样式：`src/styles/{variables,layout,components}.css` 由 main.js 直接 module import；静态资源：`src/public/images|vendor|wiki` 原样复制到 dist/（`wiki/` 为专业解读互动文档 + 自动生成的 `index.js` 索引）
 - **存储体系**：IndexedDB（主存储，`DB` 对象） + localStorage（表单草稿，`DRAFT_PREFIX='wb_fastener_draft_'`） + 本地 JSON 文件（File System Access API 备份）
 - **状态管理**：全局变量控制视图（`view`、`curOrder`、`curOrderView`、`_fMode`、`_fOrderId`、`_fItems`）
 - **渲染函数**：`render()` 统一调度，`orders` 分支路由：`curOrder ? viewOrderEdit() : curOrderView ? viewOrderDetail() : viewOrders()`
@@ -97,6 +97,8 @@ FastenerTradeWorkbench/
 │   │   ├── ai-tools.js     ← AI Function Calling 工具协议（AIT：schema 定义 + 校验/预览/执行/审计适配层，写入工具均生成提案需用户逐条确认）
 │   │   ├── ai-files.js     ← AI 对话附件解析（window.AF：txt/md/csv/xls/xlsx/docx/pdf 本地直读 + 正文路径提取）
 │   │   ├── kb.js           ← 本地目录知识库（window.KB：目录绑定 + 增量索引 + BM25 检索 + 引用块构造）
+│   │   ├── wiki-kb.js      ← 线上文章知识库（wiki.edtib.com 定时同步 + BM25 检索，供 AI 引用跳转）
+│   │   ├── sync.js         ← 数据同步引擎（window.SYNC：Tauri 桌面端 HTTP 服务控制 + 连接配对 + 事件分发，浏览器版优雅降级）
 │   │   ├── validators.js   ← 共享校验（canFlowOrderStatus / validateStartSourcing 等，视图层与 AI 工具层统一引用）
 │   │   ├── guide.js        ← 新功能引导（Coach）
 │   │   ├── updater.js      ← 桌面版自动更新（window.Updater）
@@ -115,6 +117,7 @@ FastenerTradeWorkbench/
 │   │   ├── ai-chat.js       ← AI 助手（对话 / 提案确认 / 附件，见 docs/flows/ai-chat.md）
 │   │   ├── search-panel.js  ← 全局搜索与命令面板（六源检索 + AI 联动，见 docs/flows/search-panel.md）
 │   │   ├── data.js          ← 数据管理
+│   │   ├── sync.js          ← 数据同步视图（viewSync：设备身份 + 服务控制 + 连接配对 + 已连接设备，桌面版）
 │   │   └── wiki.js          ← 专业解读（src/public/wiki/*.html 互动长页 iframe 内嵌，云端优先 wiki.edtib.com/wiki/ + 本地兜底，见 docs/wiki-integration.md）
 │   └── public/             ← 静态资源（Vite 原样复制到 dist/ 根目录）
 │       ├── images/          ← 图标 / favicon 等
@@ -139,6 +142,7 @@ FastenerTradeWorkbench/
 | `viewDashboard()` | dashboard.js | 概览看板（统计卡 + 待办） |
 | `viewSpecs()` | specs.js | 属性规格管理（六维枚举） |
 | `viewData()` | data.js | 数据管理（备份/同步/操作历史/回收站/知识库） |
+| `viewSync()` | sync.js | 数据同步页（设备身份/服务控制/连接配对/已连接设备，仅桌面版） |
 | `viewOrders()` | orders.js | 采购订单列表页 |
 | `viewOrderEdit()` | orders.js | 编辑/新建订单（表单 + 产品明细） |
 | `viewOrderDetail()` | orders.js | 订单详情只读页（含寻货入口） |
@@ -166,6 +170,7 @@ FastenerTradeWorkbench/
 | `saveDB()` | store.js | IndexedDB 落盘 |
 | `uid(pref)` | utils.js | 唯一 ID 生成 |
 | `KB.*`（`window.KB`） | kb.js | 本地知识库：init / chooseDir / rescan / search / listFiles / buildPromptBlock |
+| `SYNC.*`（`window.SYNC`） | sync.js | 数据同步引擎（桌面版）：身份管理 / 服务启停 / 连接码配对 / 事件分发；浏览器版降级 |
 | `AF.*`（`window.AF`） | ai-files.js | AI 附件解析：isSupported / parseEntry / extractPaths |
 | `canFlowOrderStatus(from,to)` | validators.js | 订单状态机校验（视图与 AI 共用） |
 | `validateStartSourcing(order)` | validators.js | 开始寻货前置校验（v1.0.47 起不校验意向价） |

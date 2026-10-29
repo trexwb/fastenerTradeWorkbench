@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -7,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::AsyncBufReadExt;
+use tokio::sync::Mutex;
+
+mod sync_server;
 
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
@@ -1092,9 +1096,96 @@ async fn ai_deepseek_chat(
     Ok(collected)
 }
 
+// ── 局域网同步命令 ────────────────────────────────────────────────
+
+type SyncStateHandle = Arc<Mutex<sync_server::SyncState>>;
+
+#[tauri::command]
+async fn sync_set_identity(
+    state: tauri::State<'_, SyncStateHandle>,
+    device_id: String,
+    nickname: String,
+) -> Result<(), String> {
+    sync_server::set_identity(
+        state.inner(),
+        sync_server::SyncIdentity {
+            device_id,
+            nickname,
+        },
+    )
+    .await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_start(
+    state: tauri::State<'_, SyncStateHandle>,
+    app: tauri::AppHandle,
+    port: Option<u16>,
+) -> Result<serde_json::Value, String> {
+    let (actual_port, code, ips) =
+        sync_server::start(state.inner(), app, port).await?;
+    Ok(serde_json::json!({
+        "port": actual_port,
+        "code": code,
+        "localIps": ips,
+    }))
+}
+
+#[tauri::command]
+async fn sync_stop(state: tauri::State<'_, SyncStateHandle>) -> Result<(), String> {
+    sync_server::stop(state.inner()).await
+}
+
+#[tauri::command]
+async fn sync_refresh_code(
+    state: tauri::State<'_, SyncStateHandle>,
+) -> Result<String, String> {
+    sync_server::refresh_code(state.inner()).await
+}
+
+#[tauri::command]
+async fn sync_status(
+    state: tauri::State<'_, SyncStateHandle>,
+) -> Result<serde_json::Value, String> {
+    let status = sync_server::get_status(state.inner()).await;
+    serde_json::to_value(status).map_err(|e| format!("序列化状态失败: {e}"))
+}
+
+#[tauri::command]
+async fn sync_accept(
+    state: tauri::State<'_, SyncStateHandle>,
+    request_id: String,
+    accepted: bool,
+) -> Result<serde_json::Value, String> {
+    let peer = sync_server::accept_request(state.inner(), request_id, accepted).await?;
+    Ok(serde_json::json!({ "accepted": peer.is_some(), "peer": peer }))
+}
+
+#[tauri::command]
+async fn sync_disconnect(
+    state: tauri::State<'_, SyncStateHandle>,
+    session_id: String,
+) -> Result<(), String> {
+    sync_server::disconnect_session(state.inner(), session_id).await
+}
+
+#[tauri::command]
+async fn sync_connect(
+    state: tauri::State<'_, SyncStateHandle>,
+    addr: String,
+    code: String,
+) -> Result<serde_json::Value, String> {
+    let peer = sync_server::connect_to_peer(state.inner(), addr, code).await?;
+    Ok(serde_json::json!({ "peer": peer }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let sync_state = sync_server::new_state();
+
     tauri::Builder::default()
+        .manage(sync_state)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1119,6 +1210,14 @@ pub fn run() {
             backup_remove,
             ai_deepseek_chat,
             open_external,
+            sync_set_identity,
+            sync_start,
+            sync_stop,
+            sync_refresh_code,
+            sync_status,
+            sync_accept,
+            sync_disconnect,
+            sync_connect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FastenerTradeWorkbench tauri application");

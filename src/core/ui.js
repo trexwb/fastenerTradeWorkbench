@@ -101,7 +101,11 @@ function modal(title,body,okText,onOk,wideOrExtra,extraOnOkOrWide,_wide){
            手动供应商必填缺失），不再执行兜底 closeModal——旧逻辑同步返回后无条件关窗，
            校验提示随弹窗一起销毁、已填输入全部丢失 */
         if(r===false)return;
-      }catch(e){}
+      }catch(e){
+        /* 2026-10-29 审计修复：onOk 同步抛错不再静默吞掉后关窗（用户会误以为已保存成功），改为提示并留在弹窗 */
+        toast('操作失败：'+((e&&e.message)||e),'error');
+        return;
+      }
     }
     closeModal();
   };
@@ -163,7 +167,11 @@ function confirmModal(msg,onOk,okText,cancelText,onCancel,html){
         // 嵌套确认：onOk 内部又弹了新的 confirmModal（_mask 已被重建）时，保持新弹窗，不再执行收尾关闭
         const after=document.getElementById('_mask');
         if(after&&after!==before){return;}
-      }catch(e){}
+      }catch(e){
+        /* 2026-10-29 审计修复：onOk 同步抛错不再静默吞掉后关窗（用户会误以为已确认成功），改为提示并留在弹窗 */
+        toast('操作失败：'+((e&&e.message)||e),'error');
+        return;
+      }
     }
     closeModal();
   };
@@ -259,15 +267,22 @@ function closeDrawer(){
 function drawerOk(){
   const okBtn=document.getElementById('_drawerOk');
   if(okBtn&&okBtn.disabled)return; // 防双击：async onOk 未决期间忽略重复点击
-  _drawerDirty=false; // 保存前标记为干净，避免保存成功后 closeDrawer 触发二次确认
   if(!_drawerOnOk)return;
+  _drawerDirty=false; // 保存路径先标记为干净，避免保存成功后 closeDrawer 触发二次确认
   const r=_drawerOnOk();
   /* async onOk：未决期间禁用保存键防重复提交；关闭抽屉仍由 onOk 自行负责，
      Promise settle 后恢复按钮（抽屉已关则按钮已随 DOM 移除，为空操作） */
   if(r&&typeof r.then==='function'&&okBtn){
     okBtn.disabled=true;
-    const _releaseDrawerOk=function(){const b=document.getElementById('_drawerOk');if(b)b.disabled=false;};
-    r.then(_releaseDrawerOk,_releaseDrawerOk);
+    r.then(
+      /* 2026-10-29 审计修复：onOk 失败（resolve false / reject）留在抽屉时恢复未保存标记，
+         否则此后 Esc/点遮罩直接关闭、「未保存提醒」失效导致已填输入丢失 */
+      function(v){if(v===false)_drawerDirty=true;const b=document.getElementById('_drawerOk');if(b)b.disabled=false;},
+      function(){_drawerDirty=true;const b=document.getElementById('_drawerOk');if(b)b.disabled=false;}
+    );
+    return;
   }
+  /* 同步 onOk 返回 false 同为校验失败留在抽屉：恢复未保存标记 */
+  if(r===false)_drawerDirty=true;
 }
 

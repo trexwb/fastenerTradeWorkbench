@@ -90,9 +90,40 @@ const WIKI_EMPTY_STALE_MS = 15000;
 let _wikiEmptySince = 0;
 
 /** 串行加载步骤：0=未开始, 1=本地索引, 2=云端索引, 3=文章清单, 4=知识库同步, 5=全部完成 */
+/** 串行加载步骤：0=未开始，1=文章清单，2=知识库同步，5=全部完成 */
 let _wikiLoadStep = 0;
 /** 串行加载是否正在执行中（防止重复触发） */
 let _wikiLoadRunning = false;
+
+/** localStorage 缓存键名 */
+const WIKI_CACHE_KEY = 'wb_wiki_remote_list_cache';
+/** 缓存有效期（毫秒）：24 小时 */
+const WIKI_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+/**
+ * 读取本地缓存的远程文章列表（优先显示，避免每次启动都等待云端）。
+ * @returns {Array|null} 缓存的文章列表或 null（无缓存/已过期）
+ */
+function _wikiReadCache(){
+  try{
+    const raw=localStorage.getItem(WIKI_CACHE_KEY);
+    if(!raw)return null;
+    const cached=JSON.parse(raw);
+    if(!cached||!Array.isArray(cached.list)||!cached.ts)return null;
+    if(Date.now()-cached.ts > WIKI_CACHE_TTL)return null;
+    return cached.list;
+  }catch(e){return null;}
+}
+
+/**
+ * 保存远程文章列表到本地缓存。
+ * @param {Array} list - 文章列表
+ */
+function _wikiSaveCache(list){
+  try{
+    localStorage.setItem(WIKI_CACHE_KEY, JSON.stringify({list:list, ts:Date.now()}));
+  }catch(e){}
+}
 
 /**
  * 拼接文档（或索引）的绝对 URL。
@@ -250,6 +281,8 @@ function _fetchWikiList(){
         updated_at:e.updated_at||''
       };
     });
+    // 保存到本地缓存
+    _wikiSaveCache(_wikiRemoteList);
     _wikiListStage='done';
     _wikiRemoteListState='ready';
     _wikiRemoteListError='';
@@ -282,9 +315,13 @@ function _wikiSequentialLoad(){
   // Step 1: 加载文章清单 (list.json) — 云端只有这个文件
   if(_wikiLoadStep === 0){
     _wikiLoadStep = 1;
-    _wikiListStage = 'connecting';
-    _wikiListStartedAt = Date.now();
-    if(view==='wiki')render();
+    // 有缓存时不显示加载进度（静默更新）
+    const hasCache=!!_wikiRemoteList;
+    if(!hasCache){
+      _wikiListStage = 'connecting';
+      _wikiListStartedAt = Date.now();
+      if(view==='wiki')render();
+    }
     _fetchWikiList();
     // 监听加载完成（通过轮询状态）
     const checkComplete = setInterval(function(){
@@ -292,13 +329,14 @@ function _wikiSequentialLoad(){
         clearInterval(checkComplete);
         _wikiLoadRunning = false;
         _wikiLoadStep = 2;
-        if(view==='wiki')render();
+        // 有缓存时静默更新，不重新渲染（除非数据有变化）
+        if(!hasCache && view==='wiki')render();
         setTimeout(function(){ _wikiLoadRunning = true; _wikiSequentialLoad(); }, 300);
       }else if(_wikiRemoteListState === 'error'){
         clearInterval(checkComplete);
         _wikiLoadRunning = false;
-        // 停留在 step 1，显示错误 + 重试按钮
-        if(view==='wiki')render();
+        // 有缓存时不显示错误（静默失败）
+        if(!hasCache && view==='wiki')render();
       }
     }, 200);
     return;
@@ -694,7 +732,7 @@ function _wikiCard(d){
         :(isRemote?'<span class="wiki-card-meta">'+icon('link','12')+' 线上文章</span>'
           :'<span class="wiki-card-meta">互动长页 · 单文件离线可读</span>'))
       +(!isRemote&&meta.lastReadAt?'<span class="wiki-card-meta wiki-card-last">上次阅读 '+escHtml(_wikiRelTime(meta.lastReadAt))+'</span>':'')
-      +'<span class="wiki-card-go">'+(isRemote?'应用内打开':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
+      +'<span class="wiki-card-go">'+(isRemote?'查看详情':(unread?'开始阅读':'继续阅读'))+' '+icon('chevronRight','14')+'</span>'
     +'</div>'
     +'</article>';
 }
@@ -921,7 +959,18 @@ function viewWiki(){
   if(!_wikiIndex){
     loadWikiIndex(function(){ if(view==='wiki')render(); });
   }
-  // 串行加载：一步完成后再启动下一步，避免并发触发限流
+  
+  // 优先读取本地缓存（立即显示，避免等待云端）
+  if(!_wikiRemoteList && WIKI_REMOTE_BASE){
+    const cached=_wikiReadCache();
+    if(cached){
+      _wikiRemoteList=cached;
+      _wikiRemoteListState='ready';
+      console.log('[wiki] 使用本地缓存（'+cached.length+' 篇）');
+    }
+  }
+  
+  // 后台静默更新（有缓存时不阻塞 UI）
   if(WIKI_REMOTE_BASE && !_wikiLoadRunning && _wikiLoadStep < 5){
     _wikiLoadRunning = true;
     _wikiSequentialLoad();

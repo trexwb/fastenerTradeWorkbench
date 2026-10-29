@@ -7,11 +7,12 @@
 (function(global){
   'use strict';
 
-  /** 订单状态流转映射：当前状态 → 合法的下一站/终态分支（记录型系统：完成可回退/转异常，异常/取消为终态） */
+  /** 订单状态流转映射：当前状态 → 合法的下一站/终态分支（记录型系统：完成可回退/转异常，异常/取消为终态）
+   *  2026-10-29 审计 P2 修复：「报价中」补「异常」——详情页「标记异常」按钮覆盖报价中状态，此前 AI 层与 UI 按钮口径不一致 */
   const NEXT_STATUS={
     '待确认':['寻货中','取消'],
     '寻货中':['报价中','取消'],
-    '报价中':['签约完成','未成交','取消'],
+    '报价中':['签约完成','未成交','取消','异常'],
     '未成交':['报价中'],
     '签约完成':['送货中','异常'],
     '送货中':['完成','异常'],
@@ -20,8 +21,17 @@
     '取消':[]
   };
 
+  /** 相邻回退边（2026-10-29 审计 P2 修复）：与详情页「上一步」按钮（prevStepOrder）逐边对齐，
+   *  此前 UI 允许回退而 AI 层全部拒绝，同一操作人工可行/AI 被拒 */
+  const BACK_STATUS={
+    '寻货中':['待确认'],
+    '报价中':['寻货中'],
+    '签约完成':['报价中'],
+    '送货中':['签约完成']
+  };
+
   /**
-   * 订单状态流转校验：from → to 是否合法。
+   * 订单状态流转校验：from → to 是否合法（正向 NEXT_STATUS + 相邻回退 BACK_STATUS）。
    * 消息文案与原 ai-tools.js flow_order_status validator 完全一致。
    * @param {string} from 当前状态
    * @param {string} to 目标状态
@@ -30,7 +40,7 @@
   function canFlowOrderStatus(from,to){
     if(!(from in NEXT_STATUS))return {ok:false,error:'未知订单状态：'+from};
     if(from===to)return {ok:false,error:'订单已处于该状态：'+from};
-    const allow=NEXT_STATUS[from]||[];
+    const allow=(NEXT_STATUS[from]||[]).concat(BACK_STATUS[from]||[]);
     if(!allow.includes(to))return {ok:false,error:'非法流转：'+from+' → '+to+'（允许：'+(allow.join('/')||'无')+'）'};
     return {ok:true,error:''};
   }
@@ -100,7 +110,7 @@
     return {ok:missing.length===0,missing};
   }
 
-  const api={NEXT_STATUS,canFlowOrderStatus,validateOrderInput,isPositiveNumber,validateStartSourcing};
+  const api={NEXT_STATUS,BACK_STATUS,canFlowOrderStatus,validateOrderInput,isPositiveNumber,validateStartSourcing};
   global.FTValidators=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

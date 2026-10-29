@@ -675,11 +675,6 @@ input.alloc-input{width:90px;}
 /* 暗色主题：发送按钮亮蓝过亮与边框冲突，常态降一档用加深色 */
 [data-theme="dark"] .ai-composer .ai-send-btn{background:var(--ai-accent-d);box-shadow:0 1px 3px rgba(0,0,0,.28);}
 [data-theme="dark"] .ai-composer .ai-send-btn:hover{background:var(--ai-accent);box-shadow:0 2px 6px rgba(0,0,0,.32);}
-/* 输入区提示：两级（快捷键为主 / 附件与路径能力为次，降级透明度与字号） */
-.ai-input-hint{font-size:11px;color:var(--gray);text-align:center;letter-spacing:.01em;margin-top:2px;}
-.ai-hint-note{opacity:.8;}
-.ai-composer.ai-busy .ai-input-hint{color:var(--amber);}
-.ai-composer.ai-busy .ai-input-hint::after{content:' · 生成中，可点「停止」中断';}
 /* AI 设置弹窗：状态摘要卡 + 分组卡片体系 */
 .ai-set-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--ai-line);border-radius:var(--radius-bubble);background:linear-gradient(135deg,var(--ai-soft),transparent 60%),var(--card);margin-bottom:4px}
 .ai-set-hero-main{min-width:220px;flex:1 1 320px}
@@ -793,8 +788,6 @@ input.alloc-input{width:90px;}
 }
 /* AI 生成中忙碌态：输入区降噪、提示发送已暂停；发送按钮此时为「停止」语义 */
 .ai-composer.ai-busy .ai-input-box textarea{opacity:.72}
-.ai-composer.ai-busy .ai-input-hint{color:var(--amber)}
-.ai-composer.ai-busy .ai-input-hint::after{content:'（AI 回复中，发送已暂停）';margin-left:6px}
 @keyframes aiBlink{50%{opacity:0;}}
 @media (max-width:560px){.ai-message{max-width:96%;}}
 
@@ -994,6 +987,7 @@ kbd{display:inline-block;background:var(--bg-soft);border:1px solid var(--line);
 .data-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:16px;}
 .data-tab{background:none;border:none;padding:10px 18px;cursor:pointer;font-size:14px;font-weight:500;color:var(--gray);position:relative;transition:color var(--dur-fast) var(--ease-out);border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit;}
 .data-tab:hover{color:var(--accent-ink);}
+.data-tab:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px;}
 .data-tab.active{color:var(--accent-ink);font-weight:600;border-bottom-color:var(--accent-ink);}
 .data-tab-body{padding-top:4px;}
 .empty-state{text-align:center;padding:40px 0;color:var(--gray);font-size:14px;}
